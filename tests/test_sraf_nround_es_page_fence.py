@@ -77,6 +77,20 @@ def test_successful_search_includes_skipped_shards_without_false_partial():
     assert fence.safe_audit()["failed"] == "NONE"
 
 
+def test_short_page_marked_early_terminated_cannot_complete_chain():
+    c, fence, _ = _fence(page_size=20)
+    ticket = fence.begin_page()
+    response = _response([_hit(1)])
+    response["terminated_early"] = True
+    with pytest.raises(PageFenceError, match="es_search_terminated_early"):
+        fence.submit_page(ticket, response)
+    assert fence.safe_audit()["complete_page_chain"] is False
+    assert fence.safe_audit()["request_wide_attested"] is False
+    assert c.safe_progress()["termination"] == "CANCELLED"
+    with pytest.raises(PageFenceError, match="incomplete_es_page_chain"):
+        fence.take_complete_hits()
+
+
 def test_exactly_full_last_page_requires_extra_empty_page():
     _, fence, _ = _fence(page_size=1)
     first = fence.begin_page()
@@ -89,6 +103,9 @@ def test_exactly_full_last_page_requires_extra_empty_page():
 
 @pytest.mark.parametrize("mutate,reason", [
     (lambda r: r.update({"timed_out": True}), "es_timeout_or_bad_page"),
+    (lambda r: r.update({"terminated_early": True}), "es_search_terminated_early"),
+    (lambda r: r.update({"is_partial": True}), "es_search_terminated_early"),
+    (lambda r: r.update({"terminated_early": "false"}), "untrusted_es_completeness_flags"),
     (lambda r: r["_shards"].update({"failed": 1, "total": 3}), "partial_es_shards"),
     (lambda r: r["_shards"].update({"successful": 1}), "partial_es_shards"),
     (lambda r: r["_shards"].update({"successful": 1, "skipped": 1}), "partial_es_shards"),
