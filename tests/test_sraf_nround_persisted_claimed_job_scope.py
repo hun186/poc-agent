@@ -61,14 +61,18 @@ def scoped(st, job, c, scope, *, access=None, coverage=None):
     return adapter, owner_calls, branch_calls
 
 
-def execute(c, scope, ev, scope_adapter, es):
+def execute(c, scope, ev, scope_adapter, es, *, prebuilt_binding=None):
+    # Test preflight after the claimed binding was created, not merely
+    # constructor validation before the worker has begun.
+    binding = (scope_adapter.make_binding() if prebuilt_binding is None
+               else prebuilt_binding)
     return run_trusted_nround(
         coordinator=c, constraints=scope, evaluator=ev,
         authorized_indexes=("news_test",),
         es_client=es,
         semantic_assessor=lambda *_: True,
         attest_whole_query_scope=None,
-        job_scope_binding=scope_adapter.make_binding(),
+        job_scope_binding=binding,
         query_for_snippet="甲軸乙軸丙軸",
     )
 
@@ -122,29 +126,28 @@ def test_db_job_becomes_terminal_before_pit_no_es_and_no_semantic(tmp_path):
     c, scope, ev, _, planners, _ = _setup()
     st, job = claimed_job(tmp_path, scope)
     adapter, _, _ = scoped(st, job, c, scope)
+    binding = adapter.make_binding()
     st.fail(J, "ForcedStop", "PRIVATE_STOP_REASON")
     es = FakeES(_verified_page("A"))
-    # The persisted adapter refuses even to build a binding; stronger
-    # than waiting until the loop starts and cancels its coordinator.
-    with pytest.raises(PersistedNroundJobScopeError,
-                       match="claimed_job_not_current"):
-        execute(c, scope, ev, adapter, es)
+    with pytest.raises(TrustedNroundExecutionError):
+        execute(c, scope, ev, adapter, es, prebuilt_binding=binding)
     assert es.calls == []
     assert c.history == ()
     assert planners == []
-    assert c.safe_progress()["phase"] == "CREATED"
+    assert c.safe_progress()["phase"] == "TERMINAL"
 
 
 def test_job_recovered_interrupted_before_pit_denied(tmp_path):
     c, scope, ev, *_ = _setup()
     st, job = claimed_job(tmp_path, scope)
     adapter, _, _ = scoped(st, job, c, scope)
+    binding = adapter.make_binding()
     assert st.recover_running() == 1
     es = FakeES(_verified_page("A"))
-    with pytest.raises(PersistedNroundJobScopeError,
-                       match="claimed_job_not_current"):
-        execute(c, scope, ev, adapter, es)
+    with pytest.raises(TrustedNroundExecutionError):
+        execute(c, scope, ev, adapter, es, prebuilt_binding=binding)
     assert es.calls == []
+    assert c.safe_progress()["phase"] == "TERMINAL"
 
 
 def test_owner_or_session_changed_in_db_denied_even_while_running(tmp_path):
@@ -160,13 +163,14 @@ def test_owner_or_session_changed_in_db_denied_even_while_running(tmp_path):
         case.mkdir()
         st, claimed = claimed_job(case, scope)
         adapter, _, _ = scoped(st, claimed, c, scope)
+        binding = adapter.make_binding()
         with sqlite3.connect(st.db_path) as conn:
             conn.execute(f"UPDATE report_jobs SET {column}=? WHERE job_id=?", (value, J))
         es = FakeES(_verified_page("A"))
-        with pytest.raises(PersistedNroundJobScopeError,
-                           match="claimed_job_not_current"):
-            execute(c, scope, ev, adapter, es)
+        with pytest.raises(TrustedNroundExecutionError):
+            execute(c, scope, ev, adapter, es, prebuilt_binding=binding)
         assert es.calls == []
+        assert c.safe_progress()["phase"] == "TERMINAL"
 
 
 def test_store_revocation_during_es_forbids_semantic_processing(tmp_path):
