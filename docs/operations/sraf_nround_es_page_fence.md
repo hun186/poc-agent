@@ -6,7 +6,7 @@
 
 外部受授權 adapter 必須先取得 `begin_page()` 票據，才有此層認可的 ES admission；每張票由協調器扣除不可退還的一次 ES 呼叫額度。adapter 依票據內的 search_after、原始索引、日期、固定欄位和原始必要實體組成 DSL，執行真實 ES IO；本模組 **沒有執行 ES、建 DSL 或驗證 RBAC**。未來要從可信 adapter 證明這些義務。
 
-`submit_page(ticket, response)` 只接收固定的 ES 原始結果格式：完整分片（全部成功／允許 skipped、失敗零片）、沒有 timed_out、命中索引在原始白名單、`_id` 和 `_source` 合法、每頁大小有上限、全鏈來源 ID 不重複。滿頁須再請求下一頁，只有收到短頁或空頁才能認定本鏈結束。滿頁必須帶合法 sort cursor，不能沿用先前 cursor。每輪最多 1000 hits；超出會中止，不得裁切後稱為完整資料。
+`submit_page(ticket, response)` 只接收固定的 ES 原始結果格式：完整分片（successful=total、failed=0，且 skipped 已包含在 successful 計數內，不另外相加）、沒有 timed_out、命中索引在原始白名單、`_id` 和 `_source` 合法、每頁大小有上限、全鏈來源 ID 不重複。滿頁須再請求下一頁，只有收到短頁或空頁才能認定本鏈結束。滿頁必須帶合法 sort cursor，不能沿用先前 cursor。每輪最多 1000 hits；超出會中止，不得裁切後稱為完整資料。
 
 驗證失敗、逾時、異常來源、重複 ID、額度或分頁數用盡，一律取消未來協調器准入，禁止將部分資料送進生成流程。提交回應時還會查詢檢索截止時間；這不能取代外部 HTTP timeout 或 SDK 取消正在執行中的請求。
 
