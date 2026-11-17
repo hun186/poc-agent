@@ -223,3 +223,7 @@
 - [ ] Latest HEAD Hosted CI Python3.10/3.11 and independent Codex Review with zero unresolved findings; conditional merge only.
 - [ ] Preserve exact provenance: do NOT promote mixed one-text + one-metadata candidates merely because same Event matches; compare two-text-axis hypothetical candidates against the original question's validated required entities and issue constraints and block cross-Event source subject borrowing.
 - [ ] Finish true original question named-entity/negation/conjunction semantics for naturally phrased questions (not only `主題：...`), private read-only news_test Gaza/Sudan 5/10 versus 25/40 and Guterres Event-only A/B with precision/recall, p50/p95 and token-size/cost budget, then decide gating for conditional 3→2 and N-round reuse.
+
+## 2026-11-17 — N-round owner-bound execution wiring (candidate)
+- [ ] Verify latest-head Python3.10/3.11 Hosted CI, formal Codex findings/threads and merged status of the isolated leased executor; no private Linux required for code review. Never mark as merged based only on this note.
+- [ ] Later: trusted mode/admission binding inside existing ReportJobWorker, genuine tenant per-index RBAC and all-question branch policy, end-to-end 1800s retrieval + generation reserve and cancellation, real ES/semantic LLM/Word L3-A. Formal independent Job/Artifact CAS and user-facing OpenWebUI second-job status/link remain separate gates. Keep N rounds and Word authority OFF.
