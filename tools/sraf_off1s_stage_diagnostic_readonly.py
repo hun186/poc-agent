@@ -137,7 +137,10 @@ def observe_once(*, root: Path = PROJECT_ROOT, port: str = "9002") -> dict[str, 
         and any(row["stage"] == "EXCLUSIVE_OWNER"
                 and row.get("reason") == "fd_disappeared" for row in events)
     )
-    failed = (next((row for row in events if row["status"] != "PASS"), None)
+    # Only the LAST rejected stage is terminal. Earlier FD-churn attempts
+    # were discarded before a fresh full scan, whose co-owner/permission/cap
+    # failure must never be misreported as transient closure.
+    failed = (next((row for row in reversed(events) if row["status"] != "PASS"), None)
               if status != "PASS" else None)
     return {
         "status": status,
