@@ -12,9 +12,11 @@ ReportJobWorker imports this coordinator. Its audit exposes counts only.
 from __future__ import annotations
 
 from threading import Lock
-from typing import Any
+from typing import Any, Callable
 
 from .contracts import QueryConstraints, RoundEvidenceSummary, _bounded_text
+from .coverage_evaluator import (CoverageTarget, EvidenceFacetWitness,
+                                 RequestWideCoverageEvaluator)
 from .evidence_ledger import (
     MAX_ROUNDS, RequestWideEvidenceLedger, observe_canonical_round,
 )
@@ -130,14 +132,21 @@ class AdaptiveRequestCoordinator:
         self, es_hits: list[dict[str, Any]], *,
         query_for_snippet: str, complete: bool,
         request_wide_attested: bool,
-        missing_aspects: tuple[str, ...],
-        coverage_sufficient: bool,
+        missing_aspects: tuple[str, ...] = (),
+        coverage_sufficient: bool = False,
+        coverage_evaluator: RequestWideCoverageEvaluator | None = None,
+        coverage_witnesses: tuple[EvidenceFacetWitness, ...] = (),
+        semantic_verifier: Callable[[CoverageTarget, EvidenceFacetWitness], bool] | None = None,
     ) -> RoundEvidenceSummary:
         """Consume external ES results with canonical date/topic checks.
 
-        Only the *trusted caller* can attest all intended ES pages/queries
-        were fetched and coverage assessed. If input is invalid, transition
-        terminal fail-closed; no model call and no automatic retry.
+        Only a *trusted caller* can attest all planned ES pages/queries.
+        With coverage_evaluator, sufficiency and missing aspects MUST derive
+        from the canonical, same-call Evidence provenance + trusted semantic
+        witness verification; caller-supplied sufficiency is overridden.
+        Without an evaluator, preserve the legacy isolated testing contract;
+        do NOT use the legacy bool in a production Worker.
+        Invalid input terminates fail-closed, no model call or retry.
         """
         with self._lock:
             if (self._phase != "SEARCHING" or
@@ -163,6 +172,22 @@ class AdaptiveRequestCoordinator:
                 original_question=self._constraints.question,
                 complete=complete,
             )
+            if coverage_evaluator is not None:
+                if (type(coverage_evaluator) is not RequestWideCoverageEvaluator
+                        or coverage_evaluator._constraints is not self._constraints):
+                    raise ValueError("untrusted_coverage_scope")
+                assessed = coverage_evaluator.assess_round(
+                    round_number=self._round, observation=observation,
+                    witnesses=coverage_witnesses,
+                    semantic_verifier=semantic_verifier,
+                    request_wide_attested=request_wide_attested,
+                )
+                missing_aspects = assessed.missing_aspects
+                coverage_sufficient = assessed.coverage_sufficient
+                request_wide_attested = assessed.request_wide_attested
+            elif coverage_witnesses or semantic_verifier is not None:
+                # Never silently ignore assessment inputs in the old path.
+                raise ValueError("coverage_evaluator_required")
             with self._lock:
                 if self._phase != "ASSESSING":
                     raise ValueError("round_was_cancelled")
