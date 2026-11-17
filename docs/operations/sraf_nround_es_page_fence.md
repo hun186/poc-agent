@@ -8,7 +8,7 @@
 
 `submit_page(ticket, response)` 只接收固定的 ES 原始結果格式：完整分片（successful=total、failed=0，且 skipped 已包含在 successful 計數內，不另外相加）、沒有 timed_out、命中索引在原始白名單、`_id` 和 `_source` 合法、每頁大小有上限、全鏈來源 ID 不重複。滿頁須再請求下一頁，只有收到短頁或空頁才能認定本鏈結束。滿頁必須帶合法 sort cursor，不能沿用先前 cursor。每輪最多 1000 hits；超出會中止，不得裁切後稱為完整資料。
 
-驗證失敗、逾時、異常來源、重複 ID、額度或分頁數用盡，一律取消未來協調器准入，禁止將部分資料送進生成流程。提交回應時還會查詢檢索截止時間；這不能取代外部 HTTP timeout 或 SDK 取消正在執行中的請求。
+驗證失敗、逾時、`terminated_early=true`（`terminate_after` 提前停止）／明確 `is_partial=true`、異常來源、重複 ID、額度或分頁數用盡，一律取消未來協調器准入，禁止將部分資料送進生成流程。提交回應時還會查詢檢索截止時間；這不能取代外部 HTTP timeout 或 SDK 取消正在執行中的請求。
 
 `take_complete_hits()` 一次性取出通過分頁收集條件的 hits，交給上層使用原有 Event／Timeline 日期驗證、Topic Match、Evidence Ledger 和可信 coverage 判斷。**僅完成一條分頁鏈，絕對不等於整個使用者問題已涵蓋，也不自動設 `request_wide_attested=true`。** 特別是查詢若有多個分流、不同索引或不同檢索策略，仍必須由可信 Worker 確認全部完成。
 
