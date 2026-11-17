@@ -189,6 +189,42 @@ def test_existing_incompatible_table_is_never_overwritten(tmp_path):
             "SELECT secret FROM sraf_nround_checkpoints").fetchone()[0] == "preserve_me"
 
 
+
+def test_lookalike_table_without_primary_key_is_refused_before_claim(tmp_path):
+    path = tmp_path / "lookalike.sqlite3"
+    with sqlite3.connect(path) as con:
+        con.execute("""CREATE TABLE sraf_nround_checkpoints (
+            job_id TEXT,
+            state TEXT NOT NULL,
+            phase TEXT NOT NULL,
+            round_number INTEGER NOT NULL DEFAULT 0,
+            completed_rounds INTEGER NOT NULL DEFAULT 0,
+            es_calls_this_round INTEGER NOT NULL DEFAULT 0,
+            termination TEXT NOT NULL DEFAULT 'NONE',
+            lease_hash TEXT,
+            revision INTEGER NOT NULL DEFAULT 0)""")
+        con.execute("""INSERT INTO sraf_nround_checkpoints
+            (job_id,state,phase) VALUES (?,'QUEUED','CREATED')""", (J,))
+    st = NroundCheckpointStore(path)
+    with pytest.raises(RuntimeError, match="incompatible_nround_checkpoint_schema"):
+        st.initialize()
+    with sqlite3.connect(path) as con:
+        assert con.execute("SELECT count(*) FROM sraf_nround_checkpoints").fetchone()[0] == 1
+        assert con.execute("PRAGMA table_info(sraf_nround_checkpoints)").fetchone()[5] == 0
+
+
+def test_reject_new_sources_without_new_evidence(tmp_path):
+    st = store(tmp_path)
+    st.create(J)
+    lease = st.claim(J)
+    malformed = progress(phase="ASSESSED", completed=1)
+    malformed["canonical_evidence_history"][0]["new_verified"] = 0
+    malformed["canonical_evidence_history"][0]["cumulative_verified"] = 0
+    with pytest.raises(ValueError, match="untrusted_nround_audit"):
+        st.record_progress(J, lease, malformed)
+    assert st.get_public(J)["completed_rounds"] == 0
+
+
 def test_unhashable_phase_and_invalid_lease_are_rejected_safely(tmp_path):
     st = store(tmp_path)
     st.create(J)
