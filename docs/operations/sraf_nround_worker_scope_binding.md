@@ -29,7 +29,14 @@
 完整分頁鏈取得後再執行 `attest()`，重新檢查權限、問題分支及正確的
 round／索引／來源／頁數。若其中一個拒絕或丟錯，立即 fail closed，
 不送到語意覆蓋度／下一輪。每個 round 只能 attested 一次；
-跨不同 coordinator／owner 的 binding 不得混用。
+跨不同 coordinator／owner 的 binding 不得混用。執行權杖
+（`_execution_token`）同時綁定 PIT 開啟、各分頁與完整回執；
+Owner binding 另外持有專屬的不公開 `_owner_binding_token`。
+`preflight` 會記住**同一個 frozen plan 物件**，`attest` 必須
+證明該 plan 曾成功排他認領、至少預算承認 PIT 與分頁的兩次 ES IO、
+收到帶同一執行權杖的真實查詢回執，且所有 hit 的 index 在原始授權
+範圍內。沒有執行過查詢就手工建造回執、用另一個 owner 的
+plan、相同輪次的另一份 plan 或重複使用同一回執，都會拒絕。
 隔離測試用的舊回呼模式仍保留，但不可與 binding 同時指定，
 以免用 `lambda: True` 覆寫 binding 決策。
 
