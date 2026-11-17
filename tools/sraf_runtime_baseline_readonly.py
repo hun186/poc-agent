@@ -7,6 +7,7 @@ Run on the already-running Linux deployment as the launcher owner:
 
     python tools/sraf_runtime_baseline_readonly.py --project-root "$PWD" --api-port 9002
     python tools/sraf_runtime_baseline_readonly.py --project-root "$PWD" --api-port 9002 --no-network
+    python tools/sraf_runtime_baseline_readonly.py --project-root "$PWD" --api-port 9002 --independent-anonymous-health
 """
 from __future__ import annotations
 
@@ -24,6 +25,7 @@ from tools.sraf_airgap_off1h_worker_identity import probe_worker_process_identit
 from tools.sraf_airgap_off1s_api_listener import attest_api_listener  # noqa: E402
 
 SCHEMA = "sraf_runtime_baseline_readonly_v1"
+SCHEMA_INDEPENDENT = "sraf_runtime_baseline_readonly_v2"
 MODE = "PARTIAL_ONLY_NOT_ACCEPTANCE"
 
 
@@ -41,13 +43,19 @@ def _valid_port(value: str) -> int | None:
     return parsed if 1 <= parsed <= 65535 and str(parsed) == value else None
 
 
-def observe(project_root: Path, api_port: str, *, no_network: bool = False) -> dict:
+def observe(project_root: Path, api_port: str, *, no_network: bool = False,
+            independent_anonymous_health: bool = False) -> dict:
     """Return only fixed labels: never paths, ports, PID, exceptions or secrets."""
     checks = {
         "API-LISTENER": _row("SKIP", "listener_identity_unverified"),
         "API-HEALTH": _row("SKIP", "health_not_observed"),
         "WORKER-IDENTITIES": _row("SKIP", "worker_identity_unverified"),
     }
+    # Only the explicit operator opt-in adds an unattributed, anonymous GET
+    # result. Neither this observation nor a 200 response can establish the
+    # identity of the process serving the socket or authorize bearer access.
+    if independent_anonymous_health:
+        checks["API-HEALTH-ANONYMOUS"] = _row("SKIP", "health_not_observed")
     requests_sent = 0
     try:
         valid = (
@@ -75,34 +83,50 @@ def observe(project_root: Path, api_port: str, *, no_network: bool = False) -> d
             checks["API-LISTENER"] = _row("PASS", "listener_identity_observed")
         if no_network:
             checks["API-HEALTH"] = _row("SKIP", "network_disabled")
-        elif listener_ok:
+            if independent_anonymous_health:
+                checks["API-HEALTH-ANONYMOUS"] = _row("SKIP", "network_disabled")
+        elif listener_ok or independent_anonymous_health:
             # OFF-1A's audited GET is anonymous, numeric IPv4 loopback only;
             # absolute monotonic budget 3s, no redirects, 64KiB max body.
+            # Without verified listener ownership, this is strictly an
+            # UNATTRIBUTED reachability probe, never authenticated authority.
             requests_sent = 1
+            state = "SKIP"
             try:
                 health = probe_api_health(_valid_port(api_port))
-                state = health.status if health.status in {"PASS", "FAIL", "SKIP"} else "SKIP"
+                state = (health.status if health.status in
+                         {"PASS", "FAIL", "SKIP"} else "SKIP")
+            except Exception:
+                pass
+            if independent_anonymous_health:
+                checks["API-HEALTH-ANONYMOUS"] = _row(
+                    state,
+                    ("anonymous_healthz_http_200_unattributed"
+                     if state == "PASS" else "anonymous_healthz_unverified"),
+                )
+            if listener_ok:
                 checks["API-HEALTH"] = _row(
                     state,
                     "healthz_http_200" if state == "PASS" else "healthz_unverified",
                 )
-            except Exception:
-                checks["API-HEALTH"] = _row("SKIP", "healthz_unverified")
-            # A replaced listener invalidates the combined observation.
-            try:
-                after = attest_api_listener(project_root, api_port)
-                stable = after == before
-            except Exception:
-                stable = False
-            if not stable:
-                checks["API-LISTENER"] = _row("SKIP", "listener_identity_changed")
-                checks["API-HEALTH"] = _row("SKIP", "listener_identity_changed")
+                # A replaced listener invalidates the attributed observation,
+                # not the independent anonymous transport result.
+                try:
+                    after = attest_api_listener(project_root, api_port)
+                    stable = after == before
+                except Exception:
+                    stable = False
+                if not stable:
+                    checks["API-LISTENER"] = _row("SKIP", "listener_identity_changed")
+                    checks["API-HEALTH"] = _row("SKIP", "listener_identity_changed")
+            else:
+                checks["API-HEALTH"] = _row("SKIP", "listener_identity_unverified")
         else:
             checks["API-HEALTH"] = _row("SKIP", "listener_identity_unverified")
 
     complete = all(row["status"] == "PASS" for row in checks.values())
     return {
-        "schema": SCHEMA,
+        "schema": SCHEMA_INDEPENDENT if independent_anonymous_health else SCHEMA,
         "mode": MODE,
         "feature_acceptance": "NOT_TESTED",
         "overall": "PASS" if complete else "INCOMPLETE",
@@ -124,8 +148,13 @@ def main(argv: list[str] | None = None) -> int:
                         help="Local numeric API port (never printed)")
     parser.add_argument("--no-network", action="store_true",
                         help="Skip even the anonymous loopback GET")
+    parser.add_argument("--independent-anonymous-health", action="store_true",
+                        help="Opt in to unattributed anonymous loopback /healthz, even if OFF-1S cannot verify the listener; never authorizes bearer requests")
     args = parser.parse_args(argv)
-    result = observe(args.project_root, args.api_port, no_network=args.no_network)
+    result = observe(
+        args.project_root, args.api_port, no_network=args.no_network,
+        independent_anonymous_health=args.independent_anonymous_health,
+    )
     print(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
     return 0 if result["overall"] == "PASS" else 2
 
