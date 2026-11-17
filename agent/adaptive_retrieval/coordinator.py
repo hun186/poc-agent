@@ -100,6 +100,11 @@ class AdaptiveRequestCoordinator:
         # or an extra query branch silently outside its frozen manifest.
         self._single_query_claimed_round = 0
         self._single_query_claim_token: object | None = None
+        # Exact owner-bound preflight is required BEFORE any frozen
+        # query claim; no later attestation can retroactively authorize IO.
+        self._owner_preflight_round = 0
+        self._owner_preflight_token: object | None = None
+        self._owner_preflight_execution_token: object | None = None
 
     def _terminate_locked(self, reason: str) -> None:
         self._phase = "TERMINAL"
@@ -121,8 +126,30 @@ class AdaptiveRequestCoordinator:
             self._phase = "SEARCHING"
             return True
 
+    def authorize_owner_query_preflight(
+        self, round_number: int, *,
+        owner_token: object, execution_token: object,
+    ) -> bool:
+        """Record exact Job owner approval before ES admission, no IO."""
+        with self._lock:
+            if (type(round_number) is not int
+                    or type(owner_token) is not object
+                    or type(execution_token) is not object
+                    or self._phase != "SEARCHING"
+                    or self._round != round_number
+                    or self._budget.rounds_started != round_number
+                    or self._es_slots_this_round != 0
+                    or self._single_query_claimed_round == round_number
+                    or self._owner_preflight_round == round_number):
+                return False
+            self._owner_preflight_round = round_number
+            self._owner_preflight_token = owner_token
+            self._owner_preflight_execution_token = execution_token
+            return True
+
     def claim_single_query_execution(self, round_number: int, *,
-                                     execution_token: object) -> bool:
+                                     execution_token: object,
+                                     owner_token: object | None = None) -> bool:
         """Claim the ONLY supported canonical query branch for this round.
 
         Does not run or authorize ES: the injected trusted caller must
@@ -140,6 +167,14 @@ class AdaptiveRequestCoordinator:
                     or self._single_query_claimed_round == round_number
                     or self._es_slots_this_round != 0):
                 return False
+            if self._owner_preflight_round == round_number:
+                if (owner_token is not self._owner_preflight_token
+                        or execution_token is not
+                           self._owner_preflight_execution_token):
+                    self._terminate_locked("UNTRACKED_QUERY_ADMISSION")
+                    return False
+            elif owner_token is not None:
+                return False
             self._single_query_claimed_round = round_number
             self._single_query_claim_token = execution_token
             return True
@@ -149,6 +184,12 @@ class AdaptiveRequestCoordinator:
         with self._lock:
             if (self._phase != "SEARCHING"
                     or self._budget.rounds_started != self._round):
+                return False
+            # Never permit a direct legacy adapter call between owner
+            # preflight and exclusive plan claim; that would bypass RBAC.
+            if (self._owner_preflight_round == self._round
+                    and self._single_query_claimed_round != self._round):
+                self._terminate_locked("UNTRACKED_QUERY_ADMISSION")
                 return False
             if self._single_query_claimed_round == self._round:
                 if execution_token is not self._single_query_claim_token:
