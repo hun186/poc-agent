@@ -223,3 +223,50 @@ def test_no_running_report_job_auto_recovery_or_word_completion(tmp_path):
     assert es.calls == []
     assert checkpoint.get_public(J)["state"] == "QUEUED"
     assert reports.get(J).status == "interrupted"
+
+
+@pytest.mark.parametrize("revoked_policy", ["index", "branch"])
+def test_terminal_handoff_rechecks_policy_revoked_during_last_semantic(
+    tmp_path, revoked_policy,
+):
+    """Codex P2: final SUFFICIENT cannot hand off private Evidence on stale ACL."""
+    c, scope, ev, planners, reports, checkpoint, claimed = _case(tmp_path)
+    policy = {"revoked": False}
+
+    def index_access(job, index):
+        return (not policy["revoked"] or revoked_policy != "index") and (
+            job.owner_id == "PRIVATE_OWNER" and index == "news_test"
+        )
+
+    def question_coverage(job, original, branches):
+        return (not policy["revoked"] or revoked_policy != "branch") and (
+            original is scope and branches == ("CANONICAL_MAIN",)
+        )
+
+    def semantic(target, evidence):
+        # Revocation happens only AFTER the second PIT was authorized and
+        # attested, while the second round's private Evidence is assessed.
+        if c.safe_progress()["round"] == 2:
+            policy["revoked"] = True
+        return True
+
+    es = FakeES(_verified_page("A"), _verified_page("B"))
+    with pytest.raises(ClaimedNroundJobExecutionError) as error:
+        _run(
+            c, scope, ev, reports, checkpoint, claimed, es,
+            owner_index=index_access,
+            branches=question_coverage,
+            semantic=semantic,
+        )
+    assert str(error.value) == "claimed_nround_job_execution_failed"
+    assert policy["revoked"] is True
+    assert len(es.searches) == 2
+    assert planners == [1]
+    assert c.safe_progress()["ready_for_external_report_generation"] is False
+    # The terminal sidecar is immutable; it is NOT a Word or ACL grant.
+    public = checkpoint.get_public(J)
+    assert public["state"] == "RETRIEVAL_STOPPED"
+    assert public["termination"] == "SUFFICIENT"
+    assert public["report_generation_authorized"] is False
+    assert reports.get(J).status == "running"
+    assert reports.get(J).docx_basename is None
