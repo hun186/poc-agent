@@ -129,13 +129,26 @@ def observe_once(*, root: Path = PROJECT_ROOT, port: str = "9002") -> dict[str, 
             status = "INCOMPLETE"
     finally:
         sys.settrace(previous_trace)
-    failed = next((row for row in events if row["status"] != "PASS"), None)
+    # A transient scan that is fully discarded and then rechecked does NOT
+    # turn a successful complete attestation into a failed one. Keep a separate
+    # sanitized observation for operator visibility, never bearer authority.
+    recovered_churn = (
+        status == "PASS"
+        and any(row["stage"] == "EXCLUSIVE_OWNER"
+                and row.get("reason") == "fd_disappeared" for row in events)
+    )
+    # Only the LAST rejected stage is terminal. Earlier FD-churn attempts
+    # were discarded before a fresh full scan, whose co-owner/permission/cap
+    # failure must never be misreported as transient closure.
+    failed = (next((row for row in reversed(events) if row["status"] != "PASS"), None)
+              if status != "PASS" else None)
     return {
         "status": status,
         "failure_stage": (failed["stage"] if failed else
                           "NONE" if status == "PASS" else "UNOBSERVED"),
         "failure_reason": (failed.get("reason", "unverified") if failed else
                            "NONE" if status == "PASS" else "unverified"),
+        "recovered_fd_churn": recovered_churn,
         "elapsed_ms": min(3_600_000, max(0, int((time.monotonic() - start) * 1000))),
         "events": events,
     }

@@ -108,3 +108,69 @@ def test_cli_never_grants_authority_and_bounds_attempts(monkeypatch, capsys):
     assert payload["mutations"] == 0
     with pytest.raises(SystemExit):
         diag.main(["--attempts", "4"])
+
+
+def test_terminal_coowner_after_discarded_churn_is_not_mislabeled(monkeypatch):
+    """A retried scan finding a co-owner must supersede the discarded race."""
+    from types import SimpleNamespace
+
+    pid, coowner = 42421, 42422
+    inode = "SECRET_INODE_MUST_NOT_LEAK"
+    state = {"scans": 0, "reads": 0}
+
+    class Dir:
+        def __init__(self, entries):
+            self.entries = entries
+
+        def __enter__(self):
+            return iter(self.entries)
+
+        def __exit__(self, *unused):
+            return False
+
+    def scan(path):
+        path = str(path)
+        if path == "/proc":
+            state["scans"] += 1
+            return Dir([SimpleNamespace(name=str(pid)),
+                        SimpleNamespace(name=str(coowner))])
+        for current in (pid, coowner):
+            if path == f"/proc/{current}/task":
+                return Dir([SimpleNamespace(name=str(current))])
+            if path == f"/proc/{current}/task/{current}/fd":
+                return Dir([SimpleNamespace(
+                    name="3", path=f"/proc/{current}/task/{current}/fd/3")])
+        raise AssertionError("unexpected procfs path")
+
+    def readlink(path):
+        state["reads"] += 1
+        if state["reads"] == 1:
+            raise FileNotFoundError("SECRET_FD_PATH_MUST_NOT_LEAK")
+        return f"socket:[{inode}]"
+
+    def fake_attest(root, port):
+        assert port == "9002"
+        result = diag.listener._exclusive_owner_with_churn_recheck(
+            pid, inode, [1])
+        return object() if result else None
+
+    monkeypatch.setattr(diag.listener, "_procfs_unfiltered", lambda: True)
+    monkeypatch.setattr(diag.listener.os, "scandir", scan)
+    monkeypatch.setattr(diag.listener.os, "readlink", readlink)
+    monkeypatch.setattr(diag.listener, "attest_api_listener", fake_attest)
+
+    result = diag.observe_once()
+    failed_scans = [
+        event for event in result["events"]
+        if event["stage"] == "EXCLUSIVE_OWNER" and event["status"] == "INCOMPLETE"
+    ]
+    assert state["scans"] == 2
+    assert result["status"] == "INCOMPLETE"
+    assert [event["reason"] for event in failed_scans] == [
+        "fd_disappeared", "another_socket_owner"]
+    assert result["failure_stage"] == "EXCLUSIVE_OWNER"
+    assert result["failure_reason"] == "another_socket_owner"
+    assert result["recovered_fd_churn"] is False
+    raw = json.dumps(result)
+    assert inode not in raw
+    assert "SECRET_FD_PATH_MUST_NOT_LEAK" not in raw
