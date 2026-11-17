@@ -103,6 +103,8 @@ class WorkerScopeBinding:
                     or plan.authorized_indexes != self._authorized_indexes
                     or plan.branch_code != "CANONICAL_MAIN"
                     or plan.round_number != receipt.round_number
+                    or self._coordinator.safe_progress()["phase"] != "SEARCHING"
+                    or self._coordinator.safe_progress()["round"] != plan.round_number
                     or plan.round_number in self._attested_rounds
                     or receipt.query_plan_complete is not True
                     or receipt.request_wide_attested is not False
