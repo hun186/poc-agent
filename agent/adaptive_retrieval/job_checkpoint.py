@@ -54,7 +54,8 @@ def _validated_counts(progress: dict[str, Any]) -> tuple[str, int, int, int, str
     round_number, completed = progress["round"], progress["completed_rounds"]
     es_calls = progress["es_calls_admitted_this_round"]
     if (progress["schema"] != "sraf_nround_coordinator_progress_v1"
-            or phase not in _PHASES or reason not in _ALLOWED_REASONS
+            or type(phase) is not str or phase not in _PHASES
+            or type(reason) is not str or reason not in _ALLOWED_REASONS
             or type(round_number) is not int or not 1 <= round_number <= 8
             or type(completed) is not int or not 0 <= completed <= round_number
             or type(es_calls) is not int or not 0 <= es_calls <= 1000
@@ -82,8 +83,8 @@ def _validated_counts(progress: dict[str, Any]) -> tuple[str, int, int, int, str
                 or audit["cumulative_verified"] < previous_verified
                 or audit["cumulative_sources"] < previous_sources
                 or audit["cumulative_sources"] > audit["cumulative_verified"]
-                or audit["new_verified"] > audit["cumulative_verified"] - previous_verified
-                or audit["new_sources"] > audit["cumulative_sources"] - previous_sources):
+                or audit["new_verified"] != audit["cumulative_verified"] - previous_verified
+                or audit["new_sources"] != audit["cumulative_sources"] - previous_sources):
             raise ValueError("untrusted_nround_audit")
         previous_verified = audit["cumulative_verified"]
         previous_sources = audit["cumulative_sources"]
@@ -187,7 +188,8 @@ class NroundCheckpointStore:
     def record_progress(self, job_id: str, lease_token: str,
                         progress: dict[str, Any]) -> bool:
         phase, number, completed, es_calls, reason = _validated_counts(progress)
-        if not self._valid_id(job_id) or type(lease_token) is not str:
+        if (not self._valid_id(job_id) or type(lease_token) is not str
+                or re.fullmatch(r"[A-Za-z0-9_-]{43}", lease_token) is None):
             return False
         new_state = "RETRIEVAL_STOPPED" if phase == "TERMINAL" else "RUNNING"
         def op(con):
