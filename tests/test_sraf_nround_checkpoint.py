@@ -131,6 +131,23 @@ def test_monotonic_progress_rejects_rollbacks_and_round_skips(tmp_path):
     assert st.get_public(J)["round_number"] == 2
 
 
+def test_same_round_phase_rollback_is_rejected_but_next_round_resets_phase(tmp_path):
+    st = store(tmp_path)
+    st.create(J)
+    lease = st.claim(J)
+    assert st.record_progress(J, lease, progress(phase="SEARCHING"))
+    assert st.record_progress(J, lease, progress(phase="ASSESSING"))
+    assert not st.record_progress(J, lease, progress(phase="SEARCHING"))
+    assert st.get_public(J)["phase"] == "ASSESSING"
+    assert st.record_progress(J, lease, progress(phase="ASSESSED", completed=1))
+    assert st.record_progress(J, lease, progress(phase="PLANNING", completed=1))
+    assert not st.record_progress(J, lease, progress(phase="ASSESSED", completed=1))
+    assert st.get_public(J)["phase"] == "PLANNING"
+    assert st.record_progress(J, lease, progress(round_number=2, completed=1))
+    assert st.get_public(J)["phase"] == "SEARCHING"
+    assert st.get_public(J)["round_number"] == 2
+
+
 def test_inconsistent_round_evidence_is_rejected(tmp_path):
     st = store(tmp_path)
     st.create(J)
