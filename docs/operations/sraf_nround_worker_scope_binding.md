@@ -37,6 +37,14 @@ Owner binding 另外持有專屬的不公開 `_owner_binding_token`。
 收到帶同一執行權杖的真實查詢回執，且所有 hit 的 index 在原始授權
 範圍內。沒有執行過查詢就手工建造回執、用另一個 owner 的
 plan、相同輪次的另一份 plan 或重複使用同一回執，都會拒絕。
+
+此外 preflight 經授權政策確認後，會在**協調器自身**登記
+`(round, owner_binding_token, execution_token)`；
+只有這組身分已在任何 ES IO **發生前**記錄，該 round 才能領取
+PIT 的執行 claim。若在 preflight 前試著跑帶 owner token 的 ES
+executor，必須沒有 PIT IO；若已經透過未授權的舊路徑執行過 ES，
+事後 preflight 必須失敗，絕不可追認。preflight 與 claim 的空檔若
+有其他舊路徑發起 ES 亦應立即取消該輪，不能繼續當作合法完成。
 隔離測試用的舊回呼模式仍保留，但不可與 binding 同時指定，
 以免用 `lambda: True` 覆寫 binding 決策。
 
