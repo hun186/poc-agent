@@ -66,6 +66,7 @@ class WorkerScopeBinding:
         self._check_index = check_index_access
         self._check_branches = check_single_branch_coverage
         self._lock = Lock()
+        self._binding_token = object()
         self._attested_rounds: set[int] = set()
         self._preflight_plans: dict[int, FrozenSingleQueryPlan] = {}
 
@@ -88,6 +89,7 @@ class WorkerScopeBinding:
                     or plan.coordinator is not self._coordinator
                     or plan.authorized_indexes != self._authorized_indexes
                     or plan.branch_code != "CANONICAL_MAIN"
+                    or plan._owner_binding_token is not self._binding_token
                     or plan.round_number in self._attested_rounds
                     or plan.round_number in self._preflight_plans):
                 raise WorkerScopeBindingError("wrong_job_query_manifest")
@@ -107,6 +109,7 @@ class WorkerScopeBinding:
                     or plan.coordinator is not self._coordinator
                     or plan.authorized_indexes != self._authorized_indexes
                     or plan.branch_code != "CANONICAL_MAIN"
+                    or plan._owner_binding_token is not self._binding_token
                     or plan.round_number != receipt.round_number
                     or self._preflight_plans.get(plan.round_number) is not plan
                     or receipt._execution_token is not plan._execution_token
