@@ -94,6 +94,10 @@ class WorkerScopeBinding:
                     or plan.round_number in self._preflight_plans):
                 raise WorkerScopeBindingError("wrong_job_query_manifest")
             self._check_live_policy()
+            if not self._coordinator.authorize_owner_query_preflight(
+                    plan.round_number, owner_token=self._binding_token,
+                    execution_token=plan._execution_token):
+                raise WorkerScopeBindingError("job_query_preflight_too_late")
             # This exact plan, not merely a matching same-round plan, was
             # explicitly authorized before any ES request was issued.
             self._preflight_plans[plan.round_number] = plan
@@ -115,6 +119,9 @@ class WorkerScopeBinding:
                     or receipt._execution_token is not plan._execution_token
                     or self._coordinator._single_query_claimed_round != plan.round_number
                     or self._coordinator._single_query_claim_token is not plan._execution_token
+                    or self._coordinator._owner_preflight_round != plan.round_number
+                    or self._coordinator._owner_preflight_token is not self._binding_token
+                    or self._coordinator._owner_preflight_execution_token is not plan._execution_token
                     or self._coordinator._es_slots_this_round < 2
                     or self._coordinator.safe_progress()["phase"] != "SEARCHING"
                     or self._coordinator.safe_progress()["round"] != plan.round_number
