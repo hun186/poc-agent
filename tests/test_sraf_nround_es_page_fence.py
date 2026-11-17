@@ -67,6 +67,16 @@ def test_strict_two_page_chain_and_private_ticket_cursor():
         assert private not in audit
 
 
+def test_successful_search_includes_skipped_shards_without_false_partial():
+    c, fence, _ = _fence(page_size=2)
+    ticket = fence.begin_page()
+    page = _response([_hit(1)], successful=2, skipped=1)
+    assert fence.submit_page(ticket, page) is True
+    assert len(fence.take_complete_hits()) == 1
+    assert c.safe_progress()["phase"] == "SEARCHING"
+    assert fence.safe_audit()["failed"] == "NONE"
+
+
 def test_exactly_full_last_page_requires_extra_empty_page():
     _, fence, _ = _fence(page_size=1)
     first = fence.begin_page()
@@ -81,6 +91,8 @@ def test_exactly_full_last_page_requires_extra_empty_page():
     (lambda r: r.update({"timed_out": True}), "es_timeout_or_bad_page"),
     (lambda r: r["_shards"].update({"failed": 1, "total": 3}), "partial_es_shards"),
     (lambda r: r["_shards"].update({"successful": 1}), "partial_es_shards"),
+    (lambda r: r["_shards"].update({"successful": 1, "skipped": 1}), "partial_es_shards"),
+    (lambda r: r["_shards"].update({"skipped": 3}), "partial_es_shards"),
     (lambda r: r["hits"]["hits"][0].update({"_index": "private_index"}), "untrusted_es_source"),
     (lambda r: r["hits"]["hits"][0].update({"_source": "PRIVATE"}), "untrusted_es_source"),
     (lambda r: r["hits"]["hits"].append(_hit(9)), "oversized_es_page"),
