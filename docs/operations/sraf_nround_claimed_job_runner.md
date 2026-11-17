@@ -25,8 +25,11 @@
   **不呼叫**會讓所有 N 輪 Job 中斷的全域方法。
 
 流程成功後，會重新核對正式 Job 尚未撤銷，以及 sidecar 確實是
-`RETRIEVAL_STOPPED/TERMINAL`、輪次與已完成 Evidence 一致，
-才將**私有的檢索結果**交給未來的 Worker。
+`RETRIEVAL_STOPPED/TERMINAL`、輪次與已完成 Evidence 一致；**最後還需
+重新檢查當下的 owner/index ACL 及整題單一分支政策**，才將私有結果
+交給未來的 Worker。授權可能在最後一輪語意驗證期間撤銷，僅有
+Job 身分與 checkpoint 已終止不能當作授權。即使結果被拒絕，
+既有 terminal checkpoint 也沒有 Word 權限。
 
 ## 非常重要：這不是正式上線
 
