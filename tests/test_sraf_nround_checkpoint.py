@@ -184,6 +184,65 @@ def test_unhashable_phase_and_invalid_lease_are_rejected_safely(tmp_path):
     assert st.record_progress(J, lease, progress())
 
 
+def test_round_zero_coordinator_terminal_snapshots_are_persisted(tmp_path):
+    from agent.adaptive_retrieval import AdaptiveRetrievalPlanner
+    from agent.adaptive_retrieval.contracts import DateWindow, QueryConstraints
+    from agent.adaptive_retrieval.coordinator import AdaptiveRequestCoordinator
+    from agent.adaptive_retrieval.request_budget import RequestAdmissionBudget
+
+    clock = [0.0]
+    def make_coordinator():
+        return AdaptiveRequestCoordinator(
+            constraints=QueryConstraints(
+                question="Synthetic question", event_date=DateWindow(),
+                analysis_date=DateWindow(), allowed_indexes=("news_test",),
+                original_core_terms=("synthetic",),
+            ),
+            term_groups=(("synthetic",),),
+            effective_terms=("synthetic",),
+            budget=RequestAdmissionBudget(
+                total_seconds=3, generation_reserve_seconds=1,
+                clock=lambda: clock[0],
+            ),
+            planner=AdaptiveRetrievalPlanner(
+                lambda *_a, **_kw: "{}",
+            ),
+        )
+
+    st = store(tmp_path)
+    st.create(J)
+    lease = st.claim(J)
+    cancelled = make_coordinator()
+    assert cancelled.cancel()
+    snapshot = cancelled.safe_progress()
+    assert snapshot["round"] == 0
+    assert st.record_progress(J, lease, snapshot)
+    assert st.get_public(J)["state"] == "RETRIEVAL_STOPPED"
+    assert st.get_public(J)["report_generation_authorized"] is False
+
+    later = "rpt_" + "b" * 32
+    st.create(later)
+    token = st.claim(later)
+    expired = make_coordinator()
+    clock[0] = 2.0
+    assert expired.start() is False
+    assert expired.safe_progress()["termination"] == "RESOURCE_BUDGET_EXHAUSTED"
+    assert st.record_progress(later, token, expired.safe_progress())
+    assert st.get_public(later)["round_number"] == 0
+    assert st.get_public(later)["state"] == "RETRIEVAL_STOPPED"
+    assert st.interrupt_running() == 0
+
+    third = "rpt_" + "c" * 32
+    st.create(third)
+    token3 = st.claim(third)
+    with pytest.raises(ValueError, match="untrusted_nround_progress"):
+        st.record_progress(third, token3, progress(round_number=0, es_calls=0))
+    with pytest.raises(ValueError, match="untrusted_nround_progress"):
+        st.record_progress(third, token3, progress(
+            phase="TERMINAL", round_number=0, es_calls=0,
+            reason="SUFFICIENT", ready=True))
+
+
 def test_refuse_invalid_ids_without_table_mutation(tmp_path):
     st = store(tmp_path)
     for invalid in ("../../etc/passwd", "rpt_abc", "", "rpt_" + "g" * 32):
