@@ -16,7 +16,7 @@ multi-branch scopes must not be modeled as this single-branch plan.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from .contracts import QueryConstraints
@@ -42,6 +42,10 @@ class FrozenSingleQueryPlan:
     next_round_plan: BoundNextRoundPlan | None
     # Fixed internal branch name, NOT a user/LLM supplied branch list.
     branch_code: str = "CANONICAL_MAIN"
+    # Opaque per-plan identity; never include it in progress, logs or audit.
+    _execution_token: object = field(
+        default_factory=object, compare=False, repr=False,
+    )
 
     def __post_init__(self) -> None:
         if (type(self.coordinator) is not AdaptiveRequestCoordinator
@@ -52,6 +56,7 @@ class FrozenSingleQueryPlan:
                 or not set(self.constraints.allowed_indexes).issubset(
                     set(self.authorized_indexes))
                 or self.branch_code != "CANONICAL_MAIN"
+                or type(self._execution_token) is not object
                 or type(self.round_number) is not int
                 or not 1 <= self.round_number <= 8):
             raise RoundQueryPlanError("untrusted_frozen_query_context")
@@ -126,7 +131,8 @@ def execute_single_frozen_query(
                 and coordinator._approved_plan is not plan.next_round_plan)):
         raise RoundQueryPlanError("stale_frozen_query_plan")
 
-    if not coordinator.claim_single_query_execution(plan.round_number):
+    if not coordinator.claim_single_query_execution(
+            plan.round_number, execution_token=plan._execution_token):
         raise RoundQueryPlanError("query_plan_already_claimed_or_mixed")
 
     try:
@@ -139,6 +145,7 @@ def execute_single_frozen_query(
             page_size=page_size,
             max_pages=max_pages,
             request_timeout_seconds=request_timeout_seconds,
+            execution_token=plan._execution_token,
         )
     except LiveRoundESFailure:
         # Never return partial evidence, nor allow an assessor to declare
