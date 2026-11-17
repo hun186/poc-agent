@@ -56,7 +56,7 @@ def _validated_counts(progress: dict[str, Any]) -> tuple[str, int, int, int, str
     if (progress["schema"] != "sraf_nround_coordinator_progress_v1"
             or type(phase) is not str or phase not in _PHASES
             or type(reason) is not str or reason not in _ALLOWED_REASONS
-            or type(round_number) is not int or not 1 <= round_number <= 8
+            or type(round_number) is not int or not 0 <= round_number <= 8
             or type(completed) is not int or not 0 <= completed <= round_number
             or type(es_calls) is not int or not 0 <= es_calls <= 1000
             or type(progress["ready_for_external_report_generation"]) is not bool
@@ -64,6 +64,15 @@ def _validated_counts(progress: dict[str, Any]) -> tuple[str, int, int, int, str
             or progress["report_job"] != "NOT_INTEGRATED"
             or progress["checkpoint_resume"] != "NOT_IMPLEMENTED"
             or (phase == "TERMINAL") != (reason != "NONE")):
+        raise ValueError("untrusted_nround_progress")
+    # The coordinator legitimately terminates at round zero when cancelled
+    # before start or denied its very first budget admission. Never pretend
+    # that this terminal state represents completed Evidence or a report.
+    if round_number == 0 and (
+            phase != "TERMINAL"
+            or reason not in ("CANCELLED", "RESOURCE_BUDGET_EXHAUSTED")
+            or completed != 0 or es_calls != 0
+            or progress["ready_for_external_report_generation"]):
         raise ValueError("untrusted_nround_progress")
     audits = progress["canonical_evidence_history"]
     if type(audits) is not tuple or len(audits) != completed:
