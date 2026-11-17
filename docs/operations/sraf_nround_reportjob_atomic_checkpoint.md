@@ -67,3 +67,17 @@ PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider \
 **N 輪 claim+checkpoint+安全狀態更新的協調接口**，再把實際背景
 N 輪檢索和單輪 Word 交付分流設為明確 opt-in；正式使用者 API
 必須經過真實 ES/LLM 和 Word 驗收後才可啟用。
+
+## Codex Review 加強項：結構版本與路徑例外拒絕
+
+正式 ReportJob 的權限不能只靠 selected columns 判定，因此新操作必須
+在相同 `BEGIN IMMEDIATE` 交易中，先透過正式
+`ReportJobStore._validate_v2` 核對 `report_jobs` 欄位、
+主鍵／owner 唯一索引、欄位限制及 `PRAGMA user_version=2`，
+再允許 sidecar claim 或進度更新。即使狀態與 owner 相符，只要
+Schema 漂移（例如版本變成 999、索引消失），就必須拒絕。
+
+跨資料庫檔案、父目錄變成一般檔案、檔案不存在或 SQLite 無法開啟時，
+新操作不能將私有磁碟路徑、資料庫名稱或原始例外暴露給呼叫端；
+只會提供固定的 `nround_report_job_claim_unverified` 或
+`nround_report_job_progress_unverified` 拒絕碼。
