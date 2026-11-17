@@ -171,14 +171,15 @@ def test_failed_pit_or_partial_shards_cannot_return_partial_rounds():
 
 
 def test_operator_cap_does_not_publish_incomplete_multi_round_result():
-    c, scope, ev, _, calls, _ = _setup()
+    c, scope, ev, budget, calls, _ = _setup()
     es = FakeES(_verified_page("A"))
     with pytest.raises(TrustedNroundExecutionError):
         _run(c, scope, ev, es, max_rounds=1)
     assert c.safe_progress()["phase"] == "TERMINAL"
     assert c.safe_progress()["ready_for_external_report_generation"] is False
     assert c.safe_progress()["completed_rounds"] == 1
-    assert calls == [1]
+    assert calls == []  # no unexecutable next strategy was purchased
+    assert budget.rounds_started == 1
 
 
 @pytest.mark.parametrize("cutoff_at", ["after_scope", "after_semantic"])
@@ -189,7 +190,9 @@ def test_expired_retrieval_budget_after_callbacks_fails_closed(cutoff_at):
         if cutoff_at == "after_scope":
             clock[0] = 1900.0
         return True
+    semantic_calls = []
     def assessor(*_):
+        semantic_calls.append(1)
         if cutoff_at == "after_semantic":
             clock[0] = 1900.0
         return True
@@ -198,12 +201,15 @@ def test_expired_retrieval_budget_after_callbacks_fails_closed(cutoff_at):
     assert c.safe_progress()["phase"] == "TERMINAL"
     assert c.safe_progress()["completed_rounds"] == 0
     assert calls == []
+    assert len(semantic_calls) == (0 if cutoff_at == "after_scope" else 1)
 
 
 def test_cancel_during_semantic_callback_is_not_reversed():
     c, scope, ev, _, calls, clock = _setup()
     es = FakeES(_verified_page("A"))
+    semantic_calls = []
     def cancel(*_):
+        semantic_calls.append(1)
         c.cancel()
         return True
     with pytest.raises(TrustedNroundExecutionError):
@@ -211,3 +217,4 @@ def test_cancel_during_semantic_callback_is_not_reversed():
     assert c.safe_progress()["phase"] == "TERMINAL"
     assert c.history == ()
     assert calls == []
+    assert semantic_calls == [1]
