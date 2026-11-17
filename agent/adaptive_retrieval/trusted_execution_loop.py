@@ -120,12 +120,19 @@ def run_trusted_nround(
         # Report Job and N-round lease, and MUST return literal True.
         if checkpoint_sink is None:
             return
-        snapshot = deepcopy(coordinator.safe_progress())
-        if (type(snapshot) is not dict
-                or snapshot.get("schema") !=
-                   "sraf_nround_coordinator_progress_v1"
-                or checkpoint_sink(snapshot) is not True):
-            raise TrustedNroundExecutionError("nround_checkpoint_write_denied")
+        try:
+            snapshot = deepcopy(coordinator.safe_progress())
+            if (type(snapshot) is not dict
+                    or snapshot.get("schema") !=
+                       "sraf_nround_coordinator_progress_v1"
+                    or checkpoint_sink(snapshot) is not True):
+                raise TrustedNroundExecutionError("nround_checkpoint_write_denied")
+        except Exception:
+            # A completed round may have reached TERMINAL/SUFFICIENT before
+            # the durable sink failed. Ordinary cancel() is a no-op once
+            # terminal, so explicitly revoke that stale report readiness.
+            coordinator.revoke_unpersisted_report_readiness()
+            raise TrustedNroundExecutionError("nround_checkpoint_write_denied") from None
 
     try:
         if not coordinator.start():
