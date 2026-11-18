@@ -368,7 +368,7 @@ def _live(port: int, proof, args, rows: list, result_fd: int):
         finally:
             password = None
     existing = getattr(args, "resume_job", None)
-    if existing:
+    if existing is not None:
         # Exact operator-supplied ID, independently validated by CLI parser.
         # Never POST a second Job; always enforce owner-scoped GET afterward.
         if not isinstance(existing, str) or re.fullmatch(r"rpt_[0-9a-f]{32}", existing) is None:
@@ -455,9 +455,9 @@ def main(argv=None):
     parser.add_argument("--output-dir", type=Path,
                         default=ROOT / "sraf-acceptance-results")
     args = parser.parse_args(argv)
-    if (args.live_report or args.resume_job) and args.no_network:
+    if (args.live_report or args.resume_job is not None) and args.no_network:
         parser.error("authenticated Report Job observation is incompatible with --no-network")
-    if args.resume_job and re.fullmatch(r"rpt_[0-9a-f]{32}", args.resume_job) is None:
+    if args.resume_job is not None and re.fullmatch(r"rpt_[0-9a-f]{32}", args.resume_job) is None:
         parser.error("invalid --resume-job: expected rpt_ followed by 32 lowercase hex characters")
     if args.token_env and re.fullmatch(r"[A-Z_][A-Z0-9_]{0,63}", args.token_env) is None:
         parser.error("invalid --token-env NAME")
@@ -487,9 +487,9 @@ def main(argv=None):
                     or (args.suite == "diagnose" and r["check"].startswith("tcp_"))]
         code = (1 if any(r["status"] == "FAIL" for r in required) else
                 2 if any(r["status"] != "PASS" for r in required) else 0)
-        if (args.live_report or args.resume_job) and code == 0:
+        if (args.live_report or args.resume_job is not None) and code == 0:
             code = _live(port, proof, args, rows, result_fd)
-        elif args.live_report or args.resume_job:
+        elif args.live_report or args.resume_job is not None:
             rows.append(_row("live_report" if args.live_report else "report_resume",
                              "SKIP", "quick_checks_not_passed"))
     except ObservationError as exc:
