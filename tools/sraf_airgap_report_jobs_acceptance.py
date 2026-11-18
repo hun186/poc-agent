@@ -46,7 +46,21 @@ SCHEMA = "sraf_airgap_report_jobs_acceptance_v1"
 MODE = "PARTIAL_ONLY_NOT_AIRGAP_CERTIFICATION"
 MAX_JSON = 32768
 MAX_DOCX = 16 * 1024 * 1024
-PROMPT = "請以繁體中文產生一份簡短的 SRAF 部署驗收測試報告，包含摘要、分析與結論。"
+# Synthetic smoke request, NOT evidence of a real deployment acceptance.
+# Context must disambiguate this system from semiconductor lithography SRAF.
+# Never supply fabricated metrics that could be mistaken for operator results.
+PROMPT = (
+    "請以繁體中文產生一份『SRAF 核心報告系統：文件產製功能的合成測試樣本』。"
+    "本題的 SRAF 專指本專案的資料檢索、Agent 分析及 Word 報告系統，"
+    "不是半導體光罩的 Sub-Resolution Assist Feature。"
+    "目前沒有提供任何實際部署環境的測試紀錄、數據或可查證的來源。"
+    "本文只供 Report Job 與 DOCX 結構連通性測試，不代表正式驗收；"
+    "請在標題、摘要與結論明確註明『合成測試樣本，非實機驗收結果』。"
+    "不要虛構案例數、通過率、執行日期、版本、效能、授權、上線或合格結論，"
+    "也不要聲稱已查詢 Elasticsearch、SQL、LLM 日誌、CI 或實機。"
+    "可列出待驗證項目（API/healthz、ES TLS、SQL、LLM、Report Job、DOCX），"
+    "所有未提供證據的項目均標註『尚未驗證』，不得自行填入 PASS。"
+)
 PHASES = frozenset(("queued", "unobserved", "agent_execution", "docx_export",
                     "finalizing", "completed", "failed", "interrupted"))
 STATES = frozenset(("queued", "running", "completed", "failed", "interrupted"))
