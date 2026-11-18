@@ -18,7 +18,7 @@ MAX_LABELS = 10_000
 # Each part after 來源 must be a small numbered citation, not a date/name.
 _SOURCE_LABEL = re.compile(
     r"(?<![A-Za-z0-9_])來源[ \t]*"
-    r"([0-9]{1,6}(?:[、，,/][ \t]*[0-9]{1,6}){0,24})(?![0-9])"
+    r"([0-9]+(?:[、，,/][ \\t]*[0-9]+)*)"
 )
 _LABEL_PART = re.compile(r"[、，,/][ \t]*")
 
@@ -54,7 +54,10 @@ def audit_report_citation_labels(
     labels: list[int] = []
     for match in _SOURCE_LABEL.finditer(report):
         parts = _LABEL_PART.split(match.group(1))
-        if len(labels) + len(parts) > MAX_LABELS:
+        if (len(labels) + len(parts) > MAX_LABELS
+                or any(len(part) > 6 for part in parts)):
+            # A long list must never be silently accepted as a valid prefix:
+            # return incomplete rather than truncate and miss phantom IDs.
             result["status"] = "limit_exceeded"
             return result
         labels.extend(int(part) for part in parts)
