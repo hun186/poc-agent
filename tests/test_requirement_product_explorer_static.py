@@ -33,8 +33,10 @@ def test_product_explorer_is_readonly_and_does_not_store_tokens():
     bootstrap = (STATIC / "editor_bootstrap.js").read_text(encoding="utf-8")
     assert 'id="authToken" type="password"' in html
     assert 'src="/static/requirement_product_explorer.js"' in html
-    assert 'id="requirementProductBtn"' in editor
-    assert "location.href = '/requirement-product'" in bootstrap
+    assert 'id="srafEditorExternalNav"' in editor
+    assert "id: 'requirementProductBtn'" in (STATIC / "excel_global_nav.js").read_text(encoding="utf-8")
+    assert "location.href = '/requirement-product'" not in bootstrap
+    assert "path: '/requirement-product'" in (STATIC / "excel_global_nav.js").read_text(encoding="utf-8")
     for path in (
         "/v1/requirement-tasks?",
         "/v1/requirement-tasks/",

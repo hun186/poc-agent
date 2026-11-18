@@ -379,30 +379,24 @@ def test_excel_flow_child_pages_use_global_tree_navigation():
         "excel_to_sql_source_editor.html",
         "excel_to_sql_source_dashboard.html",
     ]
-    import_routes = [
+    shared = (STATIC_ROOT / "excel_global_nav.js").read_text(encoding="utf-8")
+    for route in (
         "/excel-to-sql-dashboard",
         "/excel-to-sql-source-editor",
         "/excel-to-sql-source-dashboard",
         "/excel-to-sql-import-center",
         "/excel-to-sql-task-configs",
-    ]
+        "/agent-data-flow", "/report-jobs", "/requirement-product",
+    ):
+        assert route in shared
     for page_name in page_names:
         html = (STATIC_ROOT / page_name).read_text(encoding="utf-8")
-        assert "/static/excel_global_nav.css?v=20260821-hover-bridge" in html
-        assert "/static/excel_global_nav.js?v=20260821-hover-delay" in html
+        assert "/static/excel_global_nav.css?v=20261118-shared" in html
+        assert "/static/excel_global_nav.js?v=20261118-shared" in html
         header = html.split("<header", 1)[1].split("</header>", 1)[0]
         assert 'class="header-actions global-tree-nav" aria-label="全域功能導航"' in header
-        assert "<summary>ES 資料庫</summary>" in header
-        assert "<summary>匯入管理</summary>" in header
-        assert "<summary>系統管理</summary>" in header
-        assert "<summary>帳號安全</summary>" in header
-        assert header.rfind("代理人資料流程圖") > header.rfind("<summary>帳號安全</summary>")
-        for route in import_routes:
-            assert route in header, f"{page_name} missing import tree route {route}"
-        assert "/agent-data-flow" in header
-        assert "前往登入 / 編輯器" in header
-        assert "主編輯器" not in header
-        assert "<details open><summary>匯入管理</summary>" not in header
+        assert "<summary>ES 資料庫</summary>" not in header  # single source in shared JS
+        assert 'onclick="location.href=' not in header
 
 
 def test_excel_global_navigation_opens_on_hover_and_closes_automatically():
@@ -442,8 +436,9 @@ def test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline():
     assert "下載流程圖 PNG" in html
     assert "canvas.toDataURL('image/png')" in html
     assert "agent-data-flow.png" in html
-    assert "/excel-to-sql-dashboard" in html
-    assert "/editor" in html
+    shared = (STATIC_ROOT / "excel_global_nav.js").read_text(encoding="utf-8")
+    assert "/excel-to-sql-dashboard" in shared
+    assert "/editor" in shared
     response = TestClient(app).get("/agent-data-flow")
     assert response.status_code == 200
     assert "代理人資料運用處理流程" in response.text
@@ -452,23 +447,24 @@ def test_agent_data_flow_page_explains_agent_es_and_excel_sql_pipeline():
 def test_agent_data_flow_page_uses_global_tree_navigation():
     html = (STATIC_ROOT / "agent_data_flow.html").read_text(encoding="utf-8")
     header = html.split("<header>", 1)[1].split("</header>", 1)[0]
-
-    assert "/static/excel_global_nav.css?v=20260821-hover-bridge" in html
-    assert "/static/excel_global_nav.js?v=20260821-hover-delay" in html
+    shared = (STATIC_ROOT / "excel_global_nav.js").read_text(encoding="utf-8")
+    assert "/static/excel_global_nav.css?v=20261118-shared" in html
+    assert "/static/excel_global_nav.js?v=20261118-shared" in html
     assert 'class="header-actions global-tree-nav" aria-label="全域功能導航"' in header
-    assert "<summary>ES 資料庫</summary>" in header
-    assert "<summary>匯入管理</summary>" in header
-    assert "<summary>系統管理</summary>" in header
-    assert "<summary>帳號安全</summary>" in header
-    assert 'aria-current="page" disabled>代理人資料流程圖</button>' in header
+    assert "<summary>" not in header
+    assert "'/agent-data-flow'" in shared
+    assert "'/report-jobs'" in shared
 
 
 def test_editor_navigation_links_agent_data_flow_page():
     html = (STATIC_ROOT / "editor.html").read_text(encoding="utf-8")
     js = (STATIC_ROOT / "editor_bootstrap.js").read_text(encoding="utf-8")
-    assert 'id="agentDataFlowBtn"' in html
-    assert "代理人資料流程圖" in html
-    assert "location.href = '/agent-data-flow'" in js
+    shared = (STATIC_ROOT / "excel_global_nav.js").read_text(encoding="utf-8")
+    assert 'id="srafEditorExternalNav"' in html
+    assert "id: 'agentDataFlowBtn'" in shared
+    assert "代理人資料流程圖" in shared
+    assert "location.href = '/agent-data-flow'" not in js
+    assert "path: '/agent-data-flow'" in shared
 
 
 def test_sql_source_dashboard_numeric_opt_in_and_asset_version():
