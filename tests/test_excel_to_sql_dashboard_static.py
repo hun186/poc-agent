@@ -463,7 +463,8 @@ def test_editor_navigation_links_agent_data_flow_page():
     assert 'id="srafEditorExternalNav"' in html
     assert "id: 'agentDataFlowBtn'" in shared
     assert "代理人資料流程圖" in shared
-    assert "location.href = '/agent-data-flow'" in js
+    assert "location.href = '/agent-data-flow'" not in js
+    assert "path: '/agent-data-flow'" in shared
 
 
 def test_sql_source_dashboard_numeric_opt_in_and_asset_version():
