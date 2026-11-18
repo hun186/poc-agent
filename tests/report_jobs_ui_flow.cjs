@@ -265,6 +265,8 @@ function progress(jobId, status, phase, long=false) {
     'history status=' + elements.jobListMessage.textContent +
     ' pending=' + planned.length + ' last_url=' + calls.at(-1).url);
   assert.equal(elements.jobRows.children[0].children[0].textContent,'job-history-A');
+  assert.match(elements.jobRows.children[0].children[3].textContent, /2026\\/11\\/08.*18:00:00.*台灣時間/);
+  assert.doesNotMatch(elements.jobRows.children[0].children[3].textContent, /T10:00:00Z/);
   assert.equal(elements.jobRows.children[0].children[2].textContent,'報告已完成');
   assert.equal(elements.jobPrev.disabled,true);
   assert.equal(elements.jobNext.disabled,true);
