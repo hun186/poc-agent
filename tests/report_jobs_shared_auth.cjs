@@ -86,6 +86,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   assert.doesNotMatch(a.controls.reportAuthStatus.textContent, /PRIVATE_LOGIN_TOKEN|PRIVATE_SECRET/);
 
   // An Editor tab logout revokes the UI's current token immediately.
+  a.store.delete('sra_editor_token');
   a.handlers.storage({key: 'sra_editor_token', newValue: null});
   assert.equal(a.controls.authToken.value, '');
   assert.equal(a.controls.reportLogoutBtn.hidden, true);
@@ -114,8 +115,8 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
 
   // Expired Editor session cannot be used to read the old owner's report.
   b.response('/v1/auth/me', 401, {});
-  b.handlers.storage({key: 'sra_editor_token', newValue: 'PRIVATE_EXPIRED'});
   b.store.set('sra_editor_token', 'PRIVATE_EXPIRED');
+  b.handlers.storage({key: 'sra_editor_token', newValue: 'PRIVATE_EXPIRED'});
   await tick();
   assert.equal(b.controls.authToken.value, '');
   assert.equal(b.historyLoads, 1, 'no owner history read after 401');
