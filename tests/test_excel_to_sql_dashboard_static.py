@@ -392,7 +392,7 @@ def test_excel_flow_child_pages_use_global_tree_navigation():
     for page_name in page_names:
         html = (STATIC_ROOT / page_name).read_text(encoding="utf-8")
         assert "/static/excel_global_nav.css?v=20261118-shared" in html
-        assert "/static/excel_global_nav.js?v=20261118-shared" in html
+        assert "/static/excel_global_nav.js?v=20261118-deep-links" in html
         header = html.split("<header", 1)[1].split("</header>", 1)[0]
         assert 'class="header-actions global-tree-nav" aria-label="全域功能導航"' in header
         assert "<summary>ES 資料庫</summary>" not in header  # single source in shared JS
@@ -449,7 +449,7 @@ def test_agent_data_flow_page_uses_global_tree_navigation():
     header = html.split("<header>", 1)[1].split("</header>", 1)[0]
     shared = (STATIC_ROOT / "excel_global_nav.js").read_text(encoding="utf-8")
     assert "/static/excel_global_nav.css?v=20261118-shared" in html
-    assert "/static/excel_global_nav.js?v=20261118-shared" in html
+    assert "/static/excel_global_nav.js?v=20261118-deep-links" in html
     assert 'class="header-actions global-tree-nav" aria-label="全域功能導航"' in header
     assert "<summary>" not in header
     assert "'/agent-data-flow'" in shared

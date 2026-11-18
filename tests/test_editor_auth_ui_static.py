@@ -49,10 +49,10 @@ def _portable_auth_pack_html() -> str:
 def test_editor_static_shell_loads_split_assets() -> None:
     html = Path("sra_api/static/editor.html").read_text(encoding="utf-8")
 
-    assert '<link rel="stylesheet" href="/static/editor.css?v=20260614-split" />' in html
+    assert '<link rel="stylesheet" href="/static/editor.css?v=20261118-compact-flyout" />' in html
     expected_versions = {
         "editor_form.js": "20260625-array-preserve-single",
-        "editor_auth_nav.js": "20260629-login-hints",
+        "editor_auth_nav.js": "20261118-entry-routes",
         "editor_documents.js": "20260629-login-unlock",
         "editor_audit.js": "20260703-account-audit-50000",
         "editor_bootstrap.js": "20260703-agent-data-flow-nav",
@@ -169,41 +169,37 @@ def test_editor_auth_ui_reset_token_dialog_is_copyable() -> None:
 
 def test_editor_navigation_is_header_multilevel_and_collapsible() -> None:
     html = _editor_html()
-
+    shared = Path("sra_api/static/excel_global_nav.js").read_text(encoding="utf-8")
+    css = Path("sra_api/static/editor.css").read_text(encoding="utf-8")
     assert 'id="mainNav" class="header-nav hidden"' in html
     assert 'class="nav-root-btn" type="button" data-nav-root="content"' in html
     assert 'id="adminNavGroup" data-nav-root="system"' in html
     assert 'data-nav-root="pipeline" aria-expanded="false">匯入管理</button>' in html
-    assert 'id="agentDataFlowBtn">代理人資料流程圖</button>' in html
-    nav_primary = html.split('aria-label="第一層功能區">', 1)[1].split('</div>', 1)[0]
-    assert nav_primary.rfind('id="agentDataFlowBtn"') > nav_primary.rfind('data-nav-root="account"')
-    assert "$('agentDataFlowBtn').onclick = () => { collapseMainNav(); location.href = '/agent-data-flow'; };" in html
+    assert 'id="srafEditorExternalNav"' in html
+    assert "id: 'agentDataFlowBtn'" in shared
+    assert "path: '/agent-data-flow'" in shared
+    assert "path: '/report-jobs'" in shared
+    assert "path: '/requirement-product'" in shared
     assert '<summary>Excel 匯入流程管理</summary>' in html
-    pipeline_section = html.split('<summary>Excel 匯入流程管理</summary>', 1)[1].split('</details>', 1)[0]
-    assert 'id="agentDataFlowBtn"' not in pipeline_section
-    assert html.count('id="agentDataFlowBtn"') == 1
     assert 'id="excelDashboardBtn">Excel→SQL 匯入查詢儀表板</button>' in html
     assert 'id="excelImportCenterBtn">Excel 匯入作業中心</button>' in html
     assert 'id="navSubPanel" class="nav-subpanel hidden" aria-label="第二層功能選單"' in html
     assert 'class="nav-menu" data-nav-menu="content"' in html
-    assert 'class="nav-level" open' in html
-    assert '.nav-root-btn { min-width: 128px; padding: 12px 18px; border: 1px solid rgba(255,255,255,.18); background: rgba(71,85,105,.92);' in html
-    assert '.nav-root-btn.active { outline: 3px solid rgba(147,197,253,.55); background: #1d4ed8; }' in html
-    assert 'grid-template-columns: minmax(180px, 230px) minmax(240px, 1fr)' in html
-    assert '.nav-actions { position: absolute; top: 0; left: calc(100% + 10px)' in html
-    assert 'grid-template-columns: minmax(0, 1fr)' in html
-    assert not re.search(r'\.nav-actions \{[^}]*repeat\(auto-fit, minmax\(150px, 1fr\)\)', html)
-    assert '.nav-level:not([open]) .nav-actions { display: none; }' in html
-    assert '.nav-level[open] summary::after { content: "右側"; }' in html
-    assert '@media (max-width: 720px)' in html
+    assert 'class="nav-level" open' not in html
+    assert 'grid-template-columns: 240px' in css
+    assert '.nav-subpanel:has(.nav-menu.active .nav-level[open])' in css
+    assert '.nav-actions { position: absolute; top: 0; left: calc(100% + 12px)' in css
+    assert '.nav-level:not([open]) .nav-actions { display: none; }' in css
+    assert '右側' not in css
+    assert '@media (max-width: 720px)' in css
     assert 'function setActiveNavRoot(root)' in html
     assert 'function collapseMainNav()' in html
     assert "setAttribute('aria-expanded', active ? 'true' : 'false')" in html
     assert "panel.style.setProperty('--nav-panel-left'" in html
+    assert "panel.style.setProperty('--nav-panel-arrow-left'" in html
     assert 'SraAuditTools.bindProgressiveNav' in html
     assert 'getActiveRoot: () => state.activeNavRoot' in html
     assert 'setActiveRoot: setActiveNavRoot' in html
-    assert 'setActiveRoot,\n    collapse: collapseMainNav' not in html
     assert 'id="mainNavDetails"' not in html
 
 

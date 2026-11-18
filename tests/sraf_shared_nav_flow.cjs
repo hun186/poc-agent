@@ -56,6 +56,14 @@ assert.deepEqual(editor.children.map(x => x.id), [
   'agentDataFlowBtn', 'reportJobsBtn', 'requirementProductBtn'
 ]);
 assert.equal(menus[1].children[1].children.length, 5);
+assert.deepEqual(menus[0].children[1].children.map(a=>a.href), [
+  '/editor#search', '/editor#new-document', '/editor#stats'
+]);
+assert.equal(menus[2].children[1].children[0].href, '/editor#review');
+assert.deepEqual(menus[3].children[1].children.map(a=>a.href), [
+  '/editor#account', '/editor#account-audit'
+]);
+
 assert.ok(nav.children.every(x => x.tagName !== 'script'));
 const allLinks = [
   ...links, ...menus.flatMap(x => x.children[1].children)
