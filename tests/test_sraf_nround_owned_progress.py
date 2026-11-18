@@ -14,7 +14,7 @@ from agent.adaptive_retrieval.job_checkpoint import NroundCheckpointStore
 from api.services.sraf_nround_owned_progress import (
     NroundOwnedProgressError, get_owned_nround_progress,
 )
-from test_sraf_nround_reportjob_atomic_checkpoint import J, setup
+from test_sraf_nround_reportjob_atomic_checkpoint import J, make_claimed_report_job
 from test_sraf_nround_checkpoint import progress
 
 
@@ -27,7 +27,7 @@ def _view(report_store, sidecar, *,
 
 
 def test_only_own_existing_job_returns_count_only_checkpoint(tmp_path):
-    reports, sidecar, job = setup(tmp_path)
+    reports, sidecar, job = make_claimed_report_job(tmp_path)
     state = _view(reports, sidecar)
     assert state["schema"] == "sraf_nround_owned_progress_v1"
     assert state["report_job_status"] == "running"
@@ -43,7 +43,7 @@ def test_only_own_existing_job_returns_count_only_checkpoint(tmp_path):
 
 
 def test_current_progress_and_main_job_state_are_read_in_same_snapshot(tmp_path):
-    reports, sidecar, job = setup(tmp_path)
+    reports, sidecar, job = make_claimed_report_job(tmp_path)
     token = sidecar.claim_for_running_report_job(reports, job)
     assert token
     assert sidecar.record_progress_for_running_report_job(
@@ -73,12 +73,12 @@ def test_current_progress_and_main_job_state_are_read_in_same_snapshot(tmp_path)
 def test_wrong_or_invalid_principal_is_indistinguishable_from_not_found(
     tmp_path, kind, principal,
 ):
-    reports, sidecar, _ = setup(tmp_path)
+    reports, sidecar, _ = make_claimed_report_job(tmp_path)
     assert _view(reports, sidecar, owner_kind=kind, owner_id=principal) is None
 
 
 def test_missing_unknown_or_ownerless_job_returns_none(tmp_path):
-    reports, sidecar, _ = setup(tmp_path)
+    reports, sidecar, _ = make_claimed_report_job(tmp_path)
     assert _view(reports, sidecar, job_id="rpt_" + "f" * 32) is None
     assert _view(reports, sidecar, job_id="INVALID_JOB") is None
     with sqlite3.connect(reports.db_path) as con:
@@ -88,8 +88,8 @@ def test_missing_unknown_or_ownerless_job_returns_none(tmp_path):
 
 
 def test_other_database_is_never_cross_tenant_authority(tmp_path):
-    reports, sidecar, _ = setup(tmp_path / "canonical")
-    other_reports, other_sidecar, _ = setup(tmp_path / "separate")
+    reports, sidecar, _ = make_claimed_report_job(tmp_path / "canonical")
+    other_reports, other_sidecar, _ = make_claimed_report_job(tmp_path / "separate")
     assert _view(reports, other_sidecar) is None
     assert _view(other_reports, sidecar) is None
     assert _view(reports, sidecar)["report_job_status"] == "running"
@@ -117,14 +117,14 @@ def test_queued_job_without_explicit_sidecar_has_no_nround_progress(tmp_path):
 
 
 def test_reportjob_schema_or_sidecar_structure_drift_fails_closed(tmp_path):
-    reports, sidecar, _ = setup(tmp_path / "bad_version")
+    reports, sidecar, _ = make_claimed_report_job(tmp_path / "bad_version")
     with sqlite3.connect(reports.db_path) as con:
         con.execute("PRAGMA user_version=999")
     with pytest.raises(NroundOwnedProgressError) as err:
         _view(reports, sidecar)
     assert str(err.value) == "nround_owned_progress_unverified"
 
-    reports2, sidecar2, _ = setup(tmp_path / "bad_sidecar")
+    reports2, sidecar2, _ = make_claimed_report_job(tmp_path / "bad_sidecar")
     with sqlite3.connect(reports2.db_path) as con:
         con.execute("ALTER TABLE sraf_nround_checkpoints ADD COLUMN PRIVATE_TOKEN TEXT")
     with pytest.raises(NroundOwnedProgressError) as err2:
@@ -144,7 +144,7 @@ def test_missing_private_database_does_not_create_file_or_leak_path(tmp_path):
 
 def test_quiescent_wal_progress_does_not_mutate_canonical_database(tmp_path):
     """SQLite may create WAL/SHM metadata; SQL reads never modify user rows."""
-    reports, sidecar, _ = setup(tmp_path)
+    reports, sidecar, _ = make_claimed_report_job(tmp_path)
     gc.collect()
     db = reports.db_path
     assert db.exists()
@@ -161,7 +161,7 @@ def test_quiescent_wal_progress_does_not_mutate_canonical_database(tmp_path):
 
 def test_read_current_wal_commit_rejects_revoked_owner_without_checkpoint(tmp_path):
     """immutable=1 incorrectly ignores uncheckpointed owner revocation."""
-    reports, sidecar, job = setup(tmp_path)
+    reports, sidecar, job = make_claimed_report_job(tmp_path)
     db = reports.db_path
     writer = sqlite3.connect(db)
     try:
@@ -187,7 +187,7 @@ def test_readonly_progress_can_observe_native_wal_turnover_without_authority(
     tmp_path,
 ):
     """Progress polling is not a Word/download grant during WAL turnover."""
-    reports, sidecar, _ = setup(tmp_path)
+    reports, sidecar, _ = make_claimed_report_job(tmp_path)
     gc.collect()
     for _ in range(3):
         state = _view(reports, sidecar)

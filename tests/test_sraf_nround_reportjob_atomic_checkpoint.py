@@ -16,7 +16,7 @@ from test_sraf_nround_checkpoint import progress
 J = "rpt_" + "7" * 32
 
 
-def setup(tmp_path, *, claimed=True):
+def make_claimed_report_job(tmp_path, *, claimed=True):
     path = tmp_path / "PRIVATE-local-jobs.sqlite3"
     reports = ReportJobStore(path)
     reports.initialize()
@@ -41,7 +41,7 @@ def setup(tmp_path, *, claimed=True):
 
 
 def test_atomic_report_job_claim_progress_and_terminal_not_word_authority(tmp_path):
-    reports, sidecar, job = setup(tmp_path)
+    reports, sidecar, job = make_claimed_report_job(tmp_path)
     token = sidecar.claim_for_running_report_job(reports, job)
     assert type(token) is str and len(token) == 43
     assert sidecar.claim_for_running_report_job(reports, job) is None
@@ -67,7 +67,7 @@ def test_atomic_report_job_claim_progress_and_terminal_not_word_authority(tmp_pa
 
 
 def test_queued_main_job_never_grants_sidecar_lease(tmp_path):
-    reports, sidecar, queued = setup(tmp_path, claimed=False)
+    reports, sidecar, queued = make_claimed_report_job(tmp_path, claimed=False)
     assert sidecar.claim_for_running_report_job(reports, queued) is None
     assert sidecar.get_public(J)["state"] == "QUEUED"
     claimed = reports.claim_next()
@@ -77,8 +77,8 @@ def test_queued_main_job_never_grants_sidecar_lease(tmp_path):
 
 
 def test_other_database_cannot_claim_sidecar_for_matching_report_job_id(tmp_path):
-    reports, sidecar, job = setup(tmp_path / "a")
-    other_reports, other_sidecar, other_job = setup(tmp_path / "b")
+    reports, sidecar, job = make_claimed_report_job(tmp_path / "a")
+    other_reports, other_sidecar, other_job = make_claimed_report_job(tmp_path / "b")
     assert sidecar.claim_for_running_report_job(other_reports, job) is None
     assert sidecar.claim_for_running_report_job(reports, other_job) is None
     assert sidecar.claim_for_running_report_job(reports, job) is not None
@@ -96,7 +96,7 @@ def test_other_database_cannot_claim_sidecar_for_matching_report_job_id(tmp_path
     ("phase", "docx_export"),
 ])
 def test_changed_persisted_identity_or_state_prevents_atomic_claim(tmp_path, field, value):
-    reports, sidecar, job = setup(tmp_path)
+    reports, sidecar, job = make_claimed_report_job(tmp_path)
     with sqlite3.connect(reports.db_path) as con:
         # Fixed test-only SQL columns, not HTTP/LLM-provided identifiers.
         con.execute(f"UPDATE report_jobs SET {field}=? WHERE job_id=?", (value, J))
@@ -110,7 +110,7 @@ def test_changed_persisted_identity_or_state_prevents_atomic_claim(tmp_path, fie
     ("started_at", "1900-01-01T00:00:00Z"),
 ])
 def test_forged_in_memory_claim_rejected_by_canonical_db(tmp_path, field, value):
-    reports, sidecar, job = setup(tmp_path)
+    reports, sidecar, job = make_claimed_report_job(tmp_path)
     assert sidecar.claim_for_running_report_job(
         reports, replace(job, **{field: value})) is None
     assert sidecar.get_public(J)["state"] == "QUEUED"
@@ -118,7 +118,7 @@ def test_forged_in_memory_claim_rejected_by_canonical_db(tmp_path, field, value)
 
 
 def test_one_lease_winner_with_concurrent_worker_claims(tmp_path):
-    reports, sidecar, job = setup(tmp_path)
+    reports, sidecar, job = make_claimed_report_job(tmp_path)
     with ThreadPoolExecutor(max_workers=10) as pool:
         tokens = list(pool.map(
             lambda _: sidecar.claim_for_running_report_job(reports, job),
@@ -134,7 +134,7 @@ def test_one_lease_winner_with_concurrent_worker_claims(tmp_path):
 
 
 def test_main_job_terminal_or_recovered_prevents_sidecar_progress(tmp_path):
-    reports, sidecar, job = setup(tmp_path)
+    reports, sidecar, job = make_claimed_report_job(tmp_path)
     lease = sidecar.claim_for_running_report_job(reports, job)
     assert lease
     assert sidecar.record_progress_for_running_report_job(
@@ -152,7 +152,7 @@ def test_main_job_terminal_or_recovered_prevents_sidecar_progress(tmp_path):
 
 
 def test_owner_changed_after_lease_stops_atomic_progress(tmp_path):
-    reports, sidecar, job = setup(tmp_path)
+    reports, sidecar, job = make_claimed_report_job(tmp_path)
     lease = sidecar.claim_for_running_report_job(reports, job)
     with sqlite3.connect(reports.db_path) as con:
         con.execute(
@@ -164,7 +164,7 @@ def test_owner_changed_after_lease_stops_atomic_progress(tmp_path):
 
 
 def test_untracked_query_admission_terminal_reason_is_durable(tmp_path):
-    reports, sidecar, job = setup(tmp_path)
+    reports, sidecar, job = make_claimed_report_job(tmp_path)
     lease = sidecar.claim_for_running_report_job(reports, job)
     assert sidecar.record_progress_for_running_report_job(
         reports, job, lease, progress(
@@ -182,7 +182,7 @@ def test_rollback_on_missing_report_jobs_table_no_sidecar_mutation(tmp_path):
     sidecar = NroundCheckpointStore(path)
     sidecar.initialize()
     assert sidecar.create(J)
-    trusted_other_store, _, job = setup(tmp_path / "trusted")
+    trusted_other_store, _, job = make_claimed_report_job(tmp_path / "trusted")
     # An uninitialized ReportJobStore pointing at the sidecar-only file
     # cannot magically authorize a claim just because the job object exists.
     uninitialized_report_store = ReportJobStore(path)
@@ -192,7 +192,7 @@ def test_rollback_on_missing_report_jobs_table_no_sidecar_mutation(tmp_path):
 
 
 def test_existing_legacy_unbound_checkpoint_path_remains_isolated(tmp_path):
-    reports, sidecar, job = setup(tmp_path)
+    reports, sidecar, job = make_claimed_report_job(tmp_path)
     # Original sidecar-only path is intentionally preserved for old offline
     # tests; it is not a valid production owner-authenticated admission.
     lease = sidecar.claim(J)
@@ -206,7 +206,7 @@ def test_existing_legacy_unbound_checkpoint_path_remains_isolated(tmp_path):
 
 @pytest.mark.parametrize("drift", ["wrong_user_version", "missing_owner_index"])
 def test_schema_drift_refuses_new_claim_before_sidecar_update(tmp_path, drift):
-    reports, sidecar, job = setup(tmp_path)
+    reports, sidecar, job = make_claimed_report_job(tmp_path)
     with sqlite3.connect(reports.db_path) as con:
         if drift == "wrong_user_version":
             con.execute("PRAGMA user_version=999")
@@ -220,7 +220,7 @@ def test_schema_drift_refuses_new_claim_before_sidecar_update(tmp_path, drift):
 
 @pytest.mark.parametrize("drift", ["wrong_user_version", "missing_owner_index"])
 def test_schema_drift_refuses_progress_after_valid_lease(tmp_path, drift):
-    reports, sidecar, job = setup(tmp_path)
+    reports, sidecar, job = make_claimed_report_job(tmp_path)
     token = sidecar.claim_for_running_report_job(reports, job)
     assert token
     before = sidecar.get_public(J)
@@ -244,7 +244,7 @@ def test_both_atomic_methods_redact_private_filesystem_path_failure(tmp_path):
     bad = parent / "PRIVATE_jobs.sqlite3"
     reports = ReportJobStore(bad)
     sidecar = NroundCheckpointStore(bad)
-    _, _, claimed = setup(tmp_path / "real_claim")
+    _, _, claimed = make_claimed_report_job(tmp_path / "real_claim")
     with pytest.raises(ValueError, match="nround_report_job_claim_unverified") as err:
         sidecar.claim_for_running_report_job(reports, claimed)
     assert "PRIVATE_" not in str(err.value)

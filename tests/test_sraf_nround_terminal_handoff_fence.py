@@ -12,11 +12,11 @@ import pytest
 from agent.adaptive_retrieval.job_checkpoint import NroundCheckpointStore
 from api.services.report_job_store import ReportJobStore
 from test_sraf_nround_checkpoint import progress
-from test_sraf_nround_reportjob_atomic_checkpoint import J, setup
+from test_sraf_nround_reportjob_atomic_checkpoint import J, make_claimed_report_job
 
 
 def _terminal(tmp_path, *, reason="SUFFICIENT"):
-    reports, sidecar, job = setup(tmp_path)
+    reports, sidecar, job = make_claimed_report_job(tmp_path)
     token = sidecar.claim_for_running_report_job(reports, job)
     assert token
     assert sidecar.record_progress_for_running_report_job(
@@ -97,7 +97,7 @@ def test_cross_db_and_preexisting_artifact_never_attest(tmp_path):
 
 
 def test_running_sidecar_and_interrupted_sidecar_never_attest(tmp_path):
-    reports, sidecar, job = setup(tmp_path)
+    reports, sidecar, job = make_claimed_report_job(tmp_path)
     token = sidecar.claim_for_running_report_job(reports, job)
     assert token
     pending = sidecar.get_public(J)
