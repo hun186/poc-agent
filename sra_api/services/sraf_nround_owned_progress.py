@@ -6,7 +6,8 @@ No source Evidence, original prompt, IDs or credentials leave this module.
 """
 from __future__ import annotations
 
-from contextlib import closing
+from contextlib import closing, contextmanager
+from pathlib import Path
 import sqlite3
 
 from api.services.report_job_store import ReportJobStore
@@ -29,6 +30,64 @@ _CHECKPOINT_STATUSES = frozenset((
 _PHASES = frozenset((
     "CREATED", "SEARCHING", "ASSESSING", "ASSESSED", "PLANNING", "TERMINAL",
 ))
+
+
+
+def _file_stamp(path: Path) -> tuple[int, int, int, int, int] | None:
+    """Conservative file identity/change stamp, without opening it for write."""
+    try:
+        stat = path.stat()
+    except FileNotFoundError:
+        return None
+    return (
+        stat.st_dev, stat.st_ino, stat.st_size,
+        stat.st_mtime_ns, stat.st_ctime_ns,
+    )
+
+
+@contextmanager
+def _open_verified_readonly_snapshot(db_path: Path):
+    """Never create SQLite WAL/SHM from a quiescent, checkpointed database.
+
+    SQLite's mode=ro alone still creates WAL/SHM files when neither exists.
+    Use immutable=1 only when both sidecars are ABSENT and reject file
+    changes across that snapshot. If both sidecars already exist, use a
+    regular read-only WAL transaction so uncheckpointed writes remain
+    visible. A half-present WAL/SHM pair is not a trustworthy read mode.
+
+    File stamps are a fail-closed race detector, NOT a cross-process lock.
+    A future public progress endpoint needs a trusted DB lifecycle / active
+    connection owner for a strict concurrent revocation guarantee.
+    """
+    db_path = db_path.resolve()
+    before = _file_stamp(db_path)
+    wal, shm = Path(str(db_path) + "-wal"), Path(str(db_path) + "-shm")
+    wal_present, shm_present = wal.exists(), shm.exists()
+    if before is None or wal_present != shm_present:
+        raise NroundOwnedProgressError("nround_owned_progress_unverified")
+    immutable = not wal_present
+    uri = db_path.as_uri() + (
+        "?mode=ro&immutable=1" if immutable else "?mode=ro"
+    )
+    with closing(sqlite3.connect(uri, uri=True, timeout=5.0)) as con:
+        try:
+            con.row_factory = sqlite3.Row
+            con.execute("PRAGMA query_only=ON")
+            con.execute("BEGIN")
+            yield con
+        finally:
+            # A racing writer invalidates an immutable snapshot. Even if
+            # the lookup returned None, fail closed instead of using stale
+            # owner/ACL or wrong checkpoint state.
+            if immutable and (
+                _file_stamp(db_path) != before
+                or wal.exists() or shm.exists()
+            ):
+                raise NroundOwnedProgressError(
+                    "nround_owned_progress_unverified")
+            if not immutable and (not wal.exists() or not shm.exists()):
+                raise NroundOwnedProgressError(
+                    "nround_owned_progress_unverified")
 
 
 def get_owned_nround_progress(
@@ -55,14 +114,11 @@ def get_owned_nround_progress(
                 or owner_id != owner_id.strip()):
             return None
 
-        # Open read-only; a mere progress poll must not create a SQLite file
-        # or acquire a write lease. The two-table snapshot shares one SQLite
-        # read transaction, so owner replacement cannot interleave the view.
-        uri = checkpoint_store.db_path.resolve().as_uri() + "?mode=ro"
-        with closing(sqlite3.connect(uri, uri=True, timeout=5.0)) as con:
-            con.row_factory = sqlite3.Row
-            con.execute("PRAGMA query_only=ON")
-            con.execute("BEGIN")
+        # File-level WAL lifecycle matters: a bare mode=ro connection can
+        # create new -wal/-shm files, even with query_only=ON. Prefer a
+        # quiescent immutable snapshot only after checking no WAL/SHM exists;
+        # active WAL needs its existing pair for up-to-date data.
+        with _open_verified_readonly_snapshot(checkpoint_store.db_path) as con:
             ReportJobStore._validate_v2(con)
             table = con.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
