@@ -62,8 +62,8 @@ PROMPT = (
     "所有未提供證據的項目均標註『尚未驗證』，不得自行填入 PASS。"
 )
 PHASES = frozenset(("queued", "unobserved", "agent_execution", "docx_export",
-                    "finalizing", "completed", "failed", "interrupted"))
-STATES = frozenset(("queued", "running", "completed", "failed", "interrupted"))
+                    "finalizing", "completed", "failed", "interrupted", "cancelled"))
+STATES = frozenset(("queued", "running", "completed", "failed", "interrupted", "cancelled"))
 FAILURES = frozenset(("timeout", "rate_limited", "provider_unavailable", "execution_error"))
 STATIC = (
     ("ui_page", "/report-jobs", b'report_jobs_ui.js'),
@@ -381,14 +381,23 @@ def _live(port: int, proof, args, rows: list, result_fd: int):
             rows.append(_row("authentication", "PASS", "login_authenticated"))
         finally:
             password = None
-    payload = {"prompt": PROMPT, "filename": "SRAF_部署驗收.docx"}
-    job = _json_response(*_bounded_http(
-        port, "POST", "/v1/report/jobs", payload=payload, token=token, proof=proof
-    ), expected_status=202)
-    job_id = job.get("job_id")
-    if not isinstance(job_id, str) or re.fullmatch(r"rpt_[0-9a-f]{32}", job_id) is None:
-        raise ObservationError("job_create_shape_invalid")
-    rows.append(_row("report_create", "PASS", "job_created"))
+    existing = getattr(args, "resume_job", None)
+    if existing is not None:
+        # Exact operator-supplied ID, independently validated by CLI parser.
+        # Never POST a second Job; always enforce owner-scoped GET afterward.
+        if not isinstance(existing, str) or re.fullmatch(r"rpt_[0-9a-f]{32}", existing) is None:
+            raise ObservationError("resume_job_id_invalid")
+        job_id = existing
+        rows.append(_row("report_resume", "PASS", "existing_job_selected_no_post"))
+    else:
+        payload = {"prompt": PROMPT, "filename": "SRAF_部署驗收.docx"}
+        job = _json_response(*_bounded_http(
+            port, "POST", "/v1/report/jobs", payload=payload, token=token, proof=proof
+        ), expected_status=202)
+        job_id = job.get("job_id")
+        if not isinstance(job_id, str) or re.fullmatch(r"rpt_[0-9a-f]{32}", job_id) is None:
+            raise ObservationError("job_create_shape_invalid")
+        rows.append(_row("report_create", "PASS", "job_created"))
     start = time.monotonic()
     phases = []
     state = "running"
@@ -409,7 +418,7 @@ def _live(port: int, proof, args, rows: list, result_fd: int):
             phases.append(phase)
             if len(phases) > 32:
                 raise ObservationError("job_phase_sequence_unbounded")
-        if state in ("completed", "failed", "interrupted"):
+        if state in ("completed", "failed", "interrupted", "cancelled"):
             break
         time.sleep(3)
     else:
@@ -450,8 +459,11 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--suite", choices=("quick", "diagnose"), default="quick")
     parser.add_argument("--no-network", action="store_true")
-    parser.add_argument("--live-report", action="store_true",
-                        help="EXPLICIT permission: create one real LLM/Agent job")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--live-report", action="store_true",
+                      help="EXPLICIT permission: create one real LLM/Agent job")
+    mode.add_argument("--resume-job", metavar="rpt_ID", default=None,
+                      help="Read/poll/download an EXISTING owned Job; never create a Job")
     parser.add_argument("--username", default=None, help="SRAF username; password prompted")
     parser.add_argument("--token-env", default=None,
                         help="Name of environment variable holding existing scoped token")
@@ -459,8 +471,10 @@ def main(argv=None):
     parser.add_argument("--output-dir", type=Path,
                         default=ROOT / "sraf-acceptance-results")
     args = parser.parse_args(argv)
-    if args.live_report and args.no_network:
-        parser.error("--live-report is incompatible with --no-network")
+    if (args.live_report or args.resume_job is not None) and args.no_network:
+        parser.error("authenticated Report Job observation is incompatible with --no-network")
+    if args.resume_job is not None and re.fullmatch(r"rpt_[0-9a-f]{32}", args.resume_job) is None:
+        parser.error("invalid --resume-job: expected rpt_ followed by 32 lowercase hex characters")
     if args.token_env and re.fullmatch(r"[A-Z_][A-Z0-9_]{0,63}", args.token_env) is None:
         parser.error("invalid --token-env NAME")
     if not 30 <= args.max_seconds <= 3600:
@@ -470,7 +484,7 @@ def main(argv=None):
         return 2
     rows = []
     report = {"schema": SCHEMA, "mode": MODE, "suite": args.suite,
-              "live_report_requested": args.live_report, "checks": rows,
+              "live_report_requested": args.live_report, "resume_report_requested": bool(args.resume_job), "checks": rows,
               "full_airgap_acceptance": "NOT_TESTED",
               "browser_visual_acceptance": "NOT_TESTED",
               "es_sql_provider_provenance": "NOT_TESTED",
@@ -490,10 +504,11 @@ def main(argv=None):
                     or (args.suite == "diagnose" and r["check"].startswith("tcp_"))]
         code = (1 if any(r["status"] == "FAIL" for r in required) else
                 2 if any(r["status"] != "PASS" for r in required) else 0)
-        if args.live_report and code == 0:
+        if (args.live_report or args.resume_job is not None) and code == 0:
             code = _live(port, proof, args, rows, result_fd)
-        elif args.live_report:
-            rows.append(_row("live_report", "SKIP", "quick_checks_not_passed"))
+        elif args.live_report or args.resume_job is not None:
+            rows.append(_row("live_report" if args.live_report else "report_resume",
+                             "SKIP", "quick_checks_not_passed"))
     except ObservationError as exc:
         rows.append(_row("operator", "SKIP" if "unverified" in exc.code else "FAIL", exc.code))
         code = 2 if "unverified" in exc.code else 1

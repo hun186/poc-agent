@@ -417,3 +417,106 @@ def test_sraf_smoke_prompt_is_explicitly_synthetic_and_disambiguated():
     assert "尚未驗證" in prompt
     assert "請以繁體中文" in prompt
     assert "98.5%" not in prompt and "127" not in prompt
+
+def test_resume_completed_owned_job_reads_and_downloads_without_post(monkeypatch, tmp_path):
+    token = "SECRET_RESUME_TOKEN"
+    job_id = "rpt_" + "c" * 32
+    docx = _docx()
+    monkeypatch.setenv("SRAF_ACCEPTANCE_TOKEN_TEST", token)
+    calls = []
+
+    def fake_http(port, method, path, **kwargs):
+        calls.append((method, path, kwargs.get("token")))
+        assert method == "GET", "resuming an existing Job must never POST"
+        if path.endswith("/word"):
+            return 200, {b"content-type":
+                b"application/vnd.openxmlformats-officedocument.wordprocessingml.document"}, docx
+        assert path == "/v1/report/jobs/" + job_id
+        return 200, {b"content-type": b"application/json"}, json.dumps({
+            "job_id": job_id, "status": "completed",
+            "progress": {"phase": "completed"},
+        }).encode()
+
+    monkeypatch.setattr(a, "_bounded_http", fake_http)
+    args = type("Args", (), {
+        "token_env": "SRAF_ACCEPTANCE_TOKEN_TEST",
+        "max_seconds": 30, "resume_job": job_id,
+    })()
+    rows = []
+    fd = a._secure_output_dir(tmp_path)
+    try:
+        assert a._live(9002, object(), args, rows, fd) == 0
+    finally:
+        os.close(fd)
+    assert [row["check"] for row in rows] == [
+        "authentication", "report_resume", "report_progress", "report_docx", "report_content"
+    ]
+    assert rows[1]["reason"] == "existing_job_selected_no_post"
+    assert rows[-1]["reason"] == "semantic_grounding_not_verified"
+    assert calls == [
+        ("GET", "/v1/report/jobs/" + job_id, token),
+        ("GET", "/v1/report/jobs/" + job_id + "/word", token),
+    ]
+    assert len(list(tmp_path.glob("report-*.docx"))) == 1
+    assert job_id not in json.dumps(rows, ensure_ascii=False)
+    assert token not in json.dumps(rows, ensure_ascii=False)
+
+
+def test_resume_job_inaccessible_owner_never_downloads_or_posts(monkeypatch, tmp_path):
+    token = "SECRET_OTHER_OWNER"
+    job_id = "rpt_" + "b" * 32
+    monkeypatch.setenv("SRAF_ACCEPTANCE_TOKEN_TEST", token)
+    calls = []
+
+    def fake_http(port, method, path, **kwargs):
+        calls.append((method, path))
+        assert method == "GET" and path == "/v1/report/jobs/" + job_id
+        return 404, {b"content-type": b"application/json"}, b'{"detail":"not found"}'
+    monkeypatch.setattr(a, "_bounded_http", fake_http)
+    args = type("Args", (), {
+        "token_env": "SRAF_ACCEPTANCE_TOKEN_TEST",
+        "max_seconds": 30, "resume_job": job_id,
+    })()
+    with pytest.raises(a.ObservationError):
+        a._live(9002, object(), args, [], tmp_path)
+    assert calls == [("GET", "/v1/report/jobs/" + job_id)]
+
+
+@pytest.mark.parametrize("argv", [
+    ["--resume-job", "rpt_123"],
+    ["--resume-job", ""],
+    ["--resume-job", "rpt_" + "A" * 32],
+    ["--resume-job", "rpt_" + "a" * 32, "--live-report"],
+    ["--resume-job", "rpt_" + "a" * 32, "--no-network"],
+])
+def test_resume_mode_invalid_arguments_rejected_before_io(argv, monkeypatch):
+    monkeypatch.setattr(a, "_secure_output_dir", lambda path: (_ for _ in ()).throw(
+        AssertionError("must not open output before invalid args are rejected")))
+    with pytest.raises(SystemExit) as exc:
+        a.main(argv)
+    assert exc.value.code == 2
+
+def test_resume_cancelled_job_is_terminal_and_never_downloads(monkeypatch, tmp_path):
+    token = "SECRET_CANCELLED"
+    job_id = "rpt_" + "d" * 32
+    monkeypatch.setenv("SRAF_ACCEPTANCE_TOKEN_TEST", token)
+    calls = []
+    def fake_http(port, method, path, **kwargs):
+        calls.append((method, path))
+        assert method == "GET" and path == "/v1/report/jobs/" + job_id
+        return 200, {b"content-type": b"application/json"}, json.dumps({
+            "job_id": job_id, "status": "cancelled",
+            "progress": {"phase": "cancelled"},
+        }).encode()
+    monkeypatch.setattr(a, "_bounded_http", fake_http)
+    monkeypatch.setattr(a.time, "sleep", lambda seconds: (
+        (_ for _ in ()).throw(AssertionError("cancelled must not sleep"))))
+    args = type("Args", (), {
+        "token_env": "SRAF_ACCEPTANCE_TOKEN_TEST",
+        "max_seconds": 30, "resume_job": job_id,
+    })()
+    rows = []
+    assert a._live(9002, object(), args, rows, tmp_path) == 1
+    assert calls == [("GET", "/v1/report/jobs/" + job_id)]
+    assert rows[-1]["check"] == "report_progress"
+    assert rows[-1]["status"] == "FAIL"
