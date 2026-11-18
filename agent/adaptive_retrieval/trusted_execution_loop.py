@@ -207,6 +207,18 @@ def run_trusted_nround(
                     # revalidate actual persisted Job and policies immediately
                     # before each potentially paid semantic/LLM witness.
                     job_scope_binding.recheck_semantic_authorization(frozen)
+                    # Policies may block (e.g. SQLite/central RBAC) while
+                    # the request is cancelled or retrieval reserve expires.
+                    # Never purchase the provider call on a stale pre-policy
+                    # phase/deadline snapshot; this second preflight is vital.
+                    status = coordinator.safe_progress()
+                    budget = coordinator._budget.snapshot()
+                    if (status["phase"] != "SEARCHING"
+                            or status["round"] != frozen.round_number
+                            or budget.remaining_seconds <=
+                               budget.generation_reserve_seconds):
+                        raise TrustedNroundExecutionError(
+                            "semantic_authorization_expired")
                 verdict = semantic_assessor(target, evidence)
                 if job_scope_binding is not None:
                     # Revocation during a provider call cannot undo that IO,
