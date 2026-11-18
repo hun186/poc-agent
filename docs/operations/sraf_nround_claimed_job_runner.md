@@ -73,3 +73,20 @@ PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider \
 **上述均不是你的 Linux 實機驗收**。現階段不要求操作部署機；
 只有整個 Job／Word／API 路徑完整、真實 ES／LLM 驗收完成之後，
 才應考慮向一般使用者開放 N 輪。
+
+## 2026-11-18｜完整充分證據的原子交付核對
+
+在原本 `scope._assert_live()`、終止 `get_public()` 欄位及
+owner/index/整題分支政策重驗後，`execute_claimed_nround_job()`
+現在對 `termination=SUFFICIENT` 的**私有檢索結果交棒**額外要求
+`verify_terminal_for_running_report_job()`：在**同一筆 SQLite
+交易**驗證當下正式 Report Job、沒有已有 Word、checkpoint
+`RETRIEVAL_STOPPED/TERMINAL`、完成輪數、預期 revision 與無 lease。
+驗證遭拒或 SQLite 例外將拒絕交付結果、撤銷 in-memory readiness，
+但不能反向修改已終止的 sidecar。這仍是**唯讀驗證**，不是核准
+報告生成或下載。非充分終止原因保持「私有不完整結果」意義，
+正式不完整報告策略須另外設計。
+
+新增臨時 SQLite / 假 ES 測試，確認真正呼叫原子核對、在
+核對瞬間 Job 改為 failed 時拒絕、資料庫失敗例外遮蔽及沒有產生
+任何 Word。後續仍需跨實機 owner RBAC、Artifact CAS 與實際輸出驗收。
