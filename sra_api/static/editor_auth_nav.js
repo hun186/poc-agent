@@ -130,6 +130,11 @@ function setActiveNavRoot(root) {
   }
 }
 function collapseMainNav() { setActiveNavRoot(''); }
+window.addEventListener('resize', () => {
+  // Re-clamp an open flyout after desktop resizing or tablet rotation;
+  // reusing the same root preserves the expanded child menu and its focus.
+  if (state.activeNavRoot) setActiveNavRoot(state.activeNavRoot);
+});
 function bindHeaderNav() {
   SraAuditTools.bindProgressiveNav({
     nav: $('mainNav'),
