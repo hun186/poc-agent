@@ -59,3 +59,14 @@ def test_citations_are_audit_only_not_source_factual_quality():
     assert audit["status"] == "labels_match"
     # Matching IDs does NOT establish semantic truth or provenance quality.
     assert "semantic" not in audit and "factual" not in audit
+
+def test_long_source_lists_cannot_be_reported_as_valid_prefix():
+    labels = "、".join(str(i) for i in range(1, 26))
+    with_missing = "來源" + labels + "、77"
+    audit = audit_report_citation_labels(with_missing, list(range(1, 26)))
+    assert audit["status"] == "unmapped"
+    assert audit["unmapped_labels"] == 1
+    assert audit["labels_seen"] == 26
+    too_long = audit_report_citation_labels("來源1、1234567", [1])
+    assert too_long["status"] == "limit_exceeded"
+    assert citation_integrity_notice(too_long)
