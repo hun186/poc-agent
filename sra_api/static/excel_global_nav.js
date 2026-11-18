@@ -5,9 +5,9 @@
   'use strict';
   const MENU = [
     {title: 'ES 資料庫', links: [
-      ['搜尋與編輯文件', '/editor'],
-      ['新增文件', '/editor'],
-      ['統計與檢核曲線儀表板', '/editor']
+      ['搜尋與編輯文件', '/editor#search'],
+      ['新增文件', '/editor#new-document'],
+      ['統計與檢核曲線儀表板', '/editor#stats']
     ]},
     {title: '匯入管理', links: [
       ['Excel→SQL 匯入查詢儀表板', '/excel-to-sql-dashboard'],
@@ -16,9 +16,9 @@
       ['SQL 來源資料編輯器', '/excel-to-sql-source-editor'],
       ['SQL 來源資料統計儀表板', '/excel-to-sql-source-dashboard']
     ]},
-    {title: '系統管理', links: [['帳號審核', '/editor']]},
+    {title: '系統管理', links: [['帳號審核', '/editor#review']]},
     {title: '帳號安全', links: [
-      ['變更密碼', '/editor'], ['帳號操作記錄', '/editor']
+      ['變更密碼', '/editor#account'], ['帳號操作記錄', '/editor#account-audit']
     ]}
   ];
   const PAGE_LINKS = [
