@@ -78,3 +78,26 @@ PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider \
 ```
 
 此命令不呼叫真實 ES、LLM、SQL 或 Word，不代表完整 N 輪上線驗收。
+
+
+## N 輪語意／LLM 證據逐筆授權重驗（2026-11-18 隔離階段）
+
+PIT 前後通過的 Job/Owner/索引與原始問題授權不代表整輪
+語意處理期間永遠有效。現在只有在 `WorkerScopeBinding.attest()`
+核對同一個不可偽造的已執行 PIT plan 後，
+`recheck_semantic_authorization(plan)` 才允許使用；
+每次可信語意驗證器（可能花費 LLM 時間／費用）**呼叫前和回傳後**
+都重新讀取真實已認領的 ReportJob 並執行當下的 owner/index
+與整題單一分支政策。若 Job 失效、權限撤銷、callback 異常或
+同一輪執行計畫遭到更換，就 fail closed，不再對剩餘片段呼叫模型。
+
+這只適用明確注入 owner-bound 的隔離式 `run_trusted_nround`
+路徑，既有無 binding 的離線 helper 行為不變，正式單輪
+ReportJobWorker/Word/API 未修改。無法撤銷已經送出的 ES/LLM
+請求，也不取代真實可信 RBAC、跨主機租約或終止後報告生成
+前的獨立授權 CAS。
+
+離線回歸：`tests/test_sraf_nround_persisted_claimed_job_scope.py`
+使用臨時 SQLite 與假 ES／語意 assessor，在第一筆 LLM
+回呼期間撤銷 owner-index、整題 query branch 或 Job，
+三種情況都不能開始第二筆模型回呼；沒有實機驗測。

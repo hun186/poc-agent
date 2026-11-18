@@ -224,5 +224,8 @@
 - [ ] Preserve exact provenance: do NOT promote mixed one-text + one-metadata candidates merely because same Event matches; compare two-text-axis hypothetical candidates against the original question's validated required entities and issue constraints and block cross-Event source subject borrowing.
 - [ ] Finish true original question named-entity/negation/conjunction semantics for naturally phrased questions (not only `主題：...`), private read-only news_test Gaza/Sudan 5/10 versus 25/40 and Guterres Event-only A/B with precision/recall, p50/p95 and token-size/cost budget, then decide gating for conditional 3→2 and N-round reuse.
 
+## 2026-11-18 — per-witness authz candidate
+- [ ] Recheck exact-head CI and Codex review, resolve findings and merge only on safety gates. Per-witness read-through owner/branch policy is not a true production tenant ACL provider. In-flight HTTP/ES/LLM cannot be cancelled; later work needs trusted actual policy, timeout/cancellation and post-retrieval Job/Artifact CAS before Word.
+
 ## 2026-11-18 — terminal handoff fence follow-up
 - [ ] After PR #471 latest-head CI and Codex merge gate, integrate read-only terminal fence with trusted N-round executor (while revalidating owner-index/query branch); next implement independent Job-to-Word/Artifact commit CAS and owner-scoped download authorization. Never treat SUFFICIENT checkpoint or boolean preflight as report-generation authority; partial stops require separate fidelity and output policy.
