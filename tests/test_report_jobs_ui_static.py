@@ -79,7 +79,7 @@ def test_report_job_ui_real_status_contract_and_no_token_persistence():
     assert "taipeiCreatedTime(item.created_at)" in js
     assert "timeZone: 'Asia/Taipei'" in js
     assert 'class="global-tree-nav"' in html
-    assert '/static/excel_global_nav.js?v=20261118-shared' in html
+    assert '/static/excel_global_nav.js?v=20261118-deep-links' in html
     assert 'id="retrySubmitBtn"' in html
     assert 'id="discardSubmitBtn"' in html
     assert "'Idempotency-Key': attempt.key" in js
