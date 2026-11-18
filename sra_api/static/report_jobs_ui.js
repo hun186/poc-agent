@@ -246,7 +246,7 @@
       update(job);
       if (terminal.has(job.status)) {
         stop();
-        message(job.status === 'completed' ? '報告已完成，可下載 Word 文件。' :
+        message(job.status === 'completed' ? '報告已完成，可下載 Word；內容、數據與引用仍須查核。' :
           job.status === 'interrupted' ? '服務已中斷此任務；系統不會自動重跑。' :
            job.status === 'cancelled' ? '排隊中的報告任務已取消，不會執行或產生 Word。' :
             '任務已失敗，請查看分類原因。', job.status === 'completed' ? 'success' : 'error');
@@ -431,7 +431,7 @@
       anchor.click();
       anchor.remove();
       setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
-      message('已向瀏覽器提供 Word 下載。', 'success');
+      message('已向瀏覽器提供 Word 下載；請先核對內容及證據，再作正式用途。', 'success');
     } catch (_) {
       if (stillAuthorized()) message('下載連線失敗；請檢查網路與權限後再試。', 'error');
     } finally {
