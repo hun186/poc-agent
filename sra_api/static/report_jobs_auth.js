@@ -63,7 +63,10 @@
     try {
       const response = await fetch('/v1/auth/me', opts(token));
       if (run !== generation) return;
-      if (!response.ok) throw new Error('session_expired');
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) clearStoredIfSame(token);
+        throw new Error('session_expired');
+      }
       const data = await response.json();
       if (run !== generation) return;
       if (!data || !data.user || typeof data.user.username !== 'string') {
@@ -91,6 +94,7 @@
     const run = ++generation;
     loginBusy = true;
     $('reportLoginBtn').disabled = true;
+    clearStoredIfSame($('authToken').value);
     signedOut('正在使用 SRAF 原有帳號登入…');
     // Switching principals must stop all previous owner-scoped operations
     // before the new credential is obtained.
