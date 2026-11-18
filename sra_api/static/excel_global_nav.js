@@ -59,12 +59,9 @@
   const editorSlot = document.getElementById('srafEditorExternalNav');
   if (editorSlot) {
     for (const item of PAGE_LINKS) {
-      const button = document.createElement('button');
-      button.id = item.id;
-      button.type = 'button';
-      button.textContent = item.label;
-      button.className = 'nav-root-btn secondary';
-      editorSlot.appendChild(button);
+      const link = makeLink(item.label, item.path, 'nav-root-btn secondary');
+      link.id = item.id;
+      editorSlot.appendChild(link);
     }
   }
 
