@@ -106,7 +106,7 @@
     }
     const access = token();
     if (!access) {
-      $('jobListMessage').textContent = '請先輸入具備 report:job:read 權限的 Token。';
+      $('jobListMessage').textContent = '請先使用 SRAF 帳號登入，並確認具有報告讀取權限。';
       return;
     }
     const run = ++historyGeneration;
@@ -222,7 +222,7 @@
           stop();
           completedId = '';
           $('downloadBtn').hidden = true;
-          message(response.status === 404 ? '找不到任務，或目前帳號沒有讀取權限。' : 'Token 無效或沒有 Report Job 讀取權限。', 'error');
+          message(response.status === 404 ? '找不到任務，或目前帳號沒有讀取權限。' : '登入已失效或沒有 Report Job 讀取權限。', 'error');
           return;
         }
         message('查詢失敗（HTTP ' + response.status + '），尚未確認任務狀態；稍後自動重試。', 'warning');
@@ -258,7 +258,7 @@
   function watch(id) {
     const parsed = safeId(id);
     if (!parsed) { message('Job ID 格式不正確。', 'error'); return; }
-    if (!token()) { message('請先提供具備 report:job:read 權限的 Token。', 'error'); return; }
+    if (!token()) { message('請先使用 SRAF 帳號登入後追蹤。', 'error'); return; }
     stop();
     abortDownload();
     currentId = parsed;
@@ -300,7 +300,7 @@
         }
         pendingSubmission = null;
         message(response.status === 401 || response.status === 403
-          ? 'Token 無效或沒有 Report Job 建立權限。'
+          ? '登入已失效或沒有 Report Job 建立權限。'
           : response.status === 409
             ? '建立識別碼衝突；請先由已授權管道查驗，未自動重送。'
             : '建立失敗（HTTP ' + response.status + '）；請檢查輸入及權限。',
@@ -330,7 +330,7 @@
     const access = token();
     const prompt = $('prompt').value.trim();
     const filename = $('filename').value.trim();
-    if (!access) { message('請先提供有 report:job:create 權限的 Token。', 'error'); return; }
+    if (!access) { message('請先使用 SRAF 帳號登入，並確認具有建立報告權限。', 'error'); return; }
     if (!prompt) { message('請先輸入報告需求。', 'error'); return; }
     // Fail closed without a cryptographically random request identity.
     const nonce = window.crypto && typeof window.crypto.randomUUID === 'function'
@@ -381,7 +381,7 @@
   }
   async function download() {
     if (!completedId || !safeId(completedId) || !token()) {
-      message('只有已完成的任務可以下載，且必須提供有效 Token。', 'error');
+      message('只有已完成的任務可以下載，且必須使用有效的 SRAF 登入狀態。', 'error');
       return;
     }
     // Reject overlapping downloads and bind the response to this identity + Job.
@@ -485,7 +485,7 @@
     const match = /^#job=([A-Za-z0-9_-]{1,128})$/.exec(fragment);
     if (!match) return;
     $('jobId').value = match[1];
-    message('已載入指定的報告任務 ID。請輸入您的 Token，再按「追蹤」確認權限與真正進度。');
+    message('已載入指定的報告任務 ID。請使用 SRAF 帳號登入，再按「追蹤」確認權限與真正進度。');
   }
   prefillLinkedJob();
   controls();
