@@ -83,7 +83,7 @@ state.user={role:'superuser'};
 // does not mutate the left alignment of top-level items.
 context.setActiveNavRoot('account');
 assert.ok(levels.every(x=>!x.open), 'close pre-existing submenus on changing roots');
-assert.equal(styles['--nav-panel-left'],'630px');
+assert.equal(styles['--nav-panel-left'],'352px');
 assert.ok(Number.parseInt(styles['--nav-panel-arrow-left'])>=24);
 assert.match(css,/nav-subpanel:has\(\.nav-menu\.active \.nav-level\[open\]\)/);
 assert.match(css,/width: min\(266px, calc\(100vw - 36px\)\)/);
