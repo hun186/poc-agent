@@ -66,3 +66,11 @@
 - 失敗僅呈現既有 `report_docx=FAIL reason=docx_invalid`，不回傳來源內容、Token、完整 XML 或 DOCX 內文。
 
 以上只是 OOXML 靜態相容性與非空的加強，並不能判定報告語意品質、引用來源真實性或跨 Office 版本的視覺排版。最新部署機真實 `--live-report` L3-A 仍需操作員授權執行，GitHub 合成測試不應誤稱正式實機通過。
+
+## 2026-11-18｜Report Job 使用 SRAF 原生帳號、同一 9002 入口
+
+- 瀏覽器開啟既有 `http(s)://<SRAF主機>:9002/`，原路徑仍轉至 `/editor`。登入原本 SRAF 帳號後，按管理頁「報告任務進度」到同一 Origin 的 `/report-jobs`；亦可直接到 `/report-jobs` 輸入既有 SRAF 帳號密碼，不需要手動貼 Bearer Token，也不新增帳號資料庫、Port 或反向代理服務。
+- Report Job 與 Editor 共用現有 `POST /v1/auth/login`、`GET /v1/auth/me` 和 `POST /v1/auth/logout`；使用**原本 Editor 已使用的** `sra_editor_token` 瀏覽器儲存鍵（這不是新建的 HttpOnly Cookie；同源 localStorage 仍有 XSS 暴露風險）。共用帳號的 Token 由 `/v1/auth/me` 驗證後才允許讀取自己的報告清單；帳號切換、另一分頁登出會清除舊身分的 Report Job 進度／清單及取消進行中的下載。登入、登出和 Token 不會記入 URL、HTML、錯誤文字或額外 JS Storage key。
+- Report Job UI 只透過既有 owner-scoped `GET /v1/report/jobs` 讀取自己的紀錄；登入成功後自動查詢最近 20 筆。新增報告仍須手動按「建立並追蹤」並使用 Idempotency-Key；此變更**不會自動 POST 新 Job**、不影響 CLI 或 service-key 存取 API。原有 LLM、SQL、ES、Worker、DOCX 流程未變更。
+- 須注意透過未加密的 LAN HTTP 使用帳號密碼及 localStorage Token 有被攔截的風險，建議透過受信任 HTTPS/TLS 入口或本機連線操作。
+- 此改進讓 2026-11-18 的 `--live-report` 已建立 Job 能以登入後「本人報告任務」查詢，不須再次 POST；但**未修復**原 CLI 驗收 `listener_identity_changed`，也未替既有任務自動補上完成的 DOCX E2E 證據。實機部署需 Windows 來源端更新打包，再到 Linux 解壓；勿在正式 Linux 執行 Git fetch，不能只憑 CI PASS 當作實機 PASS。
