@@ -51,7 +51,7 @@ const window = {
   addEventListener(type,callback){events[type]=callback;}
 };
 const context = {
-  state, window, document, CSS:{escape:v=>v},
+  state, window, document, $:(id)=>document.getElementById(id), CSS:{escape:v=>v},
   setStatus:(...args)=>effects.push(['status',...args]),
   switchMainTab:(...args)=>effects.push(['switchMainTab',...args]),
   newDoc:()=>effects.push(['newDoc']),
