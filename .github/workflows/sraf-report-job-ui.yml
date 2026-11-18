@@ -5,6 +5,7 @@ on:
     paths:
       - 'sra_api/static/report_jobs.html'
       - 'sra_api/static/report_jobs_ui.js'
+      - 'sra_api/static/report_jobs_ui.css'
       - 'sra_api/static/report_jobs_auth.js'
       - 'sra_api/routers/editor.py'
       - 'sra_api/routers/report_jobs.py'
