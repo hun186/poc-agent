@@ -52,7 +52,8 @@ def test_report_job_ui_real_status_contract_and_no_token_persistence():
     assert "innerHTML" not in shared_auth
     assert 'src="/static/report_jobs_ui.js"' in html
     assert 'href="/static/report_jobs_ui.css"' in html
-    assert 'id="reportJobsBtn"' in editor
+    assert 'id="srafEditorExternalNav"' in editor
+    assert 'id="reportJobsBtn"' in (STATIC / "excel_global_nav.js").read_text(encoding="utf-8")
     assert "location.href = '/report-jobs'" in bootstrap
     assert "/v1/report/jobs/" in js
     assert "phase.elapsed" not in js  # respect existing progress.elapsed_seconds
@@ -74,6 +75,10 @@ def test_report_job_ui_real_status_contract_and_no_token_persistence():
     assert "historyGeneration" in js
     assert "clearHistory();" in js
     assert "item.job_id" in js
+    assert "taipeiCreatedTime(item.created_at)" in js
+    assert "timeZone: 'Asia/Taipei'" in js
+    assert 'class="global-tree-nav"' in html
+    assert '/static/excel_global_nav.js?v=20261118-shared' in html
     assert 'id="retrySubmitBtn"' in html
     assert 'id="discardSubmitBtn"' in html
     assert "'Idempotency-Key': attempt.key" in js
