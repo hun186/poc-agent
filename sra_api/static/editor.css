@@ -113,3 +113,6 @@
     @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } textarea.mono { min-height: 320px; } header { align-items: flex-start; flex-wrap: wrap; } .header-nav { order: 3; flex-basis: 100%; } .nav-primary { justify-content: flex-start; } .nav-root-btn { flex: 1 1 140px; } .nav-subpanel { left: 0; right: 0; transform: none; width: auto; } .nav-subpanel::before { left: 42px; } }
 
 .sraf-editor-external-nav { display:contents; }
+
+.sraf-editor-external-nav a.nav-root-btn { display:inline-flex; align-items:center; justify-content:center; color:white; text-decoration:none; font-weight:700; box-sizing:border-box; }
+.sraf-editor-external-nav a.nav-root-btn:focus-visible { outline:3px solid #93c5fd; outline-offset:2px; }
