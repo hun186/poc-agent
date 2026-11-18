@@ -18,9 +18,9 @@ MAX_LABELS = 10_000
 # Each part after 來源 must be a small numbered citation, not a date/name.
 _SOURCE_LABEL = re.compile(
     r"(?<![A-Za-z0-9_])來源[ \t]*"
-    r"([0-9]+(?:[、，,/][ \\t]*[0-9]+)*)"
+    r"([0-9]+(?:[、，,/]\s*[0-9]+)*)"
 )
-_LABEL_PART = re.compile(r"[、，,/][ \t]*")
+_LABEL_PART = re.compile(r"[、，,/]\s*")
 
 
 def audit_report_citation_labels(
