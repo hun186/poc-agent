@@ -111,3 +111,14 @@ def test_report_job_browser_javascript_syntax_and_flow():
         result = subprocess.run(cmd, cwd=STATIC.parents[1], capture_output=True,
                                 text=True, timeout=20, check=False)
         assert result.returncode == 0, result.stderr[-1600:]
+
+def test_report_job_completion_is_not_misrepresented_as_content_verified():
+    from pathlib import Path
+    html = Path("sra_api/static/report_jobs.html").read_text(encoding="utf-8")
+    js = Path("sra_api/static/report_jobs_ui.js").read_text(encoding="utf-8")
+    assert 'id="reportContentCaveat"' in html
+    assert '「已完成」只代表 Report Job 產製及保存流程完成' in html
+    assert '不代表 Word 中的事件、數字、引用或資料來源已經查證' in html
+    assert '報告已完成，可下載 Word；內容、數據與引用仍須查核。' in js
+    assert '已向瀏覽器提供 Word 下載；請先核對內容及證據' in js
+    assert '本機' not in html.split('id="reportContentCaveat"')[1].split('</p>')[0]
