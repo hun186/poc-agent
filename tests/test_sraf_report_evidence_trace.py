@@ -75,7 +75,9 @@ def test_reporting_trace_off_keeps_result_and_suppresses_raw_evidence_stdout(
     mod, calls = _stub_report(monkeypatch, [_snippet(0)])
     with caplog.at_level(logging.WARNING, logger="sraf.report_evidence_trace"):
         result = mod.ask_with_report("SENSITIVE-RAW-QUESTION")
-    assert result["answer"] == "合成測試報告"
+    assert result["answer"].startswith("⚠️ 證據資訊量提醒")
+    assert result["answer"].endswith("合成測試報告")
+    assert result["evidence_usage"]["evidence_information"]["status"] == "limited_text"
     assert len(calls) == 1
     assert not _logs(caplog)
     stdout = capsys.readouterr().out
@@ -94,7 +96,9 @@ def test_reporting_trace_is_exact_pre_llm_counts_and_no_text(
         result = mod.ask_with_report("SENSITIVE-RAW-QUESTION")
     assert len(calls) == 1
     assert len(calls[0]["ev"]) == 2
-    assert result["answer"] == "合成測試報告"
+    assert result["answer"].startswith("⚠️ 證據資訊量提醒")
+    assert result["answer"].endswith("合成測試報告")
+    assert result["evidence_usage"]["evidence_information"]["status"] == "limited_text"
     entry, = _logs(caplog)
     assert entry["scope"] == "single_report_pre_llm_not_final_report_or_token_count"
     c = entry["counters"]
@@ -240,7 +244,9 @@ def test_report_llm_stage_trace_does_not_duplicate_private_input_or_answer(monke
     mod, calls = _stub_report(monkeypatch, [_snippet(1, text="PRIVATE-EVIDENCE-CONTENT")])
     trace = {}
     result = mod.ask_with_report("PRIVATE-USER-QUESTION", trace=trace)
-    assert len(calls) == 1 and result["answer"] == "合成測試報告"
+    assert len(calls) == 1
+    assert result["answer"].startswith("⚠️ 證據資訊量提醒")
+    assert result["answer"].endswith("合成測試報告")
     report_stage = trace["llm"]["report"][-1]
     assert "user" not in report_stage
     assert "answer_preview" not in report_stage
