@@ -10,6 +10,9 @@ on:
       - 'agent/adaptive_retrieval/trusted_execution_loop.py'
       - 'agent/adaptive_retrieval/worker_scope_binding.py'
       - 'sra_api/services/sraf_nround_claimed_job_scope.py'
+      - 'sra_api/services/sraf_nround_owned_progress.py'
+      - 'tests/test_sraf_nround_owned_progress.py'
+      - 'docs/operations/sraf_nround_owned_progress.md'
       - 'agent/adaptive_retrieval/round_query_execution.py'
       - 'agent/adaptive_retrieval/coverage_evaluator.py'
       - 'agent/adaptive_retrieval/request_budget.py'
@@ -73,6 +76,7 @@ jobs:
             tests/test_sraf_nround_claimed_job_runner.py \
             tests/test_sraf_nround_worker_scope_binding.py \
             tests/test_sraf_nround_persisted_claimed_job_scope.py \
+            tests/test_sraf_nround_owned_progress.py \
             tests/test_sraf_nround_coverage_coordinator_bridge.py \
             tests/test_sraf_request_evidence_ledger.py \
             tests/test_sraf_nround_plan_budget_gate.py \
