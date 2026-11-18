@@ -25,6 +25,10 @@
         <button id="reportLoginBtn" type="button">登入</button>
         <button id="reportLogoutBtn" type="button" class="secondary" hidden>登出</button>
       </div>
+      <div id="reportHttpWarning" class="message warning" hidden role="alert">
+        此連線使用未加密的 HTTP（非本機）。登入密碼及後續授權憑證可能在網路上被攔截。建議改用 HTTPS。
+        <label for="reportHttpConsent"><input id="reportHttpConsent" type="checkbox"> 我已了解風險，仍要透過此連線登入。</label>
+      </div>
       <p class="hint" id="reportAuthUser"></p>
       <p class="hint" id="reportAuthStatus" role="status" aria-live="polite">正在確認登入狀態…</p>
       <input id="authToken" type="password" hidden aria-hidden="true" tabindex="-1" autocomplete="off">
