@@ -13,7 +13,7 @@ def test_single_short_sentence_warns_without_dropping_its_reference():
     assert quality["rows"] == 1
     assert quality["status"] == "limited_text"
     assert quality["short_notes"] == 1
-    assert "資料過短" in evidence_information_notice(quality)
+    assert "文字過短" in evidence_information_notice(quality)
     assert rows == snapshot
 
 
