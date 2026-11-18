@@ -12,6 +12,8 @@ on:
       - 'sra_api/services/sraf_nround_claimed_job_scope.py'
       - 'sra_api/services/sraf_nround_owned_progress.py'
       - 'tests/test_sraf_nround_owned_progress.py'
+      - 'tests/test_sraf_nround_reportjob_atomic_checkpoint.py'
+      - 'tests/test_sraf_nround_terminal_handoff_fence.py'
       - 'docs/operations/sraf_nround_owned_progress.md'
       - 'agent/adaptive_retrieval/round_query_execution.py'
       - 'agent/adaptive_retrieval/coverage_evaluator.py'
@@ -84,3 +86,14 @@ jobs:
             tests/test_sraf_request_admission_budget.py \
             tests/test_sraf_structured_evidence_time.py \
             tests/test_sraf_shared_evidence_budget.py
+      - name: Run operator combined SQLite plus N-round batch (xUnit setup collision regression)
+        run: |
+          PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider \
+            tests/test_sraf_nround_claimed_job_runner.py \
+            tests/test_sraf_nround_owned_progress.py \
+            tests/test_sraf_nround_terminal_handoff_fence.py \
+            tests/test_sraf_nround_reportjob_atomic_checkpoint.py \
+            tests/test_sraf_nround_safe_progress_sink.py \
+            tests/test_sraf_nround_trusted_execution_loop.py \
+            tests/test_sraf_nround_es_pit_adapter.py \
+            tests/test_sraf_nround_es_page_fence.py
