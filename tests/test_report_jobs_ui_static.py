@@ -21,9 +21,12 @@ def test_report_job_ui_route_and_allowlisted_assets():
     assert "default-src 'none'" in page.headers["Content-Security-Policy"]
     assert editor_static_asset("report_jobs_ui.js").media_type == "application/javascript"
     assert editor_static_asset("report_jobs_ui.css").media_type == "text/css"
+    assert editor_static_asset("report_jobs_auth.js").media_type == "application/javascript"
     with TestClient(app) as client:
         assert client.get("/report-jobs").status_code == 200
         assert client.get("/static/report_jobs_ui.js").status_code == 200
+        assert client.get("/static/report_jobs_auth.js").status_code == 200
+        assert client.get("/", follow_redirects=False).headers.get("location") == "/editor"
         assert client.get("/static/report_jobs_ui.css").status_code == 200
         assert client.get("/static/report_jobs_ui.bad").status_code == 404
 
@@ -33,7 +36,20 @@ def test_report_job_ui_real_status_contract_and_no_token_persistence():
     js = (STATIC / "report_jobs_ui.js").read_text(encoding="utf-8")
     editor = (STATIC / "editor.html").read_text(encoding="utf-8")
     bootstrap = (STATIC / "editor_bootstrap.js").read_text(encoding="utf-8")
-    assert 'id="authToken" type="password"' in html
+    assert 'id="authToken" type="password" hidden' in html
+    assert 'id="reportAuthUsername"' in html
+    assert 'id="reportAuthPassword" type="password"' in html
+    assert 'id="reportLoginBtn"' in html
+    assert 'id="reportLogoutBtn"' in html
+    assert 'src="/static/report_jobs_auth.js"' in html
+    shared_auth = (STATIC / "report_jobs_auth.js").read_text(encoding="utf-8")
+    assert "'sra_editor_token'" in shared_auth
+    assert "'/v1/auth/login'" in shared_auth
+    assert "'/v1/auth/me'" in shared_auth
+    assert "'/v1/auth/logout'" in shared_auth
+    assert "credentials: 'omit'" in shared_auth
+    assert "document.cookie" not in shared_auth
+    assert "innerHTML" not in shared_auth
     assert 'src="/static/report_jobs_ui.js"' in html
     assert 'href="/static/report_jobs_ui.css"' in html
     assert 'id="reportJobsBtn"' in editor
@@ -80,7 +96,12 @@ def test_report_job_browser_javascript_syntax_and_flow():
         raise AssertionError("Node.js required for hosted UI behavior gate")
     script = STATIC / "report_jobs_ui.js"
     suite = Path(__file__).with_name("report_jobs_ui_flow.cjs")
-    for cmd in ([node, "--check", str(script)], [node, str(suite)]):
+    for cmd in (
+        [node, "--check", str(script)],
+        [node, "--check", str(STATIC / "report_jobs_auth.js")],
+        [node, str(suite)],
+        [node, str(Path(__file__).with_name("report_jobs_shared_auth.cjs"))],
+    ):
         result = subprocess.run(cmd, cwd=STATIC.parents[1], capture_output=True,
                                 text=True, timeout=20, check=False)
         assert result.returncode == 0, result.stderr[-1600:]

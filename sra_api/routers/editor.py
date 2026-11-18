@@ -70,6 +70,7 @@ EDITOR_STATIC_ASSETS: dict[str, str] = {
     "editor_documents.js": "application/javascript",
     "editor_bootstrap.js": "application/javascript",
     "report_jobs_ui.js": "application/javascript",
+    "report_jobs_auth.js": "application/javascript",
     "report_jobs_ui.css": "text/css",
     "requirement_product_explorer.js": "application/javascript",
     "requirement_product_preview.js": "application/javascript",
