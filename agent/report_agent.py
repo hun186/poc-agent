@@ -535,10 +535,14 @@ def ask_with_report(
     llm_root = trace.setdefault("llm", {})
     report_logs: list[Dict[str, Any]] = llm_root.setdefault("report", [])
     #print("REPORT_SYSTEM_PROMPT",REPORT_SYSTEM_PROMPT)
+    # Do not retain original questions, Evidence, LLM input JSON or output
+    # excerpts in execution diagnostics. Word/Markdown keep only safe
+    # stage/model/elapsed metadata; the actual answer remains in its normal
+    # authorized report result, not copied into the trace.
     report_logs.append({
         "system": "REPORT_SYSTEM_PROMPT",
-        "user": user_prompt,
-        "answer_preview": (report_text[:200] if isinstance(report_text, str) else str(report_text)[:200]),
+        "input_chars": len(user_prompt),
+        "output_chars": len(report_text) if isinstance(report_text, str) else 0,
         "elapsed_sec": round(t1 - t0, 3),
         "model_id": REPORT_MODEL_ID,
     })
