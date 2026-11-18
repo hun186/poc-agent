@@ -55,6 +55,18 @@
     $('jobPage').textContent = '第 1 頁';
     $('listJobsBtn').disabled = false;
   }
+  function taipeiCreatedTime(value) {
+    // Persisted timestamps remain UTC. Convert only at presentation, and
+    // reject malformed legacy values instead of displaying misleading dates.
+    if (typeof value !== 'string' || !/([zZ]|[+-]\\d{2}:\\d{2})$/.test(value)) return '—';
+    const parsed = new Date(value);
+    if (!Number.isFinite(parsed.getTime())) return '—';
+    return new Intl.DateTimeFormat('zh-TW', {
+      timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit',
+      day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false
+    }).format(parsed) + '（台灣時間）';
+  }
   function renderHistory(items, offset) {
     const tbody = $('jobRows');
     tbody.replaceChildren();
@@ -67,7 +79,7 @@
       }
       const tr = document.createElement('tr');
       for (const value of [
-        item.job_id, statuses[item.status], phases[item.phase], item.created_at
+        item.job_id, statuses[item.status], phases[item.phase], taipeiCreatedTime(item.created_at)
       ]) {
         const td = document.createElement('td');
         td.textContent = value === null || value === undefined ? '—' : String(value);
