@@ -14,7 +14,6 @@ def test_existing_sraf_login_can_access_only_own_report_jobs(tmp_path, monkeypat
     bootstrap = tmp_path / "bootstrap.json"
     bootstrap.write_text(json.dumps({"superusers": [
         {"username": "report_owner", "password": "TestOwnerPassword!2026"},
-        {"username": "different_owner", "password": "TestOtherPassword!2026"},
     ]}), encoding="utf-8")
     monkeypatch.setenv("SRA_AUTH_USERS_FILE", str(users))
     monkeypatch.setenv("SRA_BOOTSTRAP_SUPERUSERS_FILE", str(bootstrap))
@@ -23,6 +22,10 @@ def test_existing_sraf_login_can_access_only_own_report_jobs(tmp_path, monkeypat
     monkeypatch.setenv("SRA_EDITOR_AUDIT_LOG", str(tmp_path / "events.jsonl"))
     store = auth_store_module.AuthStore()
     monkeypatch.setattr(auth_store_module, "AUTH_STORE", store)
+    # A superuser has explicit report:job:admin cross-owner privilege;
+    # compare against a normal active data_reader to prove owner isolation.
+    store.register("different_owner", "TestOtherPassword!2026")
+    store.approve_user("different_owner", "data_reader", approved_by="report_owner")
 
     app = FastAPI()
     app.include_router(editor_auth.router)
