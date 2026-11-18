@@ -13,6 +13,14 @@
 - `ReportJobStore` 與 `NroundCheckpointStore` 必須位於
   **同一個 SQLite 檔案**；以 SQLite `mode=ro` 打開，
   不得因狀態查詢新建 DB、sidecar、Job 或修改狀態。
+- SQLite `mode=ro` 即使 `query_only=ON`，仍可能在 WAL 已被正常清除後**重建**
+  `-wal`／`-shm`。因此先探測資料庫側錄檔：兩者都不存在時，
+  使用只讀 `immutable=1` 快照，並以前後檔案身分／修改時間
+  檢查偵測並拒絕常見並行寫入；兩者都存在時則用一般
+  `mode=ro` WAL 交易讀取未 checkpoint 的資料；只存在一個
+  則拒絕。**這不構成跨程序鎖或強制可序列化的授權證明**，
+  未來正式進度 API 必須讓 SQLite 生命周期由可信的資料庫
+  管理層控制，避免競爭條件。
 - 同一份 read transaction 下先驗證既有
   `report_jobs` canonical schema v2 與 sidecar schema，
   再以 `job_id + owner_kind + owner_id` 查正式 Job，
