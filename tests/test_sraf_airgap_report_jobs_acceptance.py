@@ -482,3 +482,28 @@ def test_resume_mode_invalid_arguments_rejected_before_io(argv, monkeypatch):
     with pytest.raises(SystemExit) as exc:
         a.main(argv)
     assert exc.value.code == 2
+
+def test_resume_cancelled_job_is_terminal_and_never_downloads(monkeypatch, tmp_path):
+    token = "SECRET_CANCELLED"
+    job_id = "rpt_" + "d" * 32
+    monkeypatch.setenv("SRAF_ACCEPTANCE_TOKEN_TEST", token)
+    calls = []
+    def fake_http(port, method, path, **kwargs):
+        calls.append((method, path))
+        assert method == "GET" and path == "/v1/report/jobs/" + job_id
+        return 200, {b"content-type": b"application/json"}, json.dumps({
+            "job_id": job_id, "status": "cancelled",
+            "progress": {"phase": "cancelled"},
+        }).encode()
+    monkeypatch.setattr(a, "_bounded_http", fake_http)
+    monkeypatch.setattr(a.time, "sleep", lambda seconds: (
+        (_ for _ in ()).throw(AssertionError("cancelled must not sleep"))))
+    args = type("Args", (), {
+        "token_env": "SRAF_ACCEPTANCE_TOKEN_TEST",
+        "max_seconds": 30, "resume_job": job_id,
+    })()
+    rows = []
+    assert a._live(9002, object(), args, rows, tmp_path) == 1
+    assert calls == [("GET", "/v1/report/jobs/" + job_id)]
+    assert rows[-1]["check"] == "report_progress"
+    assert rows[-1]["status"] == "FAIL"
