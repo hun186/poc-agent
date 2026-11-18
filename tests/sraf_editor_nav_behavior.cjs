@@ -101,4 +101,8 @@ levels[0].open=true;
 levels[1].open=true;
 levels[1].toggle();
 assert.equal(levels[0].open,false);
+window.innerWidth = 650;
+events.resize();
+assert.equal(styles['--nav-panel-left'], '-72px', 'reposition within a narrower viewport');
+assert.equal(levels[1].open, true, 'reposition preserves active submenu');
 console.log('SRAF Editor submenu + feature deep-links: PASS');
