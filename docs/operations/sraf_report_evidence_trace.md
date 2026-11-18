@@ -88,3 +88,11 @@ specific Evidence survived report de-duplication or reconstruct a unique
 end-to-end set; adding secure request correlation is a separate #397 task.
 The report stage also retains pre-existing prompt trace storage in other
 logging locations, which must be audited separately before sharing logs.
+
+## 2026-11-18｜報告 LLM Trace 原文副本縮減
+
+原本 `agent.report_agent.ask_with_report` 將完整 `user_prompt`（可能包含原始提問、Evidence note、來源／日期）及模型輸出開頭 200 字存在 `trace["llm"]["report"]`。這會在內部診斷與可能的下游序列化流程重複暴露內容，違背計數型診斷的最小化原則。
+
+現在 report-stage Trace 只保留固定系統 Prompt 標籤、`input_chars`、`output_chars`、執行秒數與 `model_id`。正式報告仍透過原本授權的 `result["answer"]` 回傳，Word/Markdown 內容不會因此被清空。資料整備、Session 與其他既存 Trace 欄位**不在此次隱私改善範圍**，不能宣稱整個系統所有日誌已完全不含私有資料。
+
+離線合成測試驗證 report-stage Trace 不再包含原始問句、Evidence text 或回答片段；不需要實機 ES/LLM。
