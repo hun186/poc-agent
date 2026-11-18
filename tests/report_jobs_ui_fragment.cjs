@@ -40,7 +40,7 @@ function openPage(fragment) {
 
 const valid = openPage('#job=job_DEEP-42');
 assert.equal(valid.controls.jobId.value, 'job_DEEP-42');
-assert.match(valid.controls.message.textContent, /Token.*追蹤/);
+assert.match(valid.controls.message.textContent, /SRAF.*追蹤/);
 assert.equal(valid.controls.authToken.value, '');
 assert.equal(valid.fetchCount, 0, 'prefill is not authentication or an auto-query');
 
