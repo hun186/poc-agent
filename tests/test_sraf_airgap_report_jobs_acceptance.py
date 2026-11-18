@@ -120,8 +120,9 @@ def test_real_job_uses_one_post_polls_and_checks_docx_without_secrets(monkeypatc
     finally:
         os.close(result_fd)
     assert [r["check"] for r in rows] == [
-        "authentication", "report_create", "report_progress", "report_docx"]
-    assert rows[-1]["sha256"]
+        "authentication", "report_create", "report_progress", "report_docx", "report_content"]
+    assert rows[-2]["sha256"]
+    assert rows[-1] == a._row("report_content", "SKIP", "semantic_grounding_not_verified")
     saved = list(tmp_path.glob("report-*.docx"))
     assert len(saved) == 1 and saved[0].read_bytes() == docx
     assert saved[0].stat().st_mode & 0o777 == 0o600
@@ -406,3 +407,13 @@ def test_non_utf8_wordprocessingml_is_not_authorized_even_without_dtd():
         '</w:document>'
     ).encode("utf-16")
     assert not a._validate_docx(_with_part(original, "word/document.xml", doc_xml))
+
+def test_sraf_smoke_prompt_is_explicitly_synthetic_and_disambiguated():
+    prompt = a.PROMPT
+    assert "本專案" in prompt and "資料檢索" in prompt
+    assert "不是半導體光罩" in prompt
+    assert "合成測試樣本，非實機驗收結果" in prompt
+    assert "不要虛構" in prompt
+    assert "尚未驗證" in prompt
+    assert "請以繁體中文" in prompt
+    assert "98.5%" not in prompt and "127" not in prompt
