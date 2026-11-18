@@ -283,3 +283,46 @@ def test_semantic_witness_rechecks_persisted_owner_and_scope_after_provider(
     assert c.safe_progress()["ready_for_external_report_generation"] is False
     assert c.safe_progress()["phase"] == "TERMINAL"
     assert "PRIVATE_" not in str(exc.value)
+
+
+@pytest.mark.parametrize("interruption", ["cancel", "generation_reserve"])
+def test_blocking_authorization_cannot_start_semantic_after_late_expiry(
+    tmp_path, interruption,
+):
+    """Codex P2: an RBAC query may outlive the original safe budget snapshot."""
+    c, scope, ev, _, planners, clock = _setup()
+    store, claimed = claimed_job(tmp_path, scope)
+    index_calls = []
+
+    def slow_but_authorized(_job, index):
+        index_calls.append(index)
+        # PIT preflight is call 1, PIT attestation is call 2; the third is
+        # the mandatory recheck immediately before first semantic witness.
+        if len(index_calls) == 3:
+            if interruption == "cancel":
+                assert c.cancel()
+            else:
+                clock[0] = 1801.0  # 2400 total, 600 reserved: only 599 remain
+        return True
+
+    adapter, _, _ = scoped(
+        store, claimed, c, scope, access=slow_but_authorized,
+    )
+    binding = adapter.make_binding()
+    es = FakeES(_verified_page("A"))
+    semantic_calls = []
+    with pytest.raises(TrustedNroundExecutionError,
+                       match="trusted_nround_execution_failed"):
+        run_trusted_nround(
+            coordinator=c, constraints=scope, evaluator=ev,
+            authorized_indexes=("news_test",), es_client=es,
+            semantic_assessor=lambda *_: semantic_calls.append(1) or True,
+            attest_whole_query_scope=None, job_scope_binding=binding,
+            query_for_snippet="甲軸乙軸丙軸",
+        )
+    assert index_calls == ["news_test"] * 3
+    assert semantic_calls == []  # No paid/provider callback after stale RBAC
+    assert len(es.searches) == 1
+    assert planners == []
+    assert c.history == ()
+    assert c.safe_progress()["ready_for_external_report_generation"] is False
