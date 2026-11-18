@@ -1,8 +1,10 @@
 """Owner-bound N-round progress read over real temporary SQLite snapshots."""
 from __future__ import annotations
 
+import gc
 import json
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -137,3 +139,58 @@ def test_missing_private_database_does_not_create_file_or_leak_path(tmp_path):
         _view(reports, sidecar)
     assert "PRIVATE" not in str(err.value)
     assert not db.exists()
+
+
+def test_quiescent_wal_mode_progress_does_not_create_wal_shm(tmp_path):
+    """Codex P2: mode=ro alone recreates WAL/SHM after last writer closes."""
+    reports, sidecar, _ = setup(tmp_path)
+    gc.collect()
+    db = reports.db_path
+    wal = Path(str(db) + "-wal")
+    shm = Path(str(db) + "-shm")
+    assert db.exists()
+    assert not wal.exists() and not shm.exists()
+    before = {p.name for p in db.parent.iterdir()}
+    view = _view(reports, sidecar)
+    assert view["state"] == "QUEUED"
+    assert not wal.exists() and not shm.exists()
+    assert {p.name for p in db.parent.iterdir()} == before
+    assert _view(reports, sidecar)["report_job_status"] == "running"
+    assert {p.name for p in db.parent.iterdir()} == before
+
+
+def test_live_wal_pair_is_read_as_normal_transaction_without_sidecar_creation(tmp_path):
+    reports, sidecar, job = setup(tmp_path)
+    db = reports.db_path
+    with sqlite3.connect(db) as writer:
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.execute("BEGIN IMMEDIATE")
+        writer.execute(
+            "UPDATE report_jobs SET updated_at=? WHERE job_id=?",
+            ("PRIVATE_IN_FLIGHT", J),
+        )
+        writer.commit()
+        wal = Path(str(db) + "-wal")
+        shm = Path(str(db) + "-shm")
+        assert wal.exists() and shm.exists()
+        expected = sorted(p.name for p in db.parent.iterdir())
+        view = _view(reports, sidecar)
+        assert view["state"] == "QUEUED"
+        assert sorted(p.name for p in db.parent.iterdir()) == expected
+
+
+def test_half_present_wal_sidecar_fails_closed_without_filling_missing_file(tmp_path):
+    reports, sidecar, _ = setup(tmp_path)
+    gc.collect()
+    db = reports.db_path
+    wal = Path(str(db) + "-wal")
+    shm = Path(str(db) + "-shm")
+    assert not wal.exists() and not shm.exists()
+    # A half-present pair is not enough to establish an immutable snapshot
+    # or a safe normal WAL reader. Never create the missing half.
+    wal.write_bytes(b"PRIVATE_INVALID_WAL")
+    with pytest.raises(NroundOwnedProgressError,
+                       match="nround_owned_progress_unverified"):
+        _view(reports, sidecar)
+    assert not shm.exists()
+    assert wal.read_bytes() == b"PRIVATE_INVALID_WAL"
