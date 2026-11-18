@@ -150,6 +150,41 @@ function bindHeaderNav() {
     });
   });
 }
+// Feature fragments contain ONLY an allowlisted tab name, never a token or data.
+// Cross-page navigation should land on the requested function, not just /editor.
+function applyEditorEntryRoute() {
+  if (!state.user) return;
+  const entry = window.location.hash;
+  const tabs = {
+    '#search': 'search',
+    '#stats': 'stats',
+    '#account': 'account',
+    '#account-audit': 'account-audit',
+    '#review': 'review',
+    '#new-document': 'new-document'
+  };
+  if (!Object.prototype.hasOwnProperty.call(tabs, entry)) return;
+  const tab = tabs[entry];
+  if (tab === 'review' && state.user.role !== 'superuser') {
+    switchMainTab('account');
+    setStatus('accountStatus', '帳號審核僅供具備系統管理權限的帳號使用。', 'error');
+    collapseMainNav();
+    return;
+  }
+  if (tab === 'new-document') {
+    switchMainTab('search');
+    newDoc();
+  } else if (tab === 'stats') {
+    switchMainTab('stats', {source: 'document', category: 'document', view: 'mine'});
+  } else {
+    switchMainTab(tab);
+  }
+  collapseMainNav();
+}
+window.addEventListener('hashchange', () => {
+  if (state.user) applyEditorEntryRoute();
+});
+
 async function bootAuthed() {
   const me = await api('/v1/auth/me'); state.user = me.user;
   const isSuperuser = state.user && state.user.role === 'superuser';
@@ -204,6 +239,7 @@ async function bootAuthed() {
   $('statsMineTabBtn').onclick = () => switchStatsView('mine');
   $('statsAllTabBtn').onclick = () => switchStatsView('all');
   switchStatsView('mine');
+  applyEditorEntryRoute();
 }
 
 function setupLoginInputGuards() {
