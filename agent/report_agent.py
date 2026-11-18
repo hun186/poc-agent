@@ -185,6 +185,51 @@ def ask_with_report(
     ev_all = payload.get("evidence_snippets") or []
     ev_strong = [e for e in ev_all if not e.get("weak_evidence")]
     ev_weak   = [e for e in ev_all if e.get("weak_evidence")]
+
+    # An exhausted search and a complete-but-empty search have different
+    # meanings. Both must avoid inventing a factual report without any
+    # validated Evidence; the incomplete-search case is handled above.
+    if not ev_all:
+        warning = (
+            "目前沒有取得可供核對的有效 Evidence 片段，"
+            "因此無法據此撰寫具有事實依據的事件分析或部署驗收結論。"
+            "這不等於證明事件不存在，也不代表已檢索所有可能來源；"
+            "請確認日期、主題與資料來源條件後重新查詢。"
+        )
+        usage = {
+            "schema": "sraf_report_evidence_usage_v1",
+            "selection_mode": ("source_diverse" if os.getenv("SRAF_REPORT_DIVERSE_EVIDENCE") == "1" else "strong_first"),
+            "llm_skipped_incomplete": False,
+            "llm_skipped_no_evidence": True,
+            **{key: 0 for key in (
+                "incoming", "strong", "weak", "picked", "compressed", "llm_input",
+                "incoming_identified_sources", "picked_identified_sources",
+                "llm_input_identified_sources", "max_for_llm", "prompt_chars",
+                "truncated_notes", "truncated_titles",
+            )},
+        }
+        if isinstance(payload.get("topic_adaptive_audit"), dict):
+            usage["topic_adaptive"] = payload["topic_adaptive_audit"]
+        emit_report_evidence_trace(
+            incoming=0, strong=0, weak=0, picked=0, compressed=0,
+            llm_input=0, max_for_llm=0, prompt_chars=0,
+        )
+        result = {
+            "question": original_question or "[未提供使用者提問]",
+            "q": refined_question or original_question,
+            "q0": original_question,
+            "answer": warning,
+            "citations": [],
+            "reasoning": "無有效證據片段，本次未呼叫報告生成模型。",
+            "used_uuids": [],
+            "refno_uuid_map": {},
+            "evidence_usage": usage,
+        }
+        if trace.get("data_agent"):
+            result["data_agent"] = trace["data_agent"]
+        log_total("[report] ask_with_report[TOTAL]", t_total_start,
+                  extra={"no_evidence": True, "report_llm_skipped": True})
+        return result
     
     # Keep existing behavior by default. Optional P1-d selection avoids one
     # source exhausting a large Evidence pool; only already-verified snippets

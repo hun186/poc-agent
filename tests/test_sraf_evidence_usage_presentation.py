@@ -19,6 +19,7 @@ def _usage():
         "schema": "sraf_report_evidence_usage_v1",
         "selection_mode": "source_diverse",
         "llm_skipped_incomplete": False,
+        "llm_skipped_no_evidence": False,
         "incoming": 5, "strong": 4, "weak": 1,
         "picked": 3, "compressed": 3, "llm_input": 2,
         "incoming_identified_sources": 3,
@@ -235,3 +236,23 @@ def test_topic_audit_after_32_slices_is_labeled_incomplete():
     text = str(topic_adaptive_rows(result))
     assert "檢索歷程不完整" in text
     assert "前 32 批" in text
+
+def test_zero_evidence_guard_is_visible_in_word_and_markdown_without_private_fields():
+    empty = {**_usage(), **{
+        "incoming": 0, "strong": 0, "weak": 0, "picked": 0,
+        "compressed": 0, "llm_input": 0,
+        "incoming_identified_sources": 0, "picked_identified_sources": 0,
+        "llm_input_identified_sources": 0, "max_for_llm": 0,
+        "prompt_chars": 0, "llm_skipped_no_evidence": True,
+        "private_question": "PRIVATE-ZERO-EVIDENCE-QUESTION",
+    }}
+    safe = safe_evidence_usage(empty)
+    assert safe["llm_skipped_no_evidence"] is True
+    assert "private_question" not in safe
+    assert "未執行（缺少可核對的有效 Evidence" in dict(evidence_usage_rows(empty))["報告 LLM"]
+    md, doc = _render_both(_output(empty))
+    assert "未執行（缺少可核對的有效 Evidence" in md
+    assert "未執行（缺少可核對的有效 Evidence" in "\n".join(doc)
+    assert "PRIVATE-ZERO-EVIDENCE-QUESTION" not in (md + "\n".join(doc))
+    assert safe_evidence_usage({**empty, "llm_skipped_no_evidence": "true"}) == {}
+    assert safe_evidence_usage({**empty, "incoming": 1, "strong": 1}) == {}
