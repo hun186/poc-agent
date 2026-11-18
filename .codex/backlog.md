@@ -223,3 +223,6 @@
 - [ ] Latest HEAD Hosted CI Python3.10/3.11 and independent Codex Review with zero unresolved findings; conditional merge only.
 - [ ] Preserve exact provenance: do NOT promote mixed one-text + one-metadata candidates merely because same Event matches; compare two-text-axis hypothetical candidates against the original question's validated required entities and issue constraints and block cross-Event source subject borrowing.
 - [ ] Finish true original question named-entity/negation/conjunction semantics for naturally phrased questions (not only `主題：...`), private read-only news_test Gaza/Sudan 5/10 versus 25/40 and Guterres Event-only A/B with precision/recall, p50/p95 and token-size/cost budget, then decide gating for conditional 3→2 and N-round reuse.
+
+## 2026-11-18 — per-witness authz candidate
+- [ ] Recheck exact-head CI and Codex review, resolve findings and merge only on safety gates. Per-witness read-through owner/branch policy is not a true production tenant ACL provider. In-flight HTTP/ES/LLM cannot be cancelled; later work needs trusted actual policy, timeout/cancellation and post-retrieval Job/Artifact CAS before Word.

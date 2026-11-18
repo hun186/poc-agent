@@ -263,10 +263,13 @@ def test_terminal_handoff_rechecks_policy_revoked_during_last_semantic(
     assert len(es.searches) == 2
     assert planners == [1]
     assert c.safe_progress()["ready_for_external_report_generation"] is False
-    # The terminal sidecar is immutable; it is NOT a Word or ACL grant.
+    # The stronger per-witness fence rejects during semantic processing
+    # BEFORE a SUFFICIENT terminal checkpoint can be written; only this
+    # owned lease transitions to FAILED (never Word/download authority).
     public = checkpoint.get_public(J)
-    assert public["state"] == "RETRIEVAL_STOPPED"
-    assert public["termination"] == "SUFFICIENT"
+    assert public["state"] == "FAILED"
+    assert public["termination"] == "CANCELLED"
+    assert public["completed_rounds"] == 1
     assert public["report_generation_authorized"] is False
     assert reports.get(J).status == "running"
     assert reports.get(J).docx_basename is None

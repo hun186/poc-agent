@@ -88,8 +88,9 @@ def test_two_round_complete_loop_rechecks_actual_sqlite_job_each_pit(tmp_path):
     assert len(result.rounds) == 2
     assert planned == [1]
     assert c.safe_progress()["termination"] == "SUFFICIENT"
-    assert index_calls == [("PRIVATE_OWNER", "running", "agent_execution", "news_test")] * 4
-    assert branch_calls == [("PRIVATE_OWNER", True, ("CANONICAL_MAIN",))] * 4
+    # Each of the 8 paid witnesses also rechecks owner/branch before+after.
+    assert index_calls == [("PRIVATE_OWNER", "running", "agent_execution", "news_test")] * (4 + 8 * 2)
+    assert branch_calls == [("PRIVATE_OWNER", True, ("CANONICAL_MAIN",))] * (4 + 8 * 2)
     audit = json.dumps(adapter.safe_audit(), ensure_ascii=False)
     for value in ("PRIVATE_", "news_test", "api_key", "甲軸", J):
         assert value not in audit
@@ -232,3 +233,96 @@ def test_post_pit_policy_revocation_denies_attestation(tmp_path):
     assert len(es.searches) == 1
     assert calls == [1, 1]
     assert c.history == ()
+
+
+@pytest.mark.parametrize("revocation", ["owner_index", "question_branch", "report_job"])
+def test_semantic_witness_rechecks_persisted_owner_and_scope_after_provider(
+    tmp_path, revocation,
+):
+    """Revocation during one paid LLM witness must suppress remaining calls."""
+    c, scope, ev, _, planners, _ = _setup()
+    store, claimed = claimed_job(tmp_path, scope)
+    permission = {"valid": True}
+    access = lambda _, index: (
+        index == "news_test"
+        and (permission["valid"] or revocation != "owner_index")
+    )
+    branches = lambda _, original, choices: (
+        original is scope and choices == ("CANONICAL_MAIN",)
+        and (permission["valid"] or revocation != "question_branch")
+    )
+    adapter, _, _ = scoped(
+        store, claimed, c, scope, access=access, coverage=branches,
+    )
+    binding = adapter.make_binding()
+    calls = []
+
+    def semantic(_target, _evidence):
+        calls.append("paid")
+        if revocation == "report_job":
+            store.fail(J, "Revoked", "PRIVATE_SQLITE_CREDENTIAL")
+        else:
+            permission["valid"] = False
+        return True
+
+    es = FakeES(_verified_page("A"))
+    with pytest.raises(TrustedNroundExecutionError,
+                       match="trusted_nround_execution_failed") as exc:
+        run_trusted_nround(
+            coordinator=c, constraints=scope, evaluator=ev,
+            authorized_indexes=("news_test",),
+            es_client=es, semantic_assessor=semantic,
+            attest_whole_query_scope=None, job_scope_binding=binding,
+            query_for_snippet="甲軸乙軸丙軸",
+        )
+    assert str(exc.value) == "trusted_nround_execution_failed"
+    assert calls == ["paid"]  # No second / third / fourth paid witness
+    assert len(es.searches) == 1
+    assert planners == []
+    assert c.history == ()
+    assert c.safe_progress()["ready_for_external_report_generation"] is False
+    assert c.safe_progress()["phase"] == "TERMINAL"
+    assert "PRIVATE_" not in str(exc.value)
+
+
+@pytest.mark.parametrize("interruption", ["cancel", "generation_reserve"])
+def test_blocking_authorization_cannot_start_semantic_after_late_expiry(
+    tmp_path, interruption,
+):
+    """Codex P2: an RBAC query may outlive the original safe budget snapshot."""
+    c, scope, ev, _, planners, clock = _setup()
+    store, claimed = claimed_job(tmp_path, scope)
+    index_calls = []
+
+    def slow_but_authorized(_job, index):
+        index_calls.append(index)
+        # PIT preflight is call 1, PIT attestation is call 2; the third is
+        # the mandatory recheck immediately before first semantic witness.
+        if len(index_calls) == 3:
+            if interruption == "cancel":
+                assert c.cancel()
+            else:
+                clock[0] = 1801.0  # 2400 total, 600 reserved: only 599 remain
+        return True
+
+    adapter, _, _ = scoped(
+        store, claimed, c, scope, access=slow_but_authorized,
+    )
+    binding = adapter.make_binding()
+    es = FakeES(_verified_page("A"))
+    semantic_calls = []
+    with pytest.raises(TrustedNroundExecutionError,
+                       match="trusted_nround_execution_failed"):
+        run_trusted_nround(
+            coordinator=c, constraints=scope, evaluator=ev,
+            authorized_indexes=("news_test",), es_client=es,
+            semantic_assessor=lambda *_: semantic_calls.append(1) or True,
+            attest_whole_query_scope=None, job_scope_binding=binding,
+            query_for_snippet="甲軸乙軸丙軸",
+        )
+    assert index_calls == ["news_test"] * 3
+    assert semantic_calls == []  # No paid/provider callback after stale RBAC
+    assert len(es.searches) == 1
+    assert planners == []
+    assert c.history == ()
+    assert c.safe_progress()["ready_for_external_report_generation"] is False

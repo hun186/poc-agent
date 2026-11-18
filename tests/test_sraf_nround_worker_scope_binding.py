@@ -85,10 +85,11 @@ def test_running_report_job_owner_and_single_query_scope_are_checked_each_round(
     assert len(result.rounds) == 2
     assert planner_calls == [1]
     assert c.safe_progress()["termination"] == "SUFFICIENT"
-    assert index_checks == [("api_key", "news_test")] * 4
+    # 2 rounds: 4 PIT pre/post checks + 8 semantic witnesses x 2 checks.
+    assert index_checks == [("api_key", "news_test")] * (4 + 8 * 2)
     assert branch_checks == [
         ("rpt_PRIVATE_JOB", True, ("CANONICAL_MAIN",))
-    ] * 4
+    ] * (4 + 8 * 2)
     audit = json.dumps(binding.safe_audit(), ensure_ascii=False)
     for value in ("PRIVATE_", "news_test", "甲軸", "rpt_PRIVATE_JOB"):
         assert value not in audit

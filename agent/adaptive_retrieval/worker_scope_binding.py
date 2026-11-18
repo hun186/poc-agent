@@ -69,6 +69,8 @@ class WorkerScopeBinding:
         self._binding_token = object()
         self._attested_rounds: set[int] = set()
         self._preflight_plans: dict[int, FrozenSingleQueryPlan] = {}
+        # Retain the exact attested PIT plan for each paid semantic phase.
+        self._semantic_plans: dict[int, FrozenSingleQueryPlan] = {}
 
     def _check_live_policy(self) -> None:
         try:
@@ -142,8 +144,28 @@ class WorkerScopeBinding:
                 raise WorkerScopeBindingError("job_query_receipt_unverified")
             self._check_live_policy()
             self._attested_rounds.add(plan.round_number)
+            self._semantic_plans[plan.round_number] = plan
             del self._preflight_plans[plan.round_number]
             return True
+
+    def recheck_semantic_authorization(self, plan: FrozenSingleQueryPlan) -> None:
+        """Revalidate current owner/index/branch scope around each paid witness.
+
+        This is NOT an independent provider or RBAC implementation. It uses
+        the already injected, trusted policy callbacks; the persisted-job
+        bridge re-reads real SQLite on every invocation. Reject unauthenticated
+        or stale plans before issuing another semantic LLM call.
+        """
+        with self._lock:
+            if (type(plan) is not FrozenSingleQueryPlan
+                    or plan._owner_binding_token is not self._binding_token
+                    or plan.constraints is not self._constraints
+                    or plan.coordinator is not self._coordinator
+                    or self._semantic_plans.get(plan.round_number) is not plan
+                    or self._coordinator.safe_progress()["phase"] != "SEARCHING"
+                    or self._coordinator.safe_progress()["round"] != plan.round_number):
+                raise WorkerScopeBindingError("semantic_authorization_not_current")
+            self._check_live_policy()
 
     def safe_audit(self) -> dict[str, int | str | bool]:
         with self._lock:
