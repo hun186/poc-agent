@@ -27,7 +27,7 @@ def test_legacy_and_report_pages_use_shared_menu_source():
     for filename in SHARED_PAGES:
         html = (STATIC / filename).read_text(encoding="utf-8")
         assert "global-tree-nav" in html, filename
-        assert "/static/excel_global_nav.js?v=20261118-shared" in html, filename
+        assert "/static/excel_global_nav.js?v=20261118-deep-links" in html, filename
         assert "<details><summary>ES 資料庫</summary>" not in html, filename
         assert "onclick=\"location.href=" not in html, filename
     editor = (STATIC / "editor.html").read_text(encoding="utf-8")
