@@ -9,7 +9,7 @@ const source = fs.readFileSync(path.join(
   __dirname, '..', 'sra_api', 'static', 'report_jobs_auth.js'
 ), 'utf8');
 
-function harness(initialToken = '', initialUser = null) {
+function harness(initialToken = '', initialUser = null, pageLocation = {protocol: 'https:', hostname: 'sraf.test'}) {
   const handlers = {};
   const calls = [];
   const expected = initialUser ? [{
@@ -20,7 +20,8 @@ function harness(initialToken = '', initialUser = null) {
   let ownerChanges = 0;
   let historyLoads = 0;
   const ids = ['authToken', 'reportAuthUsername', 'reportAuthPassword',
-    'reportAuthUser', 'reportAuthStatus', 'reportLoginBtn', 'reportLogoutBtn', 'listJobsBtn'];
+    'reportAuthUser', 'reportAuthStatus', 'reportLoginBtn', 'reportLogoutBtn',
+    'listJobsBtn', 'reportHttpWarning', 'reportHttpConsent'];
   const controls = Object.fromEntries(ids.map(id => [id, {
     value: '', textContent: '', hidden: false, disabled: false, events: {},
     addEventListener(name, fn) { this.events[name] = fn; },
@@ -28,6 +29,7 @@ function harness(initialToken = '', initialUser = null) {
     click() { if (id === 'listJobsBtn') historyLoads++; else return this.events.click?.(); }
   }]));
   const window = {
+    location: pageLocation,
     localStorage: {
       getItem(k) { return store.get(k) ?? null; },
       setItem(k, v) { store.set(k, v); },
@@ -129,5 +131,67 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   assert.equal(c.historyLoads, 0);
   assert.doesNotMatch(c.controls.reportAuthStatus.textContent, /PRIVATE_SERVER_MESSAGE/);
   assert.equal(c.controls.reportAuthPassword.value, '');
+  // Reading the old shared token must not win a cross-tab storage update
+  // merely because the browser has not yet delivered the storage event.
+  const stale = harness();
+  stale.store.set('sra_editor_token', 'PRIVATE_STALE');
+  let releaseMe;
+  stale.expected.push({
+    url: '/v1/auth/me',
+    response: new Promise(resolve => { releaseMe = resolve; })
+  });
+  stale.handlers.storage({key: 'sra_editor_token', newValue: 'PRIVATE_STALE'});
+  stale.store.set('sra_editor_token', 'PRIVATE_NEWER');
+  releaseMe({status: 200, ok: true, json: async () => ({user: {username: 'old'}})});
+  await tick();
+  assert.equal(stale.controls.authToken.value, '');
+  assert.equal(stale.historyLoads, 0);
+  assert.equal(stale.store.get('sra_editor_token'), 'PRIVATE_NEWER');
+
+  // A delayed login cannot overwrite a newer tab's successful login.
+  const late = harness();
+  late.controls.reportAuthUsername.value = 'aiuser';
+  late.controls.reportAuthPassword.value = 'SECRET';
+  let releaseLogin;
+  late.expected.push({
+    url: '/v1/auth/login',
+    response: new Promise(resolve => { releaseLogin = resolve; })
+  });
+  const pendingLogin = late.controls.reportLoginBtn.events.click();
+  late.store.set('sra_editor_token', 'PRIVATE_OTHER_TAB');
+  releaseLogin({status: 200, ok: true,
+    json: async () => ({access_token: 'PRIVATE_OLD_LOGIN', user: {username:'aiuser'}})});
+  await pendingLogin;
+  assert.equal(late.controls.authToken.value, '');
+  assert.equal(late.store.get('sra_editor_token'), 'PRIVATE_OTHER_TAB');
+  assert.equal(late.historyLoads, 0);
+
+  // Browser BFCache return restores the memory-only credential after pagehide.
+  const cached = harness('PRIVATE_CACHED', 'owner');
+  await tick();
+  cached.handlers.pagehide();
+  cached.controls.authToken.value = ''; // existing report_jobs_ui.js pagehide
+  cached.response('/v1/auth/me', 200, {user: {username: 'owner'}});
+  cached.handlers.pageshow({persisted: true});
+  await tick();
+  assert.equal(cached.controls.authToken.value, 'PRIVATE_CACHED');
+  assert.equal(cached.historyLoads, 2);
+
+  // Non-loopback plaintext HTTP requires visible acknowledgement BEFORE login.
+  const unsafe = harness('', null, {protocol: 'http:', hostname: '192.168.0.228'});
+  assert.equal(unsafe.controls.reportHttpWarning.hidden, false);
+  unsafe.controls.reportAuthUsername.value = 'aiuser';
+  unsafe.controls.reportAuthPassword.value = 'SECRET';
+  await unsafe.controls.reportLoginBtn.events.click();
+  assert.equal(unsafe.calls.length, 0, 'must not send password before HTTP warning consent');
+  unsafe.controls.reportHttpConsent.checked = true;
+  unsafe.response('/v1/auth/login', 200,
+    {access_token:'PRIVATE_HTTP_ACK',user:{username:'aiuser'}});
+  await unsafe.controls.reportLoginBtn.events.click();
+  assert.equal(unsafe.calls.length, 1);
+  assert.equal(unsafe.historyLoads, 1);
+  const loopback = harness('', null, {protocol: 'http:', hostname:'127.0.0.1'});
+  assert.equal(loopback.controls.reportHttpWarning.hidden, true);
+
   console.log('Report Job SRAF shared account login: PASS');
 })().catch(err => { console.error(err); process.exitCode = 1; });
