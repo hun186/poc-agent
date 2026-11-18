@@ -388,6 +388,62 @@ class NroundCheckpointStore:
         )
         return True
 
+    def verify_terminal_for_running_report_job(
+        self, report_store: ReportJobStore, claimed_job: ReportJob, *,
+        expected_revision: int, completed_rounds: int,
+    ) -> bool:
+        """Atomically validate a terminal retrieval candidate; NO Word grant.
+
+        A future reporting Worker may call this immediately before a separate
+        owner/Artifact authorization CAS. The canonical ReportJob and
+        sidecar must be in the SAME database and transaction. This narrowly
+        allows only a fully verified SUFFICIENT terminal retrieval. An
+        INCOMPLETE/budget-limited report needs a separately reviewed policy.
+        This check is read-only and NOT sufficient to create/download DOCX.
+        """
+        try:
+            if (not self._same_report_job_database(report_store)
+                    or type(claimed_job) is not ReportJob
+                    or not self._valid_id(claimed_job.job_id)
+                    or type(expected_revision) is not int
+                    or expected_revision < 2
+                    or type(completed_rounds) is not int
+                    or not 1 <= completed_rounds <= 8):
+                return False
+
+            def op(con):
+                if not self._running_report_job_matches(con, claimed_job):
+                    return False
+                # Do not accept a main Job that already has an artifact even
+                # if its mutable status was incorrectly left as running.
+                artifact = con.execute(
+                    "SELECT turn_id,docx_basename FROM report_jobs "
+                    "WHERE job_id=?", (claimed_job.job_id,),
+                ).fetchone()
+                if (artifact is None or artifact["turn_id"] is not None
+                        or artifact["docx_basename"] is not None):
+                    return False
+                row = con.execute(
+                    f"""SELECT state,phase,round_number,completed_rounds,
+                               termination,lease_hash,revision
+                        FROM {_TABLE} WHERE job_id=?""",
+                    (claimed_job.job_id,),
+                ).fetchone()
+                return (row is not None
+                        and row["state"] == "RETRIEVAL_STOPPED"
+                        and row["phase"] == "TERMINAL"
+                        and row["round_number"] == completed_rounds
+                        and row["completed_rounds"] == completed_rounds
+                        and row["termination"] == "SUFFICIENT"
+                        and row["lease_hash"] is None
+                        and row["revision"] == expected_revision)
+
+            # BEGIN IMMEDIATE prevents a main-Job cancellation/recovery or
+            # competing sidecar write from interleaving these two table reads.
+            return self._write(op)
+        except Exception:
+            raise ValueError("nround_terminal_handoff_unverified") from None
+
     def fail_owned_lease(self, job_id: str, lease_token: str) -> bool:
         """Fail ONLY this running sidecar with its actual lease, no global blast.
 
