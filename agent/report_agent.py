@@ -16,6 +16,8 @@ from agent.utils.evidence_pack import guess_report_need_fields
 from agent.utils.report_evidence_trace import emit_report_evidence_trace, count_identified_sources
 from agent.utils.report_evidence_selection import select_source_diverse_evidence
 from agent.utils.report_evidence_review import review_report_evidence
+from agent.utils.report_citation_audit import audit_report_citation_labels, citation_integrity_notice
+from agent.utils.report_evidence_information import assess_report_evidence_information, evidence_information_notice
 from agent.utils.profiler import log_duration, log_total
 from agent.utils.markdown_tables import sanitize_markdown_tables, replace_table_cell_br
 from agent.refiners.query_refiner import refine_question_for_data_agent
@@ -509,6 +511,28 @@ def ask_with_report(
             stage="report",
         )
     t1 = time.perf_counter()
+    # Post-generation checks use exactly the ref_no/note projection actually
+    # sent to this report LLM. They do not alter retrieval or add model calls.
+    # Source-number matching is only syntactic, NOT factual verification.
+    citation_labels = audit_report_citation_labels(
+        report_text,
+        [row["ref_no"] for row in ev_for_llm
+         if isinstance(row, dict) and type(row.get("ref_no")) is int],
+    )
+    evidence_information = assess_report_evidence_information(ev_for_llm)
+    label_notice = citation_integrity_notice(citation_labels)
+    info_notice = evidence_information_notice(evidence_information)
+    # 'no_labels' is still visible in count-only Word/Markdown metadata;
+    # absence of explicit labels does not prove the LLM fabricated facts.
+    if citation_labels["status"] == "no_labels":
+        label_notice = None
+    notices = [notice for notice in (label_notice, info_notice) if notice]
+    if notices:
+        report_text = "\n\n".join(notices + [
+            report_text if isinstance(report_text, str) else str(report_text)
+        ])
+    evidence_usage["citation_labels"] = citation_labels
+    evidence_usage["evidence_information"] = evidence_information
     if search_quality:
         # LLM models can ignore search_status; ensure answer/DOCX always
         # prominently qualifies partial data as non-exhaustive.
@@ -535,10 +559,6 @@ def ask_with_report(
     llm_root = trace.setdefault("llm", {})
     report_logs: list[Dict[str, Any]] = llm_root.setdefault("report", [])
     #print("REPORT_SYSTEM_PROMPT",REPORT_SYSTEM_PROMPT)
-    # Do not retain original questions, Evidence, LLM input JSON or output
-    # excerpts in execution diagnostics. Word/Markdown keep only safe
-    # stage/model/elapsed metadata; the actual answer remains in its normal
-    # authorized report result, not copied into the trace.
     report_logs.append({
         "system": "REPORT_SYSTEM_PROMPT",
         "input_chars": len(user_prompt),
