@@ -142,3 +142,17 @@ def test_complete_report_keeps_old_answer_contract(monkeypatch):
     assert "search_status" not in calls[0]
     assert result["answer"] == "初步整理"
     assert "result_incomplete" not in result
+
+def test_complete_zero_evidence_never_calls_report_llm_or_asserts_no_events(monkeypatch):
+    payload = _limited_payload()
+    payload["raw_search_result"]["query_meta"] = {}
+    mod, calls = _stub_report_dependencies(monkeypatch, payload)
+    result = mod.ask_with_report("2025年救援事件")
+    assert calls == []
+    assert "沒有取得可供核對的有效 Evidence" in result["answer"]
+    assert "不等於證明事件不存在" in result["answer"]
+    assert "無法據此撰寫" in result["answer"]
+    assert result["citations"] == []
+    assert result["evidence_usage"]["llm_skipped_no_evidence"] is True
+    assert result["evidence_usage"]["llm_input"] == 0
+    assert "result_incomplete" not in result
