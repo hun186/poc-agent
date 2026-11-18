@@ -273,3 +273,81 @@ def test_terminal_handoff_rechecks_policy_revoked_during_last_semantic(
     assert public["report_generation_authorized"] is False
     assert reports.get(J).status == "running"
     assert reports.get(J).docx_basename is None
+
+
+def test_sufficient_receipt_revalidates_exact_sqlite_terminal_revision(tmp_path, monkeypatch):
+    c, scope, ev, _, reports, checkpoint, claimed = _case(tmp_path)
+    original = checkpoint.verify_terminal_for_running_report_job
+    inspected = []
+
+    def observing(report_store, job, *, expected_revision, completed_rounds):
+        inspected.append((expected_revision, completed_rounds, job.job_id))
+        return original(
+            report_store, job, expected_revision=expected_revision,
+            completed_rounds=completed_rounds,
+        )
+
+    monkeypatch.setattr(checkpoint, "verify_terminal_for_running_report_job",
+                        observing)
+    result = _run(
+        c, scope, ev, reports, checkpoint, claimed,
+        FakeES(_verified_page("A"), _verified_page("B")),
+    )
+    assert len(inspected) == 1
+    assert inspected[0] == (
+        result.safe_audit()["checkpoint_revision"], 2, J,
+    )
+    assert checkpoint.get_public(J)["state"] == "RETRIEVAL_STOPPED"
+    assert reports.get(J).docx_basename is None
+    assert result.safe_audit()["word_download_authorized"] is False
+
+
+def test_revoked_report_job_inside_last_atomic_receipt_never_hands_off(
+    tmp_path, monkeypatch,
+):
+    c, scope, ev, _, reports, checkpoint, claimed = _case(tmp_path)
+    original = checkpoint.verify_terminal_for_running_report_job
+
+    def revoke_during_terminal_handoff(*args, **kwargs):
+        reports.fail(J, "PRIVATE_REVOKED", "PRIVATE_REASON")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(checkpoint, "verify_terminal_for_running_report_job",
+                        revoke_during_terminal_handoff)
+    with pytest.raises(ClaimedNroundJobExecutionError) as error:
+        _run(
+            c, scope, ev, reports, checkpoint, claimed,
+            FakeES(_verified_page("A"), _verified_page("B")),
+        )
+    assert str(error.value) == "claimed_nround_job_execution_failed"
+    assert reports.get(J).status == "failed"
+    assert reports.get(J).docx_basename is None
+    assert checkpoint.get_public(J)["state"] == "RETRIEVAL_STOPPED"
+    assert checkpoint.get_public(J)["report_generation_authorized"] is False
+    assert c.safe_progress()["ready_for_external_report_generation"] is False
+
+
+def test_atomic_terminal_receipt_denied_after_revision_or_storage_failure(
+    tmp_path, monkeypatch,
+):
+    c, scope, ev, _, reports, checkpoint, claimed = _case(tmp_path)
+    calls = []
+
+    def refuse(report_store, job, *, expected_revision, completed_rounds):
+        calls.append((expected_revision, completed_rounds))
+        raise ValueError("PRIVATE_SQLITE_DRIVER_FAILED")
+
+    monkeypatch.setattr(checkpoint, "verify_terminal_for_running_report_job",
+                        refuse)
+    with pytest.raises(ClaimedNroundJobExecutionError) as error:
+        _run(
+            c, scope, ev, reports, checkpoint, claimed,
+            FakeES(_verified_page("A"), _verified_page("B")),
+        )
+    assert len(calls) == 1
+    assert str(error.value) == "claimed_nround_job_execution_failed"
+    assert "PRIVATE" not in str(error.value)
+    assert checkpoint.get_public(J)["report_generation_authorized"] is False
+    assert reports.get(J).status == "running"
+    assert reports.get(J).docx_basename is None
+    assert c.safe_progress()["ready_for_external_report_generation"] is False
