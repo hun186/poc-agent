@@ -7,6 +7,7 @@ validate factual claims or semantic support and never edits evidence or IDs.
 from __future__ import annotations
 
 import re
+from itertools import islice
 from typing import Any, Iterable
 
 AUDIT_SCHEMA = "sraf_report_citation_labels_v1"
@@ -38,7 +39,8 @@ def audit_report_citation_labels(
     if not isinstance(report, str) or len(report) > MAX_TEXT_CHARS:
         return result
     try:
-        candidates = list(allowed_refs)
+        # Never materialize an unbounded or malicious source iterable.
+        candidates = list(islice(iter(allowed_refs), MAX_REFS + 1))
     except (TypeError, ValueError):
         return result
     if len(candidates) > MAX_REFS or any(
