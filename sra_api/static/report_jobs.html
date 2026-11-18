@@ -8,6 +8,7 @@
   <title>SRAF 報告任務進度</title>
   <link rel="stylesheet" href="/static/report_jobs_ui.css">
   <script src="/static/report_jobs_ui.js" defer></script>
+  <script src="/static/report_jobs_auth.js" defer></script>
 </head>
 <body>
   <main class="wrap">
@@ -16,10 +17,18 @@
       <a href="/editor" class="back-link">返回管理頁</a>
     </header>
     <section class="panel" aria-labelledby="authTitle">
-      <h2 id="authTitle">身分驗證</h2>
-      <label for="authToken">Bearer Token / 授權服務金鑰</label>
-      <input id="authToken" type="password" autocomplete="off" spellcheck="false" placeholder="輸入具備 Report Job 權限的 Token" aria-describedby="authHint">
-      <p class="hint" id="authHint">僅在此分頁記憶體內使用，不保存於 localStorage、Cookie 或網址。查詢需要 report:job:read；建立及下載另需對應權限。請使用可信任的 HTTPS 或本機連線。</p>
+      <h2 id="authTitle">SRAF 統一帳號登入</h2>
+      <p class="hint">沿用管理頁的 SRAF 帳號與登入狀態。從首頁（9002）進入時不必另外貼上 Token；直接開啟本頁也可登入。</p>
+      <div class="actions">
+        <div class="grow"><label for="reportAuthUsername">SRAF 帳號</label><input id="reportAuthUsername" autocomplete="username" maxlength="128" spellcheck="false"></div>
+        <div class="grow"><label for="reportAuthPassword">密碼</label><input id="reportAuthPassword" type="password" autocomplete="current-password"></div>
+        <button id="reportLoginBtn" type="button">登入</button>
+        <button id="reportLogoutBtn" type="button" class="secondary" hidden>登出</button>
+      </div>
+      <p class="hint" id="reportAuthUser"></p>
+      <p class="hint" id="reportAuthStatus" role="status" aria-live="polite">正在確認登入狀態…</p>
+      <input id="authToken" type="password" hidden aria-hidden="true" tabindex="-1" autocomplete="off">
+      <p class="hint" id="authHint">權限仍由原本 SRAF API 驗證，只顯示登入者自己的報告。共用管理頁的既有瀏覽器登入狀態；不使用新的 Cookie 或第二套帳號資料庫。請使用可信任的 HTTPS 或本機連線。</p>
     </section>
     <section class="panel" aria-labelledby="createTitle">
       <h2 id="createTitle">建立新報告</h2>
@@ -29,7 +38,7 @@
       <p class="hint">每次建立使用隨機 Idempotency-Key。網路或伺服器回應不明時，僅能由你明確點選「以同一識別碼重試」，使用相同報告內容和 Key；不會在背景自動重送。重試資料只暫存於分頁記憶體，離開頁面或更換 Token 後會清除。若放棄重試，原請求仍可能已建立報告；重新建立前請先核對。</p>
     </section>
     <section class="panel" aria-labelledby="historyTitle">
-      <h2 id="historyTitle">我的報告任務（僅目前 Token 所屬帳號）</h2>
+      <h2 id="historyTitle">我的報告任務（僅目前登入帳號）</h2>
       <p class="hint">只會從既有授權資料庫取得自己的任務摘要，不會列出其他帳號的工作或讀取報告 Prompt。請按下方按鈕明確讀取，最多每頁 20 筆。</p>
       <div class="actions">
         <label for="jobStatusFilter">狀態篩選</label>
@@ -56,7 +65,7 @@
       <h2 id="watchTitle">查看既有任務</h2>
       <label for="jobId">Job ID</label>
       <div class="actions"><input id="jobId" maxlength="128" spellcheck="false" autocomplete="off" placeholder="輸入已建立的 Job ID"><button type="button" id="watchBtn">查詢並追蹤</button><button type="button" class="secondary" id="stopBtn" disabled>停止更新</button></div>
-      <p id="message" class="message" role="status" aria-live="polite">輸入 Token 與 Job ID，或先建立一份報告。</p>
+      <p id="message" class="message" role="status" aria-live="polite">登入後從本人報告清單選取任務，或輸入既有 Job ID。</p>
       <div class="progress" id="progressCard" hidden aria-live="polite">
         <div class="progress-top"><span class="eyebrow">最近一次成功讀取的狀態</span><span id="lastChecked"></span></div>
         <h3 id="phaseTitle">尚未取得階段資訊</h3>
