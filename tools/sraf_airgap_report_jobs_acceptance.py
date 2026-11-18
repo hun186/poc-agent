@@ -441,6 +441,8 @@ def _live(port: int, proof, args, rows: list, result_fd: int):
     _secure_write(filename, word, result_fd)
     rows.append(_row("report_docx", "PASS", "docx_integrity_checked",
                      size_bytes=len(word), sha256=hashlib.sha256(word).hexdigest()))
+    # Content provenance is not established by successful OOXML verification.
+    rows.append(_row("report_content", "SKIP", "semantic_grounding_not_verified"))
     return 0
 
 
@@ -471,7 +473,8 @@ def main(argv=None):
               "live_report_requested": args.live_report, "checks": rows,
               "full_airgap_acceptance": "NOT_TESTED",
               "browser_visual_acceptance": "NOT_TESTED",
-              "es_sql_provider_provenance": "NOT_TESTED"}
+              "es_sql_provider_provenance": "NOT_TESTED",
+              "report_content_grounding": "NOT_TESTED"}
     code = 2
     result_fd = None
     try:
