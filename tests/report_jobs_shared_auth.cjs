@@ -9,10 +9,13 @@ const source = fs.readFileSync(path.join(
   __dirname, '..', 'sra_api', 'static', 'report_jobs_auth.js'
 ), 'utf8');
 
-function harness(initialToken = '') {
+function harness(initialToken = '', initialUser = null) {
   const handlers = {};
   const calls = [];
-  const expected = [];
+  const expected = initialUser ? [{
+    url: '/v1/auth/me',
+    response: {status: 200, ok: true, json: async () => ({user: {username: initialUser}})}
+  }] : [];
   const store = new Map(initialToken ? [['sra_editor_token', initialToken]] : []);
   let ownerChanges = 0;
   let historyLoads = 0;
@@ -101,13 +104,7 @@ const tick = () => new Promise(resolve => setImmediate(resolve));
   assert.equal(a.calls.at(-1).opts.headers.Authorization, 'Bearer PRIVATE_SECOND_OWNER');
 
   // An already signed-in Editor user enters via port 9002/report-jobs without login.
-  const b = (() => {
-    const c = harness('PRIVATE_EDITOR_TOKEN');
-    // Initial auth/me may be requested before the expectation is registered:
-    // isolate it in a deferred request by checking microtask execution.
-    return c;
-  })();
-  b.response('/v1/auth/me', 200, {user: {username: 'editor'}});
+  const b = harness('PRIVATE_EDITOR_TOKEN', 'editor');
   await tick();
   assert.equal(b.calls[0].url, '/v1/auth/me');
   assert.equal(b.controls.authToken.value, 'PRIVATE_EDITOR_TOKEN');
