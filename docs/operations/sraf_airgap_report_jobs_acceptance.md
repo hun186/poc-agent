@@ -74,3 +74,11 @@
 - Report Job UI 只透過既有 owner-scoped `GET /v1/report/jobs` 讀取自己的紀錄；登入成功後自動查詢最近 20 筆。新增報告仍須手動按「建立並追蹤」並使用 Idempotency-Key；此變更**不會自動 POST 新 Job**、不影響 CLI 或 service-key 存取 API。原有 LLM、SQL、ES、Worker、DOCX 流程未變更。
 - 未加密 LAN HTTP（非本機）登入頁會顯示明確的密碼及 Token 攔截警告，使用者須先勾選風險確認才准傳送登入密碼；建議仍透過 HTTPS/TLS 或本機連線操作。既有 Editor Token 的讀取亦會在同頁顯示警示。
 - 此改進讓 2026-11-18 的 `--live-report` 已建立 Job 能以登入後「本人報告任務」查詢，不須再次 POST；但**未修復**原 CLI 驗收 `listener_identity_changed`，也未替既有任務自動補上完成的 DOCX E2E 證據。實機部署需 Windows 來源端更新打包，再到 Linux 解壓；勿在正式 Linux 執行 Git fetch，不能只憑 CI PASS 當作實機 PASS。
+
+## 2026-11-18｜避免合成驗收報告被誤認為正式驗收（Issue #477 部分修正）
+
+2026-11-18 Linux 的 `--live-report` 確認 Job 完成與 Word 可下載，但 LLM 曾將 SRAF 誤解為半導體光罩的 Sub-Resolution Assist Feature，並產生沒有測試依據的 127 項案例、98.5% 通過率及量產結論。因此改進 **CLI 自建驗收 Job 的固定 PROMPT**：明確說明此 SRAF 是本專案的檢索／Agent／Word 核心報告系統，標明「合成測試樣本，非實機驗收結果」，要求未給證據的 API／ES／SQL／LLM 等項目只寫「尚未驗證」，禁止虛構數字及上線結論。
+
+此調整不更動使用者自行建立之 Report Job Prompt、Agent 任務路由或真正證據檢索機制。它降低 CLI 樣本的歧義，但**沒有辦法在 LLM 非確定性輸出下保證模型永不產生錯誤內容**。因此就算 Word 結構檢查 PASS，CLI 證據仍明確新增 `report_content=SKIP reason=semantic_grounding_not_verified`，且頂層 `report_content_grounding=NOT_TESTED`；不得宣稱內容正確、事實已核實或正式部署驗收通過。
+
+Issue #477 的真正報告內容依據檢查、與 LLM 產出來源對照及定量可信度驗證，仍須另案開發與實機測試，不因本項固定測試 Prompt 改良而關閉。
