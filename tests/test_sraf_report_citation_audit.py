@@ -70,3 +70,13 @@ def test_long_source_lists_cannot_be_reported_as_valid_prefix():
     too_long = audit_report_citation_labels("來源1、1234567", [1])
     assert too_long["status"] == "limit_exceeded"
     assert citation_integrity_notice(too_long)
+
+def test_tab_after_separator_and_non_numeric_suffix_are_safe():
+    audit = audit_report_citation_labels("來源1、\t77", [1])
+    assert audit["status"] == "unmapped"
+    assert audit["unmapped_labels"] == 1
+    # The pattern must not partially consume 't2' as an integer.
+    text = "來源1、t2"
+    audit = audit_report_citation_labels(text, [1])
+    assert audit["status"] in ("labels_match", "limit_exceeded")
+
