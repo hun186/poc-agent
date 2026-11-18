@@ -74,3 +74,18 @@
 - Report Job UI 只透過既有 owner-scoped `GET /v1/report/jobs` 讀取自己的紀錄；登入成功後自動查詢最近 20 筆。新增報告仍須手動按「建立並追蹤」並使用 Idempotency-Key；此變更**不會自動 POST 新 Job**、不影響 CLI 或 service-key 存取 API。原有 LLM、SQL、ES、Worker、DOCX 流程未變更。
 - 未加密 LAN HTTP（非本機）登入頁會顯示明確的密碼及 Token 攔截警告，使用者須先勾選風險確認才准傳送登入密碼；建議仍透過 HTTPS/TLS 或本機連線操作。既有 Editor Token 的讀取亦會在同頁顯示警示。
 - 此改進讓 2026-11-18 的 `--live-report` 已建立 Job 能以登入後「本人報告任務」查詢，不須再次 POST；但**未修復**原 CLI 驗收 `listener_identity_changed`，也未替既有任務自動補上完成的 DOCX E2E 證據。實機部署需 Windows 來源端更新打包，再到 Linux 解壓；勿在正式 Linux 執行 Git fetch，不能只憑 CI PASS 當作實機 PASS。
+
+## 2026-11-18｜已建立 Job 的安全續查（不再 POST）
+
+若 `--live-report` 在 `report_create=PASS` 後遇到 `listener_identity_changed`、查詢逾時、終端機中斷或使用者無法即時追蹤，**不要重跑 `--live-report`**，因為那會另建一筆新 Job。請從既有 SRAF `/report-jobs` 自己的歷史紀錄取得 Job ID，在服務恢復且有操作權限後，使用：
+
+```bash
+cd /mntCZJ/TopicClassification/poc-agent
+python tools/sraf_airgap_report_jobs_acceptance.py \
+  --resume-job rpt_請填入既有的32位小寫hexID \
+  --output-dir "$HOME/sraf-acceptance-results"
+```
+
+`--resume-job` 接受且僅接受 `rpt_` + 32 個小寫十六進位字元；與 `--live-report`、`--no-network` 互斥。採用與原始 Live 相同的 API Listener 嚴格身分檢查、現有帳號密碼互動登入（或受控 `--token-env`）、本人權限 GET 及 20 分鐘有界查詢流程。**只會 GET 舊 Job 及 completed 時下載既有 Word，絕不 POST 新 Report Job**；即使原 Job 已完成，也不會重跑 LLM。沒有權限的 Job 回傳 404，不允許藉 resume 讀取他人內容；報告 JSON/終端摘要不記錄完整 Job ID、Token、Prompt 或 HTTP 原始回應。登入本身仍會發送標準的 `POST /v1/auth/login`；「絕不 POST」只指建立 Report Job。
+
+前次驗收工具在 Job 建立後出現的 `listener_identity_changed` 尚未排除真實 API 重啟或驗證掃描競爭；此續查模式**沒有放寬 Listener 安全檢查，也不代表修復該錯誤**。失敗時不再盲目建立另一筆任務；待身分可確實核對再續查。
