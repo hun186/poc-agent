@@ -472,6 +472,7 @@ def test_resume_job_inaccessible_owner_never_downloads_or_posts(monkeypatch, tmp
 
 @pytest.mark.parametrize("argv", [
     ["--resume-job", "rpt_123"],
+    ["--resume-job", ""],
     ["--resume-job", "rpt_" + "A" * 32],
     ["--resume-job", "rpt_" + "a" * 32, "--live-report"],
     ["--resume-job", "rpt_" + "a" * 32, "--no-network"],
