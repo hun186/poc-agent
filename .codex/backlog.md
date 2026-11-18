@@ -226,3 +226,6 @@
 
 ## 2026-11-18 — per-witness authz candidate
 - [ ] Recheck exact-head CI and Codex review, resolve findings and merge only on safety gates. Per-witness read-through owner/branch policy is not a true production tenant ACL provider. In-flight HTTP/ES/LLM cannot be cancelled; later work needs trusted actual policy, timeout/cancellation and post-retrieval Job/Artifact CAS before Word.
+
+## 2026-11-18 — terminal handoff fence follow-up
+- [ ] After PR #471 latest-head CI and Codex merge gate, integrate read-only terminal fence with trusted N-round executor (while revalidating owner-index/query branch); next implement independent Job-to-Word/Artifact commit CAS and owner-scoped download authorization. Never treat SUFFICIENT checkpoint or boolean preflight as report-generation authority; partial stops require separate fidelity and output policy.
