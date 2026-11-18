@@ -88,8 +88,9 @@ def test_two_round_complete_loop_rechecks_actual_sqlite_job_each_pit(tmp_path):
     assert len(result.rounds) == 2
     assert planned == [1]
     assert c.safe_progress()["termination"] == "SUFFICIENT"
-    assert index_calls == [("PRIVATE_OWNER", "running", "agent_execution", "news_test")] * 4
-    assert branch_calls == [("PRIVATE_OWNER", True, ("CANONICAL_MAIN",))] * 4
+    # Each of the 8 paid witnesses also rechecks owner/branch before+after.
+    assert index_calls == [("PRIVATE_OWNER", "running", "agent_execution", "news_test")] * (4 + 8 * 2)
+    assert branch_calls == [("PRIVATE_OWNER", True, ("CANONICAL_MAIN",))] * (4 + 8 * 2)
     audit = json.dumps(adapter.safe_audit(), ensure_ascii=False)
     for value in ("PRIVATE_", "news_test", "api_key", "甲軸", J):
         assert value not in audit
