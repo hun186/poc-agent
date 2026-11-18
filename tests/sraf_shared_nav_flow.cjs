@@ -50,6 +50,8 @@ assert.deepEqual(links.map(x => x.textContent), [
 assert.equal(links[1].href, '/report-jobs');
 assert.equal(links[1].attributes['aria-current'], 'page');
 assert.equal(editor.children.length, 3);
+assert.deepEqual(editor.children.map(x => x.href), ['/agent-data-flow', '/report-jobs', '/requirement-product']);
+assert.ok(editor.children.every(x => x.tagName === 'a'));
 assert.deepEqual(editor.children.map(x => x.id), [
   'agentDataFlowBtn', 'reportJobsBtn', 'requirementProductBtn'
 ]);
