@@ -81,3 +81,23 @@ Schema 漂移（例如版本變成 999、索引消失），就必須拒絕。
 新操作不能將私有磁碟路徑、資料庫名稱或原始例外暴露給呼叫端；
 只會提供固定的 `nround_report_job_claim_unverified` 或
 `nround_report_job_progress_unverified` 拒絕碼。
+
+## 2026-11-18 Linux 混合測試集合的 pytest xUnit 命名衝突
+
+操作員在同一個 `pytest` 指令中執行多份 N 輪測試時，
+結果為 `82 passed, 55 errors`；這些 errors 的共通原因
+是多個測試模組匯入一個命名 `setup(tmp_path)` 的輔助函式。
+pytest 的舊式 xUnit `setup` 發現機制可能把此函式誤判為
+**模組級初始化**，傳入 module 而非 `tmp_path` fixture，
+最後在 `tmp_path / "PRIVATE-local-jobs.sqlite3"` 觸發
+`TypeError`。這不是對生產 SQLite 或 SRAF ES 的讀寫故障證據。
+
+本輪將此共享 fixture 建構器改為
+`make_claimed_report_job(tmp_path, ...)`，同步修正所有測試匯入與
+呼叫；不修改任何 production schema／Worker／API。雙版本 CI
+新增與現場一致的**8 檔同一 pytest process**集合，避免只靠
+每檔獨立測試掩蓋 xUnit 匯入時的名稱碰撞。
+
+完成 CI 與 Review 並合併後，Linux 增量部署新版測試檔，再
+重跑同一組命令；若仍失敗，請附第一段 traceback 與最終
+passed/failed/errors，**不要**修改正式資料庫或強制重啟服務。
