@@ -179,6 +179,20 @@ def execute_claimed_nround_job(
         # SQLite read and before returning *any* private retrieval result.
         binding._check_live_policy()
         scope._assert_live()
+        # The two separate observations above cannot establish a same-DB
+        # point-in-time Job + terminal sidecar claim. For a SUFFICIENT result
+        # also require the merged #471 atomic, exact-revision handoff fence.
+        # This is a read-only retrieval receipt, NOT DOCX permission. Other
+        # terminal reasons remain explicitly incomplete/non-Word receipts;
+        # an independent policy must decide how to report partial Evidence.
+        if result.progress["termination"] == "SUFFICIENT":
+            if not checkpoint_store.verify_terminal_for_running_report_job(
+                report_store, claimed_job,
+                expected_revision=public["revision"],
+                completed_rounds=len(result.rounds),
+            ):
+                raise ClaimedNroundJobExecutionError(
+                    "unverified_atomic_nround_terminal")
         return ClaimedNroundRetrieval(
             _private_result=result,
             _checkpoint_revision=public["revision"],
