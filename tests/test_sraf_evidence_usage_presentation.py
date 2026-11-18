@@ -19,6 +19,7 @@ def _usage():
         "schema": "sraf_report_evidence_usage_v1",
         "selection_mode": "source_diverse",
         "llm_skipped_incomplete": False,
+        "llm_skipped_no_evidence": False,
         "incoming": 5, "strong": 4, "weak": 1,
         "picked": 3, "compressed": 3, "llm_input": 2,
         "incoming_identified_sources": 3,
