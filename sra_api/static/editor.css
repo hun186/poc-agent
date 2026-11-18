@@ -111,3 +111,5 @@
     .tab.active { background: #2563eb; color: white; }
     code { background: #f1f5f9; padding: 2px 5px; border-radius: 5px; }
     @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } textarea.mono { min-height: 320px; } header { align-items: flex-start; flex-wrap: wrap; } .header-nav { order: 3; flex-basis: 100%; } .nav-primary { justify-content: flex-start; } .nav-root-btn { flex: 1 1 140px; } .nav-subpanel { left: 0; right: 0; transform: none; width: auto; } .nav-subpanel::before { left: 42px; } }
+
+.sraf-editor-external-nav { display:contents; }
