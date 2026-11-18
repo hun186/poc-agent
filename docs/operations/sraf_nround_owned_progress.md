@@ -13,14 +13,17 @@
 - `ReportJobStore` 與 `NroundCheckpointStore` 必須位於
   **同一個 SQLite 檔案**；以 SQLite `mode=ro` 打開，
   不得因狀態查詢新建 DB、sidecar、Job 或修改狀態。
-- SQLite `mode=ro` 即使 `query_only=ON`，仍可能在 WAL 已被正常清除後**重建**
-  `-wal`／`-shm`。因此先探測資料庫側錄檔：兩者都不存在時，
-  使用只讀 `immutable=1` 快照，並以前後檔案身分／修改時間
-  檢查偵測並拒絕常見並行寫入；兩者都存在時則用一般
-  `mode=ro` WAL 交易讀取未 checkpoint 的資料；只存在一個
-  則拒絕。**這不構成跨程序鎖或強制可序列化的授權證明**，
-  未來正式進度 API 必須讓 SQLite 生命周期由可信的資料庫
-  管理層控制，避免競爭條件。
+- SQLite `mode=ro` 與 `PRAGMA query_only=ON` 禁止建立正式
+  資料庫檔案、修改 Report Job／checkpoint／schema，但**SQLite
+  WAL 的正常讀取可能會建立或維護 `-wal`、`-shm` 輔助檔案**；
+  這些是 SQLite 內部交易／共享記憶體協調檔，不是新的業務資料。
+  為了保證讀到尚未 checkpoint 的**最新授權與 Job 狀態**，不能
+  使用 `immutable=1`：它可能忽略 WAL 中剛撤銷的 owner 權限。
+  本服務目前不保證磁碟上「完全零檔案變動」，只保證
+  **沒有 SQL 寫入或建立主資料庫／sidecar 資料表**。
+  若未來環境要求連 SQLite 內部檔都不得產生，必須改由可信
+  持久化連線管理器持有資料庫生命週期並提供一致讀取快照，
+  不能靠探測有無 WAL 檔案來解決併發關閉競爭。
 - 同一份 read transaction 下先驗證既有
   `report_jobs` canonical schema v2 與 sidecar schema，
   再以 `job_id + owner_kind + owner_id` 查正式 Job，
@@ -58,6 +61,6 @@ PYTHONDONTWRITEBYTECODE=1 python -m pytest -q -p no:cacheprovider \
 ```
 
 以真正臨時 SQLite 覆蓋本帳號可見、不同 owner 不可見、
-跨檔案拒絕、無 sidecar 不新增資料、仍在 RUNNING 的 sidecar
+跨檔案拒絕、無 sidecar 不新增業務資料、WAL 未 checkpoint 的 owner 撤銷、仍在 RUNNING 的 sidecar
 與已 FAILED 的原 Job 分開呈現、schema 漂移拒絕、私人 SQLite
 路徑遮蔽。CI 使用 Python3.10/3.11；合成 PASS 不代表正式部署。
