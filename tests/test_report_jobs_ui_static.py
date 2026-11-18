@@ -53,7 +53,7 @@ def test_report_job_ui_real_status_contract_and_no_token_persistence():
     assert 'src="/static/report_jobs_ui.js"' in html
     assert 'href="/static/report_jobs_ui.css"' in html
     assert 'id="srafEditorExternalNav"' in editor
-    assert 'id="reportJobsBtn"' in (STATIC / "excel_global_nav.js").read_text(encoding="utf-8")
+    assert "id: 'reportJobsBtn'" in (STATIC / "excel_global_nav.js").read_text(encoding="utf-8")
     assert "location.href = '/report-jobs'" in bootstrap
     assert "/v1/report/jobs/" in js
     assert "phase.elapsed" not in js  # respect existing progress.elapsed_seconds
