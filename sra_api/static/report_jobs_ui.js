@@ -58,7 +58,7 @@
   function taipeiCreatedTime(value) {
     // Persisted timestamps remain UTC. Convert only at presentation, and
     // reject malformed legacy values instead of displaying misleading dates.
-    if (typeof value !== 'string' || !/([zZ]|[+-]\\d{2}:\\d{2})$/.test(value)) return '—';
+    if (typeof value !== 'string' || !/(Z|[+-][0-9]{2}:[0-9]{2})$/i.test(value)) return '—';
     const parsed = new Date(value);
     if (!Number.isFinite(parsed.getTime())) return '—';
     return new Intl.DateTimeFormat('zh-TW', {
