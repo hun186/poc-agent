@@ -176,6 +176,9 @@ def safe_evidence_usage(raw: Any) -> dict[str, Any]:
     mode = raw.get("selection_mode")
     if mode not in MODES or type(raw.get("llm_skipped_incomplete")) is not bool:
         return {}
+    skip_empty = raw.get("llm_skipped_no_evidence", False)
+    if type(skip_empty) is not bool:
+        return {}
     nums = {}
     for name in NUMERIC:
         value = raw.get(name)
@@ -187,10 +190,12 @@ def safe_evidence_usage(raw: Any) -> dict[str, Any]:
         or nums["picked"] > nums["max_for_llm"]
         or nums["incoming_identified_sources"] > nums["incoming"]
         or nums["picked_identified_sources"] > nums["picked"]
-        or nums["llm_input_identified_sources"] > nums["llm_input"]):
+        or nums["llm_input_identified_sources"] > nums["llm_input"]
+        or (skip_empty and (nums["incoming"] != 0 or nums["llm_input"] != 0))):
         return {}
     clean = {"schema": SCHEMA, "selection_mode": mode,
-             "llm_skipped_incomplete": raw["llm_skipped_incomplete"], **nums}
+             "llm_skipped_incomplete": raw["llm_skipped_incomplete"],
+             "llm_skipped_no_evidence": skip_empty, **nums}
     review = safe_review(raw.get("review"))
     if review:
         clean["review"] = review
@@ -233,4 +238,6 @@ def evidence_usage_rows(raw: Any) -> list[tuple[str, str]]:
     lines.extend(nround_progress_rows(u.get("nround_progress")))
     if u["llm_skipped_incomplete"]:
         lines.append(("報告 LLM", "未執行（日期檢索不完整且無有效證據）"))
+    elif u["llm_skipped_no_evidence"]:
+        lines.append(("報告 LLM", "未執行（缺少可核對的有效 Evidence，並非已證實沒有事件）"))
     return lines
