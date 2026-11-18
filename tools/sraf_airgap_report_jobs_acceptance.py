@@ -48,8 +48,8 @@ MAX_JSON = 32768
 MAX_DOCX = 16 * 1024 * 1024
 PROMPT = "請以繁體中文產生一份簡短的 SRAF 部署驗收測試報告，包含摘要、分析與結論。"
 PHASES = frozenset(("queued", "unobserved", "agent_execution", "docx_export",
-                    "finalizing", "completed", "failed", "interrupted"))
-STATES = frozenset(("queued", "running", "completed", "failed", "interrupted"))
+                    "finalizing", "completed", "failed", "interrupted", "cancelled"))
+STATES = frozenset(("queued", "running", "completed", "failed", "interrupted", "cancelled"))
 FAILURES = frozenset(("timeout", "rate_limited", "provider_unavailable", "execution_error"))
 STATIC = (
     ("ui_page", "/report-jobs", b'report_jobs_ui.js'),
@@ -404,7 +404,7 @@ def _live(port: int, proof, args, rows: list, result_fd: int):
             phases.append(phase)
             if len(phases) > 32:
                 raise ObservationError("job_phase_sequence_unbounded")
-        if state in ("completed", "failed", "interrupted"):
+        if state in ("completed", "failed", "interrupted", "cancelled"):
             break
         time.sleep(3)
     else:
