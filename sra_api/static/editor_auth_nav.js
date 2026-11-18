@@ -97,8 +97,14 @@ async function changePassword() {
   } catch (err) { setStatus('accountStatus', err.message, 'error'); }
 }
 function setActiveNavRoot(root) {
+  const previousRoot = state.activeNavRoot;
   state.activeNavRoot = root || '';
   const panel = $('navSubPanel');
+  if (panel && previousRoot !== state.activeNavRoot) {
+    // An old open submenu must never reserve blank second-column space
+    // when switching to another top-level button.
+    panel.querySelectorAll('.nav-level').forEach(level => { level.open = false; });
+  }
   document.querySelectorAll('[data-nav-root]').forEach(btn => {
     const active = btn.dataset.navRoot === state.activeNavRoot;
     btn.classList.toggle('active', active);
@@ -107,13 +113,19 @@ function setActiveNavRoot(root) {
   document.querySelectorAll('[data-nav-menu]').forEach(menu => menu.classList.toggle('active', menu.dataset.navMenu === state.activeNavRoot));
   if (panel) {
     panel.classList.toggle('hidden', !state.activeNavRoot);
+    if (!state.activeNavRoot) return;
     const activeBtn = document.querySelector(`[data-nav-root="${CSS.escape(state.activeNavRoot)}"]`);
-    if (activeBtn && state.activeNavRoot) {
+    if (activeBtn) {
+      // Fix the left edge for BOTH compact and expanded states. Increasing
+      // flyout width must not shift the first-level menu or header buttons.
       const navRect = $('mainNav').getBoundingClientRect();
       const btnRect = activeBtn.getBoundingClientRect();
-      const center = btnRect.left + btnRect.width / 2 - navRect.left;
-      panel.style.setProperty('--nav-panel-left', `${center}px`);
-      panel.style.setProperty('--nav-panel-arrow-left', '50%');
+      const viewportWidth = window.innerWidth;
+      const fullWidth = Math.min(740, Math.max(0, viewportWidth - 36));
+      const panelLeft = Math.max(18, Math.min(btnRect.left, viewportWidth - 18 - fullWidth));
+      const arrowLeft = Math.max(24, Math.min(btnRect.left + btnRect.width / 2 - panelLeft, Math.min(fullWidth, 266) - 24));
+      panel.style.setProperty('--nav-panel-left', `${panelLeft - navRect.left}px`);
+      panel.style.setProperty('--nav-panel-arrow-left', `${arrowLeft}px`);
     }
   }
 }
@@ -124,6 +136,18 @@ function bindHeaderNav() {
     getActiveRoot: () => state.activeNavRoot,
     setActiveRoot: setActiveNavRoot,
     collapse: collapseMainNav,
+  });
+  // Only one flyout may be open in the visible menu. Supports hover, touch
+  // click and keyboard-driven native <details> without overlapping panels.
+  $('navSubPanel').querySelectorAll('.nav-level').forEach(level => {
+    level.addEventListener('toggle', () => {
+      if (!level.open) return;
+      const group = level.closest('.nav-menu');
+      if (!group || !group.classList.contains('active')) return;
+      group.querySelectorAll('.nav-level').forEach(other => {
+        if (other !== level) other.open = false;
+      });
+    });
   });
 }
 async function bootAuthed() {
