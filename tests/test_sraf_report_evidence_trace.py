@@ -235,3 +235,19 @@ def test_identified_source_count_survives_field_selector_dropping_id(
         {"uuid": "same"}, {"source_id": "same"},
         {"id": "other"},
     ]) == 2
+
+def test_report_llm_stage_trace_does_not_duplicate_private_input_or_answer(monkeypatch):
+    mod, calls = _stub_report(monkeypatch, [_snippet(1, text="PRIVATE-EVIDENCE-CONTENT")])
+    trace = {}
+    result = mod.ask_with_report("PRIVATE-USER-QUESTION", trace=trace)
+    assert len(calls) == 1 and result["answer"] == "合成測試報告"
+    report_stage = trace["llm"]["report"][-1]
+    assert "user" not in report_stage
+    assert "answer_preview" not in report_stage
+    assert report_stage["input_chars"] > 0
+    assert report_stage["output_chars"] == len(result["answer"])
+    dump = json.dumps(report_stage, ensure_ascii=False)
+    assert "PRIVATE-EVIDENCE-CONTENT" not in dump
+    assert "PRIVATE-USER-QUESTION" not in dump
+    assert "合成測試報告" not in dump
+    assert report_stage["system"] == "REPORT_SYSTEM_PROMPT"
