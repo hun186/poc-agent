@@ -69,3 +69,7 @@
 
 ## 2026-11-24 #413 — dedicated deep ES connection candidate
 - Dedicated real Elasticsearch SDK connection, explicit existing ES credentials and HTTPS CA, normal hostname verification, no retries or sniffing, SDK PIT partial-shard rejection argument required. Never calls ordinary singleton or mock/acceptance fallback; construction performs no search or ping. CI uses real SDK with synthetic settings and denied transport IO. Lifespan wiring and actual Linux TLS/index/mapping/model acceptance remain pending.
+
+
+## 2026-11-25 #413 — bounded natural sentence candidate
+- Add deterministic explicit event year/month/day-range or expressly unbounded date, literal single-topic label and finite known analysis facets. Original prompt unchanged; same compiler at admission and Worker revalidation. Unknown syntax, compound/relative-date/exclusion scopes rejected; no LLM, inferred date, invented aspect or index override. This is not unrestricted natural-language support; ordinary/deep scope consistency and automatic dispatch remain separate gates.
