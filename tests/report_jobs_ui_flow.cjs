@@ -333,9 +333,9 @@ function progress(jobId, status, phase, long=false) {
   await tick();  // settle the old fetch after the account-change abort.
   assert.equal(elements.jobRows.children.length,0);
 
-  // Deep mode uses the same authenticated poll; sidecar cannot unlock Word.
+  // Real status advertises exact-owner checkpoint availability; sidecar cannot unlock Word.
   elements.jobId.value = 'job-deep';
-  const deep = (status, phase) => ({...progress('job-deep',status,phase), execution_mode:'adaptive_multiround'});
+  const deep = (status, phase) => ({...progress('job-deep',status,phase), nround_progress_available:true});
   const receipt = (status) => ({schema:'sraf_nround_owned_progress_v1', report_job_status:status,
     state:'RUNNING',phase:'SEARCHING',round_number:2,completed_rounds:1,es_calls_this_round:3,
     private:'DO NOT RENDER'});

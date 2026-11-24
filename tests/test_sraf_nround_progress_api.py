@@ -23,12 +23,20 @@ def test_nround_progress_route_exact_owner_no_grant(tmp_path, monkeypatch):
         store = app.state.report_job_store
         job = client.post("/v1/report/jobs", headers=owner, json={"prompt":"PRIVATE_PROMPT"}).json()["job_id"]
         url = f"/v1/report/jobs/{job}/nround-progress"
+        status_url = f"/v1/report/jobs/{job}"
+        assert client.get(status_url, headers=owner).json()["nround_progress_available"] is False
         assert client.get(url, headers=owner).status_code == 404
         with sqlite3.connect(store.db_path) as con:
             assert con.execute("SELECT COUNT(*) FROM sqlite_master WHERE name='sraf_nround_checkpoints'").fetchone()[0] == 0
         sidecar = NroundCheckpointStore(store.db_path)
         sidecar.initialize()
         assert sidecar.create(job)
+        owner_status = client.get(status_url, headers=owner)
+        assert owner_status.status_code == 200
+        assert owner_status.json()["nround_progress_available"] is True
+        admin_status = client.get(status_url, headers=other)
+        assert admin_status.status_code == 200
+        assert admin_status.json()["nround_progress_available"] is False
         assert client.get(url).status_code == 401
         assert client.get(url, headers=write_only).status_code == 403
         assert client.get(url, headers=other).status_code == 404
@@ -42,5 +50,6 @@ def test_nround_progress_route_exact_owner_no_grant(tmp_path, monkeypatch):
         assert store.get(job).status == "queued"
         with sqlite3.connect(store.db_path) as con:
             con.execute("ALTER TABLE sraf_nround_checkpoints ADD COLUMN PRIVATE_FIELD TEXT")
+        assert client.get(status_url, headers=owner).json()["nround_progress_available"] is False
         response = client.get(url, headers=owner)
         assert response.status_code == 503 and "PRIVATE" not in response.text

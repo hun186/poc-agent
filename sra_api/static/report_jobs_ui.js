@@ -218,7 +218,7 @@
   async function readNround(job, run, ctrl, access) {
     clearNround();
     const node = $('nroundProgress');
-    if (!node || job.execution_mode !== 'adaptive_multiround') return;
+    if (!node || job.nround_progress_available !== true) return;
     const current = () => run === generation && !ctrl.signal.aborted &&
       job.job_id === currentId && access === token();
     try {
