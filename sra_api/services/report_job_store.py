@@ -21,6 +21,7 @@ class ReportJobAdmissionFull(Exception):
 REPORT_JOB_SCHEMA_VERSION = 2
 ADAPTIVE_JOB_OPTION = "sraf_adaptive_intent_v1"
 ADAPTIVE_OWNER_BINDING = "adaptive_owner_binding"
+CHAT_DEEP_KEY_PREFIX = "sraf-auto-chat-v1:"
 
 
 @dataclass(frozen=True)
@@ -221,6 +222,9 @@ class ReportJobStore:
         if (type(register_adaptive) is not bool
                 or register_adaptive != (ADAPTIVE_JOB_OPTION in options)):
             raise ValueError("invalid_adaptive_job_registration")
+        if (idempotency_key and idempotency_key.startswith(CHAT_DEEP_KEY_PREFIX)
+                and not register_adaptive):
+            raise ValueError("reserved_chat_deep_idempotency_key")
         if register_adaptive:
             from api.services.sraf_adaptive_job_runtime import AdaptiveJobIntent
             AdaptiveJobIntent.from_options(options, prompt)
@@ -343,6 +347,20 @@ class ReportJobStore:
         with self._connect() as con:
             rows = con.execute(sql, arguments).fetchall()
         return [dict(row) for row in rows]
+
+    def get_chat_deep_replay(self, *, owner_id: str, key: str) -> ReportJob | None:
+        """Internal owner-key lookup; caller must authenticate and revalidate."""
+        import re
+        if (type(owner_id) is not str or not owner_id.strip()
+                or type(key) is not str
+                or not re.fullmatch(re.escape(CHAT_DEEP_KEY_PREFIX) + r"[0-9a-f]{64}", key)):
+            raise ValueError("deep_chat_replay_key_invalid")
+        with self._connect() as con:
+            row = con.execute(
+                "SELECT * FROM report_jobs WHERE owner_kind='user' AND owner_id=? AND idempotency_key=?",
+                (owner_id, key),
+            ).fetchone()
+            return self._row(row)
 
     def get(self, job_id: str, connection: sqlite3.Connection | None = None) -> ReportJob | None:
         if connection is not None:
