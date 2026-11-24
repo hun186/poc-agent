@@ -80,12 +80,12 @@ class PersistedClaimedNroundJobScope:
         self._check_question_branches = check_question_branches
         self._assert_live()
 
-    def _assert_live(self) -> ReportJob:
+    def _assert_live(self, *, expected_phase: str = "agent_execution") -> ReportJob:
         try:
             row = self._store.get(self._job_id)
             if (type(row) is not ReportJob
                     or row.status != "running"
-                    or row.phase != "agent_execution"
+                    or row.phase != expected_phase
                     or type(row.started_at) is not str
                     or not row.started_at
                     or type(row.owner_kind) is not str
@@ -121,6 +121,23 @@ class PersistedClaimedNroundJobScope:
             return self._check_question_branches(live, constraints, branches) is True
         except Exception:
             raise PersistedNroundJobScopeError("question_scope_revalidation_failed") from None
+
+    def recheck_export_policy(self) -> None:
+        """Fresh original owner/index/branch policy after export admission."""
+        try:
+            for index in self._question.allowed_indexes:
+                if self._check_owner_index(
+                    self._assert_live(expected_phase="docx_export"), index,
+                ) is not True:
+                    raise PersistedNroundJobScopeError("export_policy_denied")
+            if self._check_question_branches(
+                self._assert_live(expected_phase="docx_export"),
+                self._question, ("CANONICAL_MAIN",),
+            ) is not True:
+                raise PersistedNroundJobScopeError("export_policy_denied")
+            self._assert_live(expected_phase="docx_export")
+        except Exception:
+            raise PersistedNroundJobScopeError("export_policy_denied") from None
 
     def make_binding(self) -> WorkerScopeBinding:
         """Only a scoped, non-production binding; no ES/LLM/Word calls."""

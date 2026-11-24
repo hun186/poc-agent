@@ -13,13 +13,15 @@ This helper binds:
   - bounded ES PIT -> canonical Evidence -> semantic witness -> N-round Planner;
   - lease-scoped failure cleanup, never global interrupt.
 
-It does NOT create a report, expose an artifact, mark a ReportJob complete,
-or infer real semantic authority from caller-provided policy callbacks.
+The optional internal publication path produces a real owner-bound Job DOCX;
+it is not wired to production dispatch and cannot infer actual policy authority
+from caller-provided callbacks.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from time import perf_counter
+from pathlib import Path
 from typing import Any, Callable
 
 from api.services.report_job_store import ReportJob, ReportJobStore
@@ -49,6 +51,13 @@ class ClaimedNroundRetrieval:
     _private_result: TrustedNroundExecutionResult = field(repr=False)
     _checkpoint_revision: int = field(repr=False)
     _generate: Callable[[], dict[str, Any]] | None = field(default=None, repr=False)
+    _publish: Callable[[Path], None] | None = field(default=None, repr=False)
+
+    def generate_and_publish_word(self, reports_root: Path) -> None:
+        """Trusted Worker-only, one-shot synthesis and canonical Job publication."""
+        if self._publish is None:
+            raise ClaimedNroundJobExecutionError("nround_word_not_admitted")
+        self._publish(reports_root)
 
     def generate_report(self) -> dict[str, Any]:
         """Internal bound synthesis; no API/Worker switch or artifact grant."""
@@ -269,10 +278,50 @@ def execute_claimed_nround_job(
             except Exception:
                 raise ClaimedNroundJobExecutionError("nround_report_generation_failed") from None
 
+        def publish(reports_root: Path) -> None:
+            # Never accept externally supplied report text, bytes or Job ID.
+            # The real synthesis closure consumes the same one-shot budget.
+            from api.services.export_word_service import ExportWordService
+            admitted = False
+            try:
+                if not isinstance(reports_root, Path) or not reports_root.is_dir():
+                    raise ClaimedNroundJobExecutionError("nround_word_root_unverified")
+                output = generate()
+                verify_generation()
+                admitted = checkpoint_store.begin_docx_export_for_terminal_job(
+                    report_store, claimed_job, expected_revision=revision,
+                    completed_rounds=completed_rounds,
+                )
+                if not admitted:
+                    raise ClaimedNroundJobExecutionError("nround_word_not_admitted")
+                scope.recheck_export_policy()
+                content, _ = ExportWordService().build_docx_bytes(output, filename=claimed_job.filename)
+                scope.recheck_export_policy()
+                if (coordinator._budget.snapshot().remaining_seconds < 1
+                        or coordinator.safe_progress() != result.progress):
+                    raise ClaimedNroundJobExecutionError("nround_word_budget_denied")
+                if not checkpoint_store.commit_docx_for_terminal_job(
+                    report_store, claimed_job, expected_revision=revision,
+                    completed_rounds=completed_rounds,
+                    reports_root=reports_root, content=content,
+                ):
+                    raise ClaimedNroundJobExecutionError("nround_word_commit_denied")
+            except Exception:
+                if admitted:
+                    try:
+                        checkpoint_store.fail_docx_export_for_terminal_job(
+                            report_store, claimed_job, expected_revision=revision,
+                            completed_rounds=completed_rounds,
+                        )
+                    except Exception:
+                        pass  # never fail an unrelated or completed Job
+                raise ClaimedNroundJobExecutionError("nround_word_publication_failed") from None
+
         return ClaimedNroundRetrieval(
             _private_result=result,
             _checkpoint_revision=revision,
             _generate=generate if result.progress["termination"] == "SUFFICIENT" else None,
+            _publish=publish if result.progress["termination"] == "SUFFICIENT" else None,
         )
     except Exception:
         # Target ONLY this worker's active lease. Do not use global
