@@ -59,3 +59,5 @@
 ## 2026-11-24 #413 — deep startup configuration candidate
 - #495 merged `33cddb20d32f` after latest-head 6/6 Hosted workflows, 9/9 jobs and Codex code review with no findings/threads. Deep admission still disabled until runtime composition.
 - Add offline strict explicit opt-in config parser for account generation grants, queue cap and separate local Ollama model IDs/context. No provider IO, AuthStore lookups or lifespan wiring; default disabled, errors redacted. Synthetic tests and Hosted CI/Review pending. Real ES factory, report model routing, startup wiring and live acceptance remain separate.
+
+- #496 initial 4/4 workflows passed; P2 review identified import-time AuthStore side effects. Split pure grant config from live policy; defer semantic runtime imports; fresh-process regression blocks auth/Agent imports for both disabled and enabled validation. New head requires CI and review.
