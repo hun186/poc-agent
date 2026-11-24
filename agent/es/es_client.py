@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional, Union, List
 #from dotenv import load_dotenv
 from elasticsearch import Elasticsearch, BadRequestError
 from elastic_transport import ObjectApiResponse
+from agent.es.ordinary_scope_receipt import current_ordinary_scope_capture
 from config.bootstrap import bootstrap_env
 from config.index_loader import INDEX_CONFIG
 from api.services.vercel_mock_runtime import should_prefer_mock_runtime
@@ -352,7 +353,12 @@ def safe_search(
         #if hasattr(res, "body"):
         #    print("[safe_search] has .body type:", type(res.body))
         #return res
-        return _unwrap_es(res)
+        response = _unwrap_es(res)
+        capture = current_ordinary_scope_capture()
+        if capture is not None:
+            capture.observe_transport(index=es_index, body=body,
+                                      real_client=type(es) is Elasticsearch, response=response)
+        return response
     
     except BadRequestError as e:
         info = str(getattr(e, "info", e))
@@ -373,7 +379,12 @@ def safe_search(
                 request_timeout=ES_TIMEOUT,
                 params=params,
             )
-            return _unwrap_es(res)
+            response = _unwrap_es(res)
+            capture = current_ordinary_scope_capture()
+            if capture is not None:
+                capture.observe_transport(index=es_index, body=body2,
+                                          real_client=type(es) is Elasticsearch, response=response)
+            return response
         raise
 
 # --- legacy exports (相容舊 import) ---
