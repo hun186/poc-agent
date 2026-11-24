@@ -115,3 +115,7 @@
 
 ## 2026-11-25 #413 — scoped adapter header candidate
 - Optional X-SRAF-OpenWebUI-Chat-Id on Chat only: one bounded ID plus actual user authentication derives reserved server-side storage ID; service credentials denied. Same account generation/chat stable, other accounts distinct. Reserved IDs rejected as legacy Chat/Word or ordinary Job inputs. Scoped legacy Word signed capability unchanged; direct bearer requires matching account generation. Legacy unscoped contracts unchanged; this does not migrate old sessions or establish global tenant isolation.
+
+
+## 2026-11-25 #413 — scoped adapter negotiation candidate
+- GET /v1/sraf/openwebui/capabilities requires actual active SRAF user with MODEL_INVOKE; returns only protocol=sraf-openwebui-scoped-chat-v1, does not probe providers or grant deep mode. Pipe must receive exact response before sending a question. Ordinary clients need not use this endpoint.
