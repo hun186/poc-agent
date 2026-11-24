@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from api.services.report_job_service import DEFAULT_REPORT_MODEL, create_job
-from api.services.report_job_store import ADAPTIVE_JOB_OPTION, IdempotencyConflict, ReportJobAdmissionFull
+from api.services.report_job_store import ADAPTIVE_JOB_OPTION, CHAT_DEEP_KEY_PREFIX, IdempotencyConflict, ReportJobAdmissionFull
 from api.security.models import AuthPrincipal
 from api.security.principal import require_scopes
 from api.security.scopes import REPORT_JOB_ADMIN, REPORT_JOB_CREATE, REPORT_JOB_DOWNLOAD, REPORT_JOB_READ
@@ -89,6 +89,8 @@ def _view(job):
 
 @router.post("", status_code=202, responses={409: {"description": "Idempotency conflict"}})
 def submit(payload: ReportJobCreate, request: Request, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"), principal: AuthPrincipal = Depends(require_scopes(REPORT_JOB_CREATE))):
+    if idempotency_key and idempotency_key.strip().startswith(CHAT_DEEP_KEY_PREFIX):
+        raise HTTPException(400, "Reserved Idempotency-Key namespace")
     try:
         job, _ = create_job(_store(request), idempotency_key=idempotency_key, owner_kind=principal.kind, owner_id=principal.subject,
                             max_active_jobs=_max_active_jobs(), **payload.model_dump())

@@ -136,3 +136,7 @@
 
 ## 2026-11-16 #406 text-axis shadow is not full passage-quality validation
 - Existing `match_topic` reports scope `mixed` when any term occurs both in metadata and text, even if only one semantic axis is in the Evidence text and the other required axis occurs only in title/subject. Consequently `unanchored_text_two_group_only` is an overly broad candidate count; it remains for compatibility and new `text_two_axis_only`/`metadata_assisted_two_axis_only` split makes the distinction explicit. Matching two groups in text is still NOT sufficient on its own for correct original-user subject/entity, negations, all required issue axes, relevant timeframe, source credibility or token size. Date validity remains per Event and all count-only results may be incomplete due to per-builder/256-citation caps. Private same-snapshot A/B and actual report tokenizer budget pending.
+
+
+## 2026-11-25 #413 — automatic chat retry prerequisites
+- The actual OpenWebUI version/header forwarding and unique per-message token remain unverified. Missing/duplicate key fails closed for future auto dispatch; do not substitute random request ID, session header or prompt hash. Hosted tests are synthetic; no live ES/LLM/browser/Word acceptance. Prior #500/#501 independent re-review blocked by review quota, so no bypass merge.

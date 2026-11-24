@@ -9,10 +9,9 @@ from api.security.principal import require_scopes
 from api.security.scopes import (
     DOCUMENT_READ, MODEL_INVOKE, REPORT_JOB_CREATE, REPORT_JOB_READ, REPORT_JOB_DOWNLOAD,
 )
-from api.services.report_job_store import ReportJobStore, IdempotencyConflict, ReportJobAdmissionFull
-from api.services.report_job_worker import ReportJobWorker
-from api.services.sraf_adaptive_job_runtime import AdaptiveJobRuntime
-from api.services.sraf_deep_scope_policy import DeepScopePolicy, DeepScopeDenied, DeepQuestionUnsupported
+from api.services.report_job_store import IdempotencyConflict, ReportJobAdmissionFull
+from api.services.sraf_deep_scope_policy import DeepScopeDenied, DeepQuestionUnsupported
+from api.services.sraf_chat_deep_turn import resolve_deep_admission, DeepRuntimeUnavailable
 
 router = APIRouter(prefix="/v1/report/jobs", tags=["report jobs"])
 
@@ -42,19 +41,10 @@ def submit_deep_report(
             or idempotency_key != idempotency_key.strip()
             or any(ord(c) < 32 or ord(c) == 127 for c in idempotency_key)):
         raise HTTPException(400, "Valid Idempotency-Key required")
-    state = request.app.state
-    policy = getattr(state, "deep_scope_policy", None)
-    worker = getattr(state, "report_job_worker", None)
-    store = getattr(state, "report_job_store", None)
-    runtime = getattr(worker, "adaptive_runtime", None)
-    # No API-supplied adapter, owner, index, model or private intent. Require
-    # the exact server-composed policy on the same persistent Worker/store.
-    if (type(policy) is not DeepScopePolicy or type(store) is not ReportJobStore
-            or type(worker) is not ReportJobWorker or worker.store is not store
-            or type(runtime) is not AdaptiveJobRuntime
-            or runtime.check_owner_index != policy.check_owner_index
-            or runtime.check_question_branches != policy.check_question_branches):
-        raise HTTPException(503, "Deep reports unavailable")
+    try:
+        policy, store = resolve_deep_admission(request.app.state)
+    except DeepRuntimeUnavailable:
+        raise HTTPException(503, "Deep reports unavailable") from None
     try:
         job, _ = policy.admit(store, principal=principal, prompt=payload.prompt,
                               idempotency_key=idempotency_key, filename=payload.filename)
