@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
 from api.services.report_job_service import DEFAULT_REPORT_MODEL, create_job
-from api.services.report_job_store import IdempotencyConflict, ReportJobAdmissionFull
+from api.services.report_job_store import ADAPTIVE_JOB_OPTION, IdempotencyConflict, ReportJobAdmissionFull
 from api.security.models import AuthPrincipal
 from api.security.principal import require_scopes
 from api.security.scopes import REPORT_JOB_ADMIN, REPORT_JOB_CREATE, REPORT_JOB_DOWNLOAD, REPORT_JOB_READ
@@ -54,6 +54,10 @@ def _max_active_jobs() -> int | None:
 def _view(job):
     result = job.to_dict()
     result.pop("prompt", None); result.pop("request_hash", None); result.pop("idempotency_key", None); result.pop("docx_basename", None)
+    if ADAPTIVE_JOB_OPTION in job.options:
+        # Do not return internal retrieval scope, index names or facets.
+        result["options"] = {}
+        result["execution_mode"] = "adaptive_multiround"
     result["status_url"] = f"/v1/report/jobs/{job.job_id}"
     result["download_url"] = f"/v1/report/jobs/{job.job_id}/word"
     result["browser_status_url"] = _browser_status_url(job.job_id)

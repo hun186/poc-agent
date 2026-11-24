@@ -19,6 +19,7 @@ class ReportJobAdmissionFull(Exception):
     pass
 
 REPORT_JOB_SCHEMA_VERSION = 2
+ADAPTIVE_JOB_OPTION = "sraf_adaptive_intent_v1"
 
 
 @dataclass(frozen=True)
@@ -214,7 +215,16 @@ class ReportJobStore:
     def create(self, *, job_id: str, prompt: str, filename: str | None, session_id: str,
                model: str, options: dict, metadata: dict, idempotency_key: str | None,
                request_hash: str, owner_kind: str | None = None, owner_id: str | None = None,
-               max_active_jobs: int | None = None) -> tuple[ReportJob, bool]:
+               max_active_jobs: int | None = None,
+               register_adaptive: bool = False) -> tuple[ReportJob, bool]:
+        if (type(register_adaptive) is not bool
+                or register_adaptive != (ADAPTIVE_JOB_OPTION in options)):
+            raise ValueError("invalid_adaptive_job_registration")
+        if register_adaptive:
+            from api.services.sraf_adaptive_job_runtime import AdaptiveJobIntent
+            AdaptiveJobIntent.from_options(options, prompt)
+            if (owner_kind != "user" or not owner_id or not idempotency_key):
+                raise ValueError("adaptive_job_owner_unverified")
         if max_active_jobs is not None and (
             isinstance(max_active_jobs, bool) or not isinstance(max_active_jobs, int)
             or not 1 <= max_active_jobs <= 10000
@@ -234,6 +244,12 @@ class ReportJobStore:
                 if existing is not None:
                     if existing["request_hash"] != request_hash:
                         raise IdempotencyConflict("Idempotency-Key was already used for a different request")
+                    if register_adaptive:
+                        from agent.adaptive_retrieval.job_checkpoint import NroundCheckpointStore
+                        NroundCheckpointStore.ensure_schema_in_transaction(con)
+                        if con.execute("SELECT 1 FROM sraf_nround_checkpoints WHERE job_id=?",
+                                       (existing["job_id"],)).fetchone() is None:
+                            raise ValueError("adaptive_job_checkpoint_missing")
                     return self._row(existing), False
             if max_active_jobs is not None:
                 active_count = con.execute(
@@ -244,14 +260,41 @@ class ReportJobStore:
             try:
                 con.execute("INSERT INTO report_jobs (job_id,status,prompt,filename,session_id,model,options_json,metadata_json,idempotency_key,request_hash,owner_kind,owner_id,created_at,updated_at,phase,phase_updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                             (job_id,"queued",prompt,filename,session_id,model,json.dumps(options,sort_keys=True),json.dumps(metadata,sort_keys=True),idempotency_key,request_hash,owner_kind,owner_id,now,now,"queued",now))
-                return self.get(job_id, connection=con), True
             except sqlite3.IntegrityError:
                 if not idempotency_key:
                     raise
                 row = con.execute("SELECT * FROM report_jobs WHERE owner_kind IS ? AND owner_id IS ? AND idempotency_key=?", (owner_kind,owner_id,idempotency_key)).fetchone()
                 if row is None or row["request_hash"] != request_hash:
                     raise IdempotencyConflict("Idempotency-Key was already used for a different request")
+                if register_adaptive:
+                    # An unexpected INSERT conflict must roll back rather than
+                    # accept a row without its same-transaction sidecar.
+                    raise
                 return self._row(row), False
+            if register_adaptive:
+                from agent.adaptive_retrieval.job_checkpoint import NroundCheckpointStore
+                NroundCheckpointStore.register_in_transaction(con, job_id)
+            return self.get(job_id, connection=con), True
+
+    def fail_adaptive_claim(self, claimed: ReportJob) -> bool:
+        """Only fail the exact live claim, never overwrite a terminal result."""
+        if type(claimed) is not ReportJob or ADAPTIVE_JOB_OPTION not in claimed.options:
+            return False
+        from agent.adaptive_retrieval.job_checkpoint import NroundCheckpointStore
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+            if not NroundCheckpointStore._running_report_job_matches(con, claimed):
+                return False
+            changed = con.execute(
+                "UPDATE report_jobs SET status='failed',phase='failed',"
+                "error_type='AdaptiveJobExecutionError',error_message='Deep report execution failed',"
+                "failure_category='execution_error',finished_at=?,phase_updated_at=?,updated_at=? "
+                "WHERE job_id=? AND status='running' AND phase='agent_execution' "
+                "AND turn_id IS NULL AND docx_basename IS NULL",
+                (now, now, now, claimed.job_id),
+            ).rowcount
+            return changed == 1
 
     def list_owned_summaries(self, *, owner_kind: str, owner_id: str, limit: int = 20, offset: int = 0, status: str | None = None) -> list[dict[str, Any]]:
         """Read only this exact principal's Job metadata, never prompts/secrets.
