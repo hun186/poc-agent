@@ -75,5 +75,9 @@
 - Explicit opt-in config → exact live DeepScopePolicy, dedicated real ES SDK, LocalDeepModels, AdaptiveJobRuntime on existing persistent ReportJobWorker. Invalid enabled config fails startup before job-store recovery; disabled stays legacy. Worker owns ES cleanup on exit; bounded stop must not close active transport, same-app overlapping lifespan blocked. No live providers probed; real FastAPI/auth/SQLite/thread/SDK synthetic lifecycle tests pending CI. Natural-language scope and OpenWebUI dispatch remain separate.
 
 
+## 2026-11-25 #413 — bounded natural sentence candidate
+- Add deterministic explicit event year/month/day-range or expressly unbounded date, literal single-topic label and finite known analysis facets. Original prompt unchanged; same compiler at admission and Worker revalidation. Unknown syntax, compound/relative-date/exclusion scopes rejected; no LLM, inferred date, invented aspect or index override. This is not unrestricted natural-language support; ordinary/deep scope consistency and automatic dispatch remain separate gates.
+
+
 ## 2026-11-25 #413 — authenticated chat turn replay candidate
 - #499 merged 8640252612a3 with 6/6 Hosted workflows, 9/9 jobs, latest-head independent Codex code review clean; no live deployment. #500/#501 synchronized to new main; previous CI green but independent review blocked by quota. Add common exact runtime gate, account-generation-bound stable client turn identity, separate reserved auto-chat key namespace and owner-scoped replay revalidation against original prompt, immutable scope/hash and persistent checkpoint. No chat dispatch or public replay route yet. Real SQLite/auth synthetic regression pending CI and review; requires stable OpenWebUI turn token integration.

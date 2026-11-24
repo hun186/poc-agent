@@ -1,9 +1,9 @@
 """Server-owned authenticated admission for the first explicit deep query contract.
 
 An actual verified SRAF user and a separately configured per-account index
-grant are mandatory. This deliberately supports only an explicit, complete,
-single-branch question contract. General natural-language scope derivation,
-HTTP activation and startup configuration are separate gates.
+grant are mandatory. Supports the original explicit three-line contract and
+an independently bounded natural-sentence grammar. Unrestricted natural
+language, relative dates and multi-branch queries remain unsupported.
 """
 from __future__ import annotations
 
@@ -21,6 +21,7 @@ from api.security.scopes import (
 import api.services.auth_store as auth_store_module
 from api.services.auth_support import VALID_ROLES, normalize_role
 from api.services.sraf_deep_grant_config import DeepGrantConfig, DeepOwnerGrant, DeepScopeDenied
+from api.services.sraf_deep_natural_scope import parse_natural_deep_scope
 from api.services.report_job_store import ADAPTIVE_JOB_OPTION, ReportJob, ReportJobStore
 from api.services.sraf_adaptive_job_runtime import (
     ADAPTIVE_OWNER_BINDING, AdaptiveJobIntent, create_adaptive_job,
@@ -80,6 +81,23 @@ def compile_explicit_deep_question(prompt: str, indexes: tuple[str, ...]) -> Ada
         )
         return AdaptiveJobIntent(constraints, tuple((t,) for t in topic_terms),
                                  topic_terms, target_aspects)
+    except Exception:
+        raise DeepQuestionUnsupported("deep_question_unsupported") from None
+
+
+def compile_deep_question(prompt: str, indexes: tuple[str, ...]) -> AdaptiveJobIntent:
+    """Recompile the identical original prompt at admission and at execution."""
+    # No fallback from a malformed explicit contract into a natural one.
+    if type(prompt) is str and prompt.lstrip().startswith("主題詞："):
+        return compile_explicit_deep_question(prompt, indexes)
+    try:
+        parsed = parse_natural_deep_scope(prompt)
+        constraints = QueryConstraints(
+            question=prompt, event_date=parsed.event_date, analysis_date=DateWindow(),
+            allowed_indexes=indexes, original_core_terms=(parsed.topic,),
+        )
+        return AdaptiveJobIntent(constraints, ((parsed.topic,),),
+                                 (parsed.topic,), parsed.aspects)
     except Exception:
         raise DeepQuestionUnsupported("deep_question_unsupported") from None
 
@@ -145,7 +163,7 @@ class DeepScopePolicy(DeepGrantConfig):
                 or any(ord(c) < 32 or ord(c) == 127 for c in idempotency_key)):
             raise DeepScopeDenied("deep_admission_invalid")
         grant, binding = self._verified_principal(principal)
-        intent = compile_explicit_deep_question(prompt, grant.indexes)
+        intent = compile_deep_question(prompt, grant.indexes)
         if self._verified_principal(principal) != (grant, binding):
             raise DeepScopeDenied("deep_owner_denied")
         return create_adaptive_job(
@@ -173,7 +191,7 @@ class DeepScopePolicy(DeepGrantConfig):
                                 branches: tuple[str, ...]) -> bool:
         try:
             grant = self._job_grant(job)
-            expected = compile_explicit_deep_question(job.prompt, grant.indexes)
+            expected = compile_deep_question(job.prompt, grant.indexes)
             return (branches == ("CANONICAL_MAIN",)
                     and expected.constraints == constraints
                     and expected.options() == job.options)
