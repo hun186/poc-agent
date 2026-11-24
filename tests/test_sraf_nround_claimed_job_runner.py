@@ -430,3 +430,125 @@ def test_generation_rejects_stale_checkpoint_before_llm(tmp_path, monkeypatch):
     with pytest.raises(ClaimedNroundJobExecutionError):
         outcome.generate_report()
     assert not calls
+
+
+def _publication_case(tmp_path, monkeypatch, *, policy=None):
+    from agent import report_agent
+    c, scope, ev, _, reports, checkpoint, claimed = _case(tmp_path)
+    es = FakeES(_verified_page("A"), _verified_page("B"))
+    outcome = _run(c, scope, ev, reports, checkpoint, claimed, es,
+                   owner_index=policy)
+    calls = []
+    def model(prompt, **kwargs):
+        calls.append(1)
+        return "依來源1及來源2分析。"
+    monkeypatch.setattr(report_agent, "call_llm", model)
+    root = tmp_path / "reports"
+    root.mkdir()
+    return outcome, reports, checkpoint, claimed, root, calls
+
+
+def test_bound_generation_publishes_real_word_and_completes_once(tmp_path, monkeypatch):
+    from docx import Document
+    outcome, reports, checkpoint, claimed, root, calls = _publication_case(tmp_path, monkeypatch)
+    outcome.generate_and_publish_word(root)
+    job = reports.get(J)
+    assert job.status == "completed" and job.phase == "completed"
+    assert job.turn_id is None  # no chat snapshot is invented
+    assert job.docx_basename == J + ".docx"
+    final = root / job.docx_basename
+    assert "多輪分析範圍" in "\n".join(p.text for p in Document(final).paragraphs)
+    original = final.read_bytes()
+    assert list(root.iterdir()) == [final]
+    with pytest.raises(ClaimedNroundJobExecutionError):
+        outcome.generate_and_publish_word(root)
+    assert calls == [1] and final.read_bytes() == original
+    assert reports.get(J).status == "completed"
+
+
+def test_publication_collision_never_overwrites_existing_word(tmp_path, monkeypatch):
+    outcome, reports, checkpoint, claimed, root, calls = _publication_case(tmp_path, monkeypatch)
+    final = root / (J + ".docx")
+    final.write_bytes(b"PREEXISTING")
+    with pytest.raises(ClaimedNroundJobExecutionError, match="nround_word_publication_failed"):
+        outcome.generate_and_publish_word(root)
+    assert final.read_bytes() == b"PREEXISTING"
+    assert list(root.iterdir()) == [final]
+    assert reports.get(J).status == "failed"
+    assert reports.get(J).docx_basename is None
+
+
+@pytest.mark.parametrize("mode", ["policy", "recovery", "revision", "invalid_docx"])
+def test_export_revocation_and_invalid_content_never_publish(tmp_path, monkeypatch, mode):
+    from api.services.export_word_service import ExportWordService
+    allowed = [True]
+    outcome, reports, checkpoint, claimed, root, calls = _publication_case(
+        tmp_path, monkeypatch, policy=lambda *_: allowed[0])
+    original = ExportWordService.build_docx_bytes
+    def render(self, *args, **kwargs):
+        data = original(self, *args, **kwargs)
+        if mode == "policy":
+            allowed[0] = False
+        elif mode == "recovery":
+            reports.recover_running()
+        elif mode == "revision":
+            with sqlite3.connect(reports.db_path) as con:
+                con.execute("UPDATE sraf_nround_checkpoints SET revision=revision+1 WHERE job_id=?", (J,))
+        else:
+            return b"NOT_A_DOCX", "bad.docx"
+        return data
+    monkeypatch.setattr(ExportWordService, "build_docx_bytes", render)
+    with pytest.raises(ClaimedNroundJobExecutionError, match="nround_word_publication_failed"):
+        outcome.generate_and_publish_word(root)
+    assert reports.get(J).status != "completed"
+    assert reports.get(J).docx_basename is None
+    assert list(root.iterdir()) == []
+
+
+def test_sqlite_failure_before_publication_rolls_back_and_cleans_staging(tmp_path, monkeypatch):
+    outcome, reports, checkpoint, claimed, root, calls = _publication_case(tmp_path, monkeypatch)
+    with sqlite3.connect(reports.db_path) as con:
+        con.execute("""CREATE TRIGGER fail_completion BEFORE UPDATE ON report_jobs
+                    WHEN NEW.status = 'completed'
+                    BEGIN SELECT RAISE(ABORT, 'PRIVATE_SQLITE_ERROR'); END""")
+    with pytest.raises(ClaimedNroundJobExecutionError) as error:
+        outcome.generate_and_publish_word(root)
+    assert "PRIVATE" not in str(error.value)
+    assert reports.get(J).status == "failed"
+    assert list(root.iterdir()) == []
+
+
+def test_policy_revoked_during_staging_never_publishes(tmp_path, monkeypatch):
+    import os
+    allowed = [True]
+    outcome, reports, checkpoint, claimed, root, calls = _publication_case(
+        tmp_path, monkeypatch, policy=lambda *_: allowed[0])
+    original = os.fsync
+    def revoke(fd):
+        original(fd)
+        allowed[0] = False
+    monkeypatch.setattr(os, "fsync", revoke)
+    with pytest.raises(ClaimedNroundJobExecutionError):
+        outcome.generate_and_publish_word(root)
+    assert reports.get(J).status == "failed"
+    assert list(root.iterdir()) == []
+
+
+def test_directory_flush_failure_leaves_only_inaccessible_orphan(tmp_path, monkeypatch):
+    import os
+    import stat
+    if os.name != "posix":
+        pytest.skip("POSIX directory fsync")
+    outcome, reports, checkpoint, claimed, root, calls = _publication_case(tmp_path, monkeypatch)
+    original = os.fsync
+    def fail_directory(fd):
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            raise OSError("PRIVATE_DIRECTORY_FLUSH_FAILED")
+        original(fd)
+    monkeypatch.setattr(os, "fsync", fail_directory)
+    with pytest.raises(ClaimedNroundJobExecutionError) as error:
+        outcome.generate_and_publish_word(root)
+    assert "PRIVATE" not in str(error.value)
+    assert reports.get(J).status == "failed"
+    assert reports.get(J).docx_basename is None
+    assert list(root.iterdir()) == [root / (J + ".docx")]
