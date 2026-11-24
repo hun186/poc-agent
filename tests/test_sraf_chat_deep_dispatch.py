@@ -164,3 +164,5 @@ def test_auto_disabled_by_default_and_safe_base_frozen():
     assert load_deep_startup_config(env).chat_auto_base_url is None
     env.update(SRAF_DEEP_CHAT_AUTO_ENABLED="1", PUBLIC_API_BASE="http://127.0.0.1:9002/sraf/")
     assert load_deep_startup_config(env).chat_auto_base_url == "http://127.0.0.1:9002/sraf"
+    env["PUBLIC_API_BASE"] = "http://[::1]:9002/"
+    assert load_deep_startup_config(env).chat_auto_base_url == "http://[::1]:9002"

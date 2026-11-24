@@ -30,7 +30,7 @@ def validate_chat_public_base(value: str) -> str:
     """Operator-owned origin/path only, never a request Host or credential."""
     if (type(value) is not str or not 1 <= len(value) <= 512
             or not re.fullmatch(
-                r"https?://(?:[A-Za-z0-9.-]+|\\[[0-9A-Fa-f:]+\\])(?::[0-9]{1,5})?(?:/[A-Za-z0-9_-]+)*/?",
+                r"https?://(?:[A-Za-z0-9.-]+|\[[0-9A-Fa-f:]+\])(?::[0-9]{1,5})?(?:/[A-Za-z0-9_-]+)*/?",
                 value)):
         raise ValueError("deep_chat_public_base_invalid")
     parts = urlsplit(value)
