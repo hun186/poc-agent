@@ -98,3 +98,8 @@
 
 ## 2026-11-24 #413 — owner-only N-round progress candidate
 - GET `/v1/report/jobs/{job_id}/nround-progress` uses existing REPORT_JOB_READ and exact authenticated owner kind/subject (admin does not bypass). 200 fixed count-only checkpoint projection, 404 for absent/foreign/ordinary, 503 redacted storage failure. No new write, credential, Word grant, or inference of completion. Existing status and Word routes remain authoritative; Status supplies `nround_progress_available` from the verified exact-owner checkpoint projection; false for absent, foreign or unavailable checkpoints. UI polls only on true, never exposes private fields.
+
+
+## 2026-11-24 #413 — authenticated explicit deep admission candidate
+- POST `/v1/report/jobs/deep` accepts only prompt/filename, mandatory bounded Idempotency-Key, actual user with current required scopes and configured per-account grant. Returns 202 only after atomic Job + checkpoint persistence; no owner/index/model/options inputs, no shared service impersonation. Requires exact server-composed scope policy on the same existing Worker/store; otherwise 503. Initial explicit three-field contract only; arbitrary natural language remains unsupported. No startup activation yet.
+- Adaptive Job status/cancel/Word and list require same active account generation, no cross-owner admin bypass. Progress projection enforces same binding in its read transaction. Existing ordinary Job behavior unchanged. List filter runs in SQLite before pagination (SQLite JSON functions required); deep options/binding never returned. Completed Word requires original authenticated account and existing download scope; no new public URL capability. No actual private deployment or live provider acceptance.

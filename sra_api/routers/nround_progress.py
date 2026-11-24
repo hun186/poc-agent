@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from api.security.models import AuthPrincipal
 from api.security.principal import require_scopes
 from api.security.scopes import REPORT_JOB_READ
+from api.services.sraf_deep_scope_policy import binding_for_principal
 from api.services.sraf_nround_owned_progress import (
     NroundOwnedProgressError, get_owned_nround_progress,
 )
@@ -28,6 +29,7 @@ def owned_nround_progress(
         result = get_owned_nround_progress(
             report_store=store, checkpoint_store=NroundCheckpointStore(store.db_path),
             job_id=job_id, owner_kind=principal.kind, owner_id=principal.subject,
+            deep_owner_binding=binding_for_principal(principal),
         )
     except NroundOwnedProgressError:
         return JSONResponse({"detail": "Report progress unavailable"}, status_code=503,

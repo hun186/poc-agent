@@ -20,6 +20,7 @@ class ReportJobAdmissionFull(Exception):
 
 REPORT_JOB_SCHEMA_VERSION = 2
 ADAPTIVE_JOB_OPTION = "sraf_adaptive_intent_v1"
+ADAPTIVE_OWNER_BINDING = "adaptive_owner_binding"
 
 
 @dataclass(frozen=True)
@@ -296,7 +297,7 @@ class ReportJobStore:
             ).rowcount
             return changed == 1
 
-    def list_owned_summaries(self, *, owner_kind: str, owner_id: str, limit: int = 20, offset: int = 0, status: str | None = None) -> list[dict[str, Any]]:
+    def list_owned_summaries(self, *, owner_kind: str, owner_id: str, limit: int = 20, offset: int = 0, status: str | None = None, deep_owner_binding: str | None = None) -> list[dict[str, Any]]:
         """Read only this exact principal's Job metadata, never prompts/secrets.
 
         Legacy rows with NULL owner identifiers are deliberately invisible.
@@ -316,7 +317,24 @@ class ReportJobStore:
             "phase,phase_updated_at,failure_category "
             "FROM report_jobs WHERE owner_kind=? AND owner_id=?"
         )
-        arguments: list[Any] = [owner_kind, owner_id]
+        # The binding is server-derived. Apply the fence BEFORE pagination;
+        # no filtered rows, hidden job IDs or filenames may leave SQLite.
+        if deep_owner_binding is not None and (
+                type(deep_owner_binding) is not str
+                or len(deep_owner_binding) != 64
+                or any(c not in "0123456789abcdef" for c in deep_owner_binding)):
+            raise ValueError("invalid_deep_owner_binding")
+        sql += (
+            " AND CASE WHEN NOT json_valid(options_json) THEN 0 "
+            "WHEN json_type(options_json) <> 'object' THEN 0 "
+            "WHEN json_type(options_json, '$.sraf_adaptive_intent_v1') IS NULL THEN 1 "
+            "WHEN owner_kind <> 'user' OR ? IS NULL THEN 0 "
+            "WHEN NOT json_valid(metadata_json) THEN 0 "
+            "ELSE json_type(metadata_json) = 'object' "
+            "AND json_extract(metadata_json, '$.adaptive_owner_binding') = ? "
+            "AND (SELECT COUNT(*) FROM json_each(metadata_json)) = 1 END"
+        )
+        arguments: list[Any] = [owner_kind, owner_id, deep_owner_binding, deep_owner_binding]
         if status is not None:
             sql += " AND status=?"
             arguments.append(status)

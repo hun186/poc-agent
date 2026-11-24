@@ -14,6 +14,7 @@ from api.security.models import AuthPrincipal
 from api.security.principal import require_scopes
 from api.security.scopes import REPORT_JOB_ADMIN, REPORT_JOB_CREATE, REPORT_JOB_DOWNLOAD, REPORT_JOB_READ
 from api.services.editor_audit import append_audit_event
+from api.services.sraf_deep_scope_policy import binding_for_principal, bound_deep_owner_matches
 from agent.adaptive_retrieval.job_checkpoint import NroundCheckpointStore
 from api.services.sraf_nround_owned_progress import NroundOwnedProgressError, get_owned_nround_progress
 
@@ -98,6 +99,8 @@ def submit(payload: ReportJobCreate, request: Request, idempotency_key: str | No
     return {"job_id": job.job_id, "status": job.status, "status_url": f"/v1/report/jobs/{job.job_id}", "download_url": f"/v1/report/jobs/{job.job_id}/word", "browser_status_url": _browser_status_url(job.job_id)}
 
 def _authorized(job, principal):
+    if ADAPTIVE_JOB_OPTION in job.options:
+        return bound_deep_owner_matches(job, principal)
     return REPORT_JOB_ADMIN in principal.scopes or (job.owner_kind == principal.kind and job.owner_id == principal.subject)
 
 def _audit_admin_cross_owner(job, principal, operation):
@@ -135,6 +138,7 @@ def list_my_jobs(
         limit=limit,
         offset=offset,
         status=status,
+        deep_owner_binding=binding_for_principal(principal),
     )
     return {"items": items, "limit": limit, "offset": offset, "status": status}
 
@@ -157,6 +161,7 @@ def status(job_id: str, request: Request, principal: AuthPrincipal = Depends(req
             result["nround_progress_available"] = get_owned_nround_progress(
                 report_store=store, checkpoint_store=NroundCheckpointStore(store.db_path),
                 job_id=job_id, owner_kind=principal.kind, owner_id=principal.subject,
+                deep_owner_binding=binding_for_principal(principal),
             ) is not None
         except NroundOwnedProgressError:
             pass
@@ -199,4 +204,6 @@ def download(job_id: str, request: Request, principal: AuthPrincipal = Depends(r
         valid = path.is_file() and zipfile.is_zipfile(path)
     except (ValueError, OSError): valid = False
     if not valid: raise HTTPException(500, "Completed report artifact is unavailable")
-    return FileResponse(path, media_type=DOCX, filename=job.filename or "report.docx")
+    headers = ({"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
+               if ADAPTIVE_JOB_OPTION in job.options else None)
+    return FileResponse(path, media_type=DOCX, filename=job.filename or "report.docx", headers=headers)
