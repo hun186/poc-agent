@@ -8,6 +8,7 @@ requires a new, separately authorized job. Intended for a single host.
 from __future__ import annotations
 
 from contextlib import closing
+from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -388,61 +389,102 @@ class NroundCheckpointStore:
         )
         return True
 
+    @staticmethod
+    def _terminal_export_candidate_matches(
+        con: sqlite3.Connection, claimed_job: ReportJob,
+        expected_revision: int, completed_rounds: int,
+    ) -> bool:
+        """Validate the existing claim and exact SUFFICIENT receipt together."""
+        if not NroundCheckpointStore._running_report_job_matches(con, claimed_job):
+            return False
+        artifact = con.execute(
+            "SELECT turn_id,docx_basename FROM report_jobs WHERE job_id=?",
+            (claimed_job.job_id,),
+        ).fetchone()
+        if (artifact is None or artifact["turn_id"] is not None
+                or artifact["docx_basename"] is not None):
+            return False
+        row = con.execute(
+            f"""SELECT state,phase,round_number,completed_rounds,
+                       termination,lease_hash,revision
+                FROM {_TABLE} WHERE job_id=?""",
+            (claimed_job.job_id,),
+        ).fetchone()
+        return (row is not None
+                and row["state"] == "RETRIEVAL_STOPPED"
+                and row["phase"] == "TERMINAL"
+                and row["round_number"] == completed_rounds
+                and row["completed_rounds"] == completed_rounds
+                and row["termination"] == "SUFFICIENT"
+                and row["lease_hash"] is None
+                and row["revision"] == expected_revision)
+
+    def _valid_terminal_export_context(
+        self, report_store: ReportJobStore, claimed_job: ReportJob,
+        expected_revision: int, completed_rounds: int,
+    ) -> bool:
+        return (self._same_report_job_database(report_store)
+                and type(claimed_job) is ReportJob
+                and self._valid_id(claimed_job.job_id)
+                and type(expected_revision) is int
+                and expected_revision >= 2
+                and type(completed_rounds) is int
+                and 1 <= completed_rounds <= 8)
+
     def verify_terminal_for_running_report_job(
         self, report_store: ReportJobStore, claimed_job: ReportJob, *,
         expected_revision: int, completed_rounds: int,
     ) -> bool:
-        """Atomically validate a terminal retrieval candidate; NO Word grant.
+        """Read-only atomic receipt check; NOT Word or download permission."""
+        try:
+            if not self._valid_terminal_export_context(
+                report_store, claimed_job, expected_revision, completed_rounds,
+            ):
+                return False
+            return self._write(lambda con: self._terminal_export_candidate_matches(
+                con, claimed_job, expected_revision, completed_rounds,
+            ))
+        except Exception:
+            raise ValueError("nround_terminal_handoff_unverified") from None
 
-        A future reporting Worker may call this immediately before a separate
-        owner/Artifact authorization CAS. The canonical ReportJob and
-        sidecar must be in the SAME database and transaction. This narrowly
-        allows only a fully verified SUFFICIENT terminal retrieval. An
-        INCOMPLETE/budget-limited report needs a separately reviewed policy.
-        This check is read-only and NOT sufficient to create/download DOCX.
+    def begin_docx_export_for_terminal_job(
+        self, report_store: ReportJobStore, claimed_job: ReportJob, *,
+        expected_revision: int, completed_rounds: int,
+    ) -> bool:
+        """Consume the eligible claim's agent_execution phase exactly once.
+
+        This is an internal phase CAS, not proof of content grounding, actual
+        owner/index authorization, a completed artifact, or download permission.
+        A trusted future Worker must recheck live policy and hold the private
+        retrieval receipt before calling. No partial-stop policy is implied.
+        No production caller is installed here.
         """
         try:
-            if (not self._same_report_job_database(report_store)
-                    or type(claimed_job) is not ReportJob
-                    or not self._valid_id(claimed_job.job_id)
-                    or type(expected_revision) is not int
-                    or expected_revision < 2
-                    or type(completed_rounds) is not int
-                    or not 1 <= completed_rounds <= 8):
+            if not self._valid_terminal_export_context(
+                report_store, claimed_job, expected_revision, completed_rounds,
+            ):
                 return False
 
             def op(con):
-                if not self._running_report_job_matches(con, claimed_job):
+                if not self._terminal_export_candidate_matches(
+                    con, claimed_job, expected_revision, completed_rounds,
+                ):
                     return False
-                # Do not accept a main Job that already has an artifact even
-                # if its mutable status was incorrectly left as running.
-                artifact = con.execute(
-                    "SELECT turn_id,docx_basename FROM report_jobs "
-                    "WHERE job_id=?", (claimed_job.job_id,),
-                ).fetchone()
-                if (artifact is None or artifact["turn_id"] is not None
-                        or artifact["docx_basename"] is not None):
-                    return False
-                row = con.execute(
-                    f"""SELECT state,phase,round_number,completed_rounds,
-                               termination,lease_hash,revision
-                        FROM {_TABLE} WHERE job_id=?""",
-                    (claimed_job.job_id,),
-                ).fetchone()
-                return (row is not None
-                        and row["state"] == "RETRIEVAL_STOPPED"
-                        and row["phase"] == "TERMINAL"
-                        and row["round_number"] == completed_rounds
-                        and row["completed_rounds"] == completed_rounds
-                        and row["termination"] == "SUFFICIENT"
-                        and row["lease_hash"] is None
-                        and row["revision"] == expected_revision)
+                now = datetime.now(timezone.utc).isoformat()
+                return con.execute(
+                    "UPDATE report_jobs SET phase='docx_export',"
+                    "phase_updated_at=?,updated_at=? "
+                    "WHERE job_id=? AND status='running' "
+                    "AND phase='agent_execution' AND turn_id IS NULL "
+                    "AND docx_basename IS NULL",
+                    (now, now, claimed_job.job_id),
+                ).rowcount == 1
 
-            # BEGIN IMMEDIATE prevents a main-Job cancellation/recovery or
-            # competing sidecar write from interleaving these two table reads.
+            # One BEGIN IMMEDIATE covers both authority reads and the phase
+            # mutation. Do not use a separate verify() then update_phase().
             return self._write(op)
         except Exception:
-            raise ValueError("nround_terminal_handoff_unverified") from None
+            raise ValueError("nround_docx_export_admission_unverified") from None
 
     def fail_owned_lease(self, job_id: str, lease_token: str) -> bool:
         """Fail ONLY this running sidecar with its actual lease, no global blast.

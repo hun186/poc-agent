@@ -136,3 +136,83 @@ def test_schema_drift_and_sqlite_path_failures_redacted(tmp_path):
             completed_rounds=1,
         )
     assert "PRIVATE_" not in str(err.value)
+
+
+def _begin(reports, sidecar, job, state, *, completed=1, revision=None):
+    return sidecar.begin_docx_export_for_terminal_job(
+        reports, job, expected_revision=state["revision"] if revision is None else revision,
+        completed_rounds=completed,
+    )
+
+
+def test_terminal_export_phase_is_single_use_and_does_not_complete_job(tmp_path):
+    reports, sidecar, job, state = _terminal(tmp_path)
+    assert _begin(reports, sidecar, job, state)
+    persisted = reports.get(J)
+    assert persisted.status == "running"
+    assert persisted.phase == "docx_export"
+    assert persisted.phase_updated_at == persisted.updated_at
+    assert persisted.docx_basename is None and persisted.turn_id is None
+    assert sidecar.get_public(J) == state
+    assert not _begin(reports, sidecar, job, state)
+    assert not _verify(reports, sidecar, job, state)
+
+
+def test_concurrent_terminal_export_admission_has_one_winner(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    reports, sidecar, job, state = _terminal(tmp_path)
+    barrier = Barrier(2)
+
+    def claim():
+        barrier.wait(timeout=5)
+        # Independent instances share the same canonical SQLite file.
+        other = NroundCheckpointStore(sidecar.db_path)
+        return _begin(ReportJobStore(reports.db_path), other, job, state)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        a, b = pool.submit(claim), pool.submit(claim)
+        assert sorted([a.result(timeout=15), b.result(timeout=15)]) == [False, True]
+    assert reports.get(J).phase == "docx_export"
+
+
+@pytest.mark.parametrize("reason", ["ROUND_BUDGET_EXHAUSTED", "CANCELLED"])
+def test_partial_terminal_never_enters_export_phase(tmp_path, reason):
+    reports, sidecar, job, state = _terminal(tmp_path, reason=reason)
+    assert not _begin(reports, sidecar, job, state)
+    assert reports.get(J).phase == "agent_execution"
+
+
+def test_export_admission_rejects_wrong_revision_round_owner_and_artifact(tmp_path):
+    reports, sidecar, job, state = _terminal(tmp_path)
+    assert not _begin(reports, sidecar, job, state, revision=state["revision"] + 1)
+    assert not _begin(reports, sidecar, job, state, completed=2)
+    assert not _begin(reports, sidecar, replace(job, owner_id="OTHER"), state)
+    with sqlite3.connect(reports.db_path) as con:
+        con.execute("UPDATE report_jobs SET docx_basename=? WHERE job_id=?",
+                    ("PRIVATE_STALE.docx", J))
+    assert not _begin(reports, sidecar, job, state)
+    assert reports.get(J).phase == "agent_execution"
+
+
+def test_recovered_job_and_other_database_cannot_enter_export_phase(tmp_path):
+    reports, sidecar, job, state = _terminal(tmp_path / "canonical")
+    wrong = ReportJobStore(tmp_path / "wrong" / "jobs.sqlite")
+    wrong.initialize()
+    assert not _begin(wrong, sidecar, job, state)
+    assert reports.recover_running() == 1
+    assert not _begin(reports, sidecar, job, state)
+    assert reports.get(J).status == "interrupted"
+
+
+def test_export_admission_schema_failure_is_redacted_and_rolls_back(tmp_path):
+    reports, sidecar, job, state = _terminal(tmp_path)
+    # Inject a real SQLite write error after valid authority reads.
+    with sqlite3.connect(reports.db_path) as con:
+        con.execute("""CREATE TRIGGER deny_export BEFORE UPDATE OF phase ON report_jobs
+                       BEGIN SELECT RAISE(ABORT, 'PRIVATE_WRITE_FAILURE'); END""")
+    with pytest.raises(ValueError, match="nround_docx_export_admission_unverified") as err:
+        _begin(reports, sidecar, job, state)
+    assert "PRIVATE" not in str(err.value)
+    assert reports.get(J).phase == "agent_execution"
+    assert sidecar.get_public(J) == state
