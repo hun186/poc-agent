@@ -11,6 +11,7 @@ from api.routers import chat
 from api.security.models import AuthPrincipal
 from api.security.scopes import REGISTERED_SCOPES
 from api.security.principal import current_principal
+from api.services.sraf_deep_scope_policy import active_account_binding
 from api.services.turn_execution import AgentTurnResult
 from api.services.sraf_deep_startup_config import load_deep_startup_config, DeepStartupConfigError
 from agent.adaptive_retrieval.job_checkpoint import NroundCheckpointStore
@@ -74,7 +75,10 @@ def message(result):
 
 
 def jobs(app):
-    return app.state.report_job_store.list_owned_summaries(owner_kind="user", owner_id="owner")
+    binding = active_account_binding("owner")
+    assert binding is not None
+    return app.state.report_job_store.list_owned_summaries(
+        owner_kind="user", owner_id="owner", deep_owner_binding=binding)
 
 
 def test_actual_chat_persists_then_admits_and_replays(http, monkeypatch):
