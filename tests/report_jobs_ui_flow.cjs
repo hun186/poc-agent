@@ -7,7 +7,7 @@ const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '..', 'sra_api', 'static', 'report_jobs_ui.js'), 'utf8');
 const ids = ['authToken','prompt','filename','jobId','watchBtn','stopBtn','submitBtn','downloadBtn',
   'progressCard','message','phaseTitle','jobStatus','phaseElapsed','observation','lastChecked','failureMessage',
-  'retrySubmitBtn','discardSubmitBtn','listJobsBtn','jobListMessage','jobRows','jobPrev','jobNext','jobPage','jobStatusFilter'];
+  'nroundProgress','retrySubmitBtn','discardSubmitBtn','listJobsBtn','jobListMessage','jobRows','jobPrev','jobNext','jobPage','jobStatusFilter'];
 const elements = Object.fromEntries(ids.map(id => [id, {
   value: '', hidden: false, disabled: false, textContent: '', className: '', handlers: {}, children: [],
   addEventListener(kind, fn) { this.handlers[kind] = fn; },
@@ -333,5 +333,40 @@ function progress(jobId, status, phase, long=false) {
   await tick();  // settle the old fetch after the account-change abort.
   assert.equal(elements.jobRows.children.length,0);
 
+  // Real status advertises exact-owner checkpoint availability; sidecar cannot unlock Word.
+  elements.jobId.value = 'job-deep';
+  const deep = (status, phase) => ({...progress('job-deep',status,phase), nround_progress_available:true});
+  const receipt = (status) => ({schema:'sraf_nround_owned_progress_v1', report_job_status:status,
+    state:'RUNNING',phase:'SEARCHING',round_number:2,completed_rounds:1,es_calls_this_round:3,
+    private:'DO NOT RENDER'});
+  planned.push(response(200, deep('running','agent_execution')), response(200, receipt('running')));
+  fire('watchBtn');
+  await tick();
+  assert.equal(calls.at(-1).url,'/v1/report/jobs/job-deep/nround-progress');
+  assert.equal(calls.at(-1).opts.headers.Authorization,'Bearer new-owner');
+  assert.match(elements.nroundProgress.textContent,/已完成 1 輪/);
+  assert.doesNotMatch(elements.nroundProgress.textContent,/DO NOT RENDER/);
+  assert.equal(elements.downloadBtn.hidden,true);
+  const [deepTimer, deepScheduled] = [...timers][0];
+  timers.delete(deepTimer);
+  planned.push(response(200, deep('running','agent_execution')), response(200, receipt('completed')));
+  deepScheduled.fn();
+  await tick();
+  assert.match(elements.nroundProgress.textContent,/無法確認/);
+  assert.equal(elements.downloadBtn.hidden,true);
+  // Identity switch during optional progress GET discards the old result.
+  const [nextTimer, nextScheduled] = [...timers][0];
+  timers.delete(nextTimer);
+  let releaseDeep;
+  planned.push(response(200, deep('running','agent_execution')),new Promise(resolve=>{releaseDeep=resolve;}));
+  nextScheduled.fn();
+  await tick();
+  assert.equal(typeof releaseDeep,'function');
+  elements.authToken.value='last-owner';
+  fire('authToken','input');
+  releaseDeep(response(200,receipt('running')));
+  await tick();
+  assert.equal(elements.nroundProgress.hidden,true);
+  assert.equal(elements.nroundProgress.textContent,'');
   console.log('Report Job UI behavior PASS: owner-scope headers, live phases, terminal stops, errors, download and token change');
 })().catch(err => { console.error(err); process.exitCode = 1; });
