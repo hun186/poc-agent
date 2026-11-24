@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import json
 import re
 
-from api.services.sraf_deep_scope_policy import DeepOwnerGrant, DeepScopePolicy
+from api.services.sraf_deep_grant_config import DeepOwnerGrant, DeepGrantConfig
 from api.services.sraf_nround_local_models import LocalDeepModels
 
 
@@ -20,7 +20,7 @@ class DeepStartupConfigError(ValueError):
 
 @dataclass(frozen=True, repr=False)
 class DeepStartupConfig:
-    policy: DeepScopePolicy
+    policy: DeepGrantConfig
     models: LocalDeepModels
 
 
@@ -73,7 +73,7 @@ def load_deep_startup_config(env: Mapping[str, str]) -> DeepStartupConfig | None
                 raise ValueError
             grants.append(DeepOwnerGrant(entry["owner_id"], entry["account_created_at"],
                                          tuple(entry["indexes"])))
-        policy = DeepScopePolicy(tuple(grants), _integer(env, "SRAF_DEEP_MAX_ACTIVE_JOBS"))
+        policy = DeepGrantConfig(tuple(grants), _integer(env, "SRAF_DEEP_MAX_ACTIVE_JOBS"))
         models = LocalDeepModels(
             endpoint=_required(env, "SRAF_DEEP_OLLAMA_ENDPOINT", 256),
             planner_model=_required(env, "SRAF_DEEP_PLANNER_MODEL", 128),
