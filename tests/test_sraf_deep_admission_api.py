@@ -106,5 +106,7 @@ def test_deep_submit_owner_fence_and_account_recreation(tmp_path, monkeypatch):
 
 def test_real_application_exposes_explicit_deep_admission_route():
     from api.main import app
-    assert any(getattr(r, "path", None) == "/v1/report/jobs/deep" and "POST" in r.methods
-               for r in app.routes)
+    # Exercise the real routing stack rather than inspect FastAPI include-router internals.
+    # Without authentication the registered POST must reject before admission.
+    response = TestClient(app).post("/v1/report/jobs/deep", json={"prompt": QUESTION})
+    assert response.status_code == 401
