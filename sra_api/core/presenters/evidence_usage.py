@@ -181,7 +181,7 @@ INFORMATION_STATUSES = {
 def safe_citation_label_audit(raw: Any) -> dict[str, Any]:
     if type(raw) is not dict or raw.get("schema") != "sraf_report_citation_labels_v1":
         return {}
-    if raw.get("status") not in CITATION_STATUSES:
+    if type(raw.get("status")) is not str or raw["status"] not in CITATION_STATUSES:
         return {}
     keys = ("labels_seen", "unique_labels", "unmapped_labels", "allowed_reference_count")
     values = {}
@@ -204,7 +204,7 @@ def safe_citation_label_audit(raw: Any) -> dict[str, Any]:
 def safe_evidence_information(raw: Any) -> dict[str, Any]:
     if type(raw) is not dict or raw.get("schema") != "sraf_report_evidence_information_v1":
         return {}
-    if raw.get("status") not in INFORMATION_STATUSES:
+    if type(raw.get("status")) is not str or raw["status"] not in INFORMATION_STATUSES:
         return {}
     limits = {"rows": 500, "total_visible_chars": 2_000_000,
               "short_notes": 500, "date_only_notes": 500}

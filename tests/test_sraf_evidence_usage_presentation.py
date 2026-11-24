@@ -321,3 +321,26 @@ def test_malformed_optional_integrity_metrics_do_not_reach_report_word():
     md, paragraphs = _render_both(_output(usage))
     assert "PRIVATE-SOURCE-ID" not in md + "\n".join(paragraphs)
     assert "PRIVATE-EVIDENCE" not in md + "\n".join(paragraphs)
+
+
+def test_unhashable_optional_integrity_status_preserves_base_usage_and_renderers():
+    # A JSON array/object in optional metadata must not break report export.
+    for bad_status in ([], {}, ["PRIVATE-STATUS"]):
+        usage = {**_usage(),
+            "citation_labels": {
+                "schema": "sraf_report_citation_labels_v1", "status": bad_status,
+                "labels_seen": 1, "unique_labels": 1,
+                "unmapped_labels": 1, "allowed_reference_count": 1,
+            },
+            "evidence_information": {
+                "schema": "sraf_report_evidence_information_v1", "status": bad_status,
+                "rows": 1, "total_visible_chars": 10,
+                "short_notes": 1, "date_only_notes": 0,
+            }}
+        assert safe_evidence_usage(usage) == safe_evidence_usage(_usage())
+        md, paragraphs = _render_both(_output(usage))
+        combined = md + "\n".join(paragraphs)
+        assert "Evidence 選取模式" in combined
+        assert "PRIVATE-STATUS" not in combined
+        assert "來源編號一致性" not in combined
+        assert "Evidence 資訊量提醒" not in combined
