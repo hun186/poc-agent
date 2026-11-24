@@ -71,5 +71,9 @@
 - Dedicated real Elasticsearch SDK connection, explicit existing ES credentials and HTTPS CA, normal hostname verification, no retries or sniffing, SDK PIT partial-shard rejection argument required. Never calls ordinary singleton or mock/acceptance fallback; construction performs no search or ping. CI uses real SDK with synthetic settings and denied transport IO. Lifespan wiring and actual Linux TLS/index/mapping/model acceptance remain pending.
 
 
+## 2026-11-24 #413 — deep API lifespan composition candidate
+- Explicit opt-in config → exact live DeepScopePolicy, dedicated real ES SDK, LocalDeepModels, AdaptiveJobRuntime on existing persistent ReportJobWorker. Invalid enabled config fails startup before job-store recovery; disabled stays legacy. Worker owns ES cleanup on exit; bounded stop must not close active transport, same-app overlapping lifespan blocked. No live providers probed; real FastAPI/auth/SQLite/thread/SDK synthetic lifecycle tests pending CI. Natural-language scope and OpenWebUI dispatch remain separate.
+
+
 ## 2026-11-25 #413 — bounded natural sentence candidate
 - Add deterministic explicit event year/month/day-range or expressly unbounded date, literal single-topic label and finite known analysis facets. Original prompt unchanged; same compiler at admission and Worker revalidation. Unknown syntax, compound/relative-date/exclusion scopes rejected; no LLM, inferred date, invented aspect or index override. This is not unrestricted natural-language support; ordinary/deep scope consistency and automatic dispatch remain separate gates.
