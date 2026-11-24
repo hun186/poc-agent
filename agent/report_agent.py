@@ -1,5 +1,5 @@
 #agent/report_agent.py
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 import json
 import time
 import os
@@ -126,6 +126,22 @@ def ask_with_report(
         qm["refined_question"] = refined_question
         payload["query_meta"] = qm
 
+    return _generate_report_from_payload(
+        payload, original_question, refined_question, trace, t_total_start,
+    )
+
+
+def _generate_report_from_payload(
+    payload: Dict[str, Any], original_question: str, refined_question: str,
+    trace: Dict[str, Any], t_total_start: float, *,
+    nround_progress: Dict[str, Any] | None = None,
+    report_call: Callable[..., str] | None = None,
+) -> Dict[str, Any]:
+    """Shared synthesis only; caller owns retrieval and its authorization."""
+    nround = nround_progress is not None
+    if nround and not callable(report_call):
+        raise ValueError("nround_report_call_required")
+
     # A bounded date scan with no verified Evidence is not a "no news"
     # verdict. Do not ask the LLM to write an apparently complete report.
     search_quality = _incomplete_date_search(payload)
@@ -176,6 +192,10 @@ def ask_with_report(
 
     # 你可以用環境變數控管給 LLM 的最大片段數
     MAX_EV_FOR_LLM = int(os.getenv("REPORT_MAX_EVIDENCE_SNIPS", "120"))
+    if nround:
+        MAX_EV_FOR_LLM = min(120, MAX_EV_FOR_LLM)
+        if MAX_EV_FOR_LLM < 1:
+            raise ValueError("nround_report_evidence_limit_invalid")
 
     # 新增：前端回傳上限
     MAX_EV_FOR_FRONTEND_CFG = int(os.getenv("REPORT_MAX_EVIDENCE_SNIPS_FRONTEND", "150"))
@@ -273,7 +293,7 @@ def ask_with_report(
             payload.get("time_range", {}).get("date_from"),
             payload.get("time_range", {}).get("date_to"),
         ],
-        "agg": compress_stats(payload.get("stats") or {}),
+        **({} if nround else {"agg": compress_stats(payload.get("stats") or {})}),
         **({"search_status": search_quality} if search_quality else {}),
         #"ev": compress_evidence(payload.get("evidence_snippets") or []),
         "ev": compress_evidence(picked_for_llm, max_samples=MAX_EV_FOR_LLM),
@@ -344,7 +364,7 @@ def ask_with_report(
         packed = pack_ev_for_llm(
             ev_compact,
             refined_question or payload.get("question") or "",
-            mode=os.getenv("REPORT_EV_FIELD_SELECTOR_MODE", "rules"),
+            mode="rules" if nround else os.getenv("REPORT_EV_FIELD_SELECTOR_MODE", "rules"),
             call_llm_fn=call_llm,
             llm_model=os.getenv("REPORT_FIELD_SELECTOR_MODEL_ID") or REPORT_MODEL_ID,
             llm_timeout=float(os.getenv("REPORT_FIELD_SELECTOR_TIMEOUT", "60")),
@@ -398,6 +418,7 @@ def ask_with_report(
         original_question, compressed_for_llm["ev"],
         call_llm_fn=call_llm,
         model=os.getenv("REPORT_EVIDENCE_REVIEW_MODEL_ID") or REPORT_MODEL_ID,
+        **({"mode": "off"} if nround else {}),
     )
     if evidence_review["status"] == "applied":
         allowed_refs = {row["ref_no"] for row in reviewed_rows}
@@ -454,6 +475,11 @@ def ask_with_report(
         em["llm_user_prompt_chars"] = len(user_prompt)  # ★ 可選但很實用
     #ev_for_llm = ev_compact
     ev_for_llm = compressed_for_llm["ev"]  # ★ 改成真的送進去那份
+    if nround and (not ev_for_llm or any(
+        type(row.get("note")) is not str or not row["note"].strip(" …\t\r\n")
+        for row in ev_for_llm
+    )):
+        raise ValueError("nround_report_no_usable_evidence")
     
     print(f"MAX_EV_FOR_LLM:{MAX_EV_FOR_LLM}")
     print(f"MAX_EV_FOR_FRONTEND_CFG:{MAX_EV_FOR_FRONTEND_CFG}")
@@ -501,9 +527,12 @@ def ask_with_report(
     with log_duration("[report] call_llm(report)",
         extra={"model_id": REPORT_MODEL_ID, "timeout_sec": REPORT_LLM_TIMEOUT},
     ):
-        report_text = call_llm(
+        report_text = (report_call if nround else call_llm)(
             user_prompt,
-            system_prompt=REPORT_SYSTEM_PROMPT,
+            system_prompt=(REPORT_SYSTEM_PROMPT + "\n本次是多輪檢索的已驗證片段分析，"
+                           "未提供整體 agg 統計；不得推論全資料庫事件總量、"
+                           "月季分布或未檢出事件不存在。"
+                           if nround else REPORT_SYSTEM_PROMPT),
             extra_params={"options": {}},
             # 可用 REPORT_LLM_TIMEOUT（或舊名 REPORT_TIMEOUT）延長大型報告生成等待秒數
             timeout=REPORT_LLM_TIMEOUT,
@@ -533,6 +562,13 @@ def ask_with_report(
         ])
     evidence_usage["citation_labels"] = citation_labels
     evidence_usage["evidence_information"] = evidence_information
+    if nround:
+        evidence_usage["nround_progress"] = nround_progress
+        report_text = (
+            "⚠️ 多輪分析範圍：以下僅依本次實際送入模型的核對片段撰寫；"
+            "未取得全資料庫完整統計，語意覆核及來源編號檢查不等於事實核實。"
+            "\n\n" + report_text
+        )
     if search_quality:
         # LLM models can ignore search_status; ensure answer/DOCX always
         # prominently qualifies partial data as non-exhaustive.
@@ -585,6 +621,9 @@ def ask_with_report(
         "本回答根據 es_search_news 的查詢結果與 aggregate_month_quarter 所提供的統計，"
         "並綜整 evidence_snippets 及相關文章所做的資料驅動分析。"
     )
+
+    if nround:
+        reasoning = "本報告根據多輪檢索中經日期、主題與語意覆核的實際送入片段分析；未提供全資料庫統計。"
 
     # ★ used_uuids：也從 ev_compact 算，確保跟 LLM 實際用的一致
     used_uuids: List[str] = []

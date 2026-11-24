@@ -351,3 +351,82 @@ def test_atomic_terminal_receipt_denied_after_revision_or_storage_failure(
     assert reports.get(J).status == "running"
     assert reports.get(J).docx_basename is None
     assert c.safe_progress()["ready_for_external_report_generation"] is False
+
+
+def test_claimed_nround_uses_real_shared_report_synthesis_and_word(tmp_path, monkeypatch):
+    from io import BytesIO
+    from docx import Document
+    from agent import report_agent
+    from api.services.export_word_service import ExportWordService
+
+    c, scope, ev, planners, reports, checkpoint, claimed = _case(tmp_path)
+    es = FakeES(_verified_page("A"), _verified_page("B"))
+    outcome = _run(c, scope, ev, reports, checkpoint, claimed, es)
+    calls = []
+    def model(prompt, **kwargs):
+        calls.append((json.loads(prompt), kwargs))
+        return "來源1及來源2顯示需要持續觀察。"
+    def forbidden(*args, **kwargs):
+        raise AssertionError("must not restart retrieval or refinement")
+    monkeypatch.setattr(report_agent, "call_llm", model)
+    monkeypatch.setattr(report_agent, "run_data_agent", forbidden)
+    monkeypatch.setattr(report_agent, "refine_question_for_data_agent", forbidden)
+    monkeypatch.setenv("REPORT_EV_FIELD_SELECTOR_MODE", "llm")
+    monkeypatch.setenv("SRAF_REPORT_EVIDENCE_REVIEW", "on")
+    monkeypatch.setenv("REPORT_MAX_EVIDENCE_SNIPS", "120")
+    result = outcome.generate_report()
+    assert len(calls) == 1 and calls[0][1]["stage"] == "report"
+    prompt = calls[0][0]
+    assert "agg" not in prompt and prompt["q0"] == scope.question
+    assert len(prompt["ev"]) == 4
+    assert len(es.searches) == 2 and planners == [1]
+    assert len(result["citations"]) == 4
+    assert {row["source_id"] for row in result["citations"]} == {
+        "PRIVATE_DOC_A", "PRIVATE_DOC_B"}
+    assert result["answer"].startswith("⚠️ 多輪分析範圍")
+    assert result["evidence_usage"]["citation_labels"]["status"] == "labels_match"
+    assert result["evidence_usage"]["nround_progress"]["completed_rounds"] == 2
+    data, _ = ExportWordService().build_docx_bytes(result)
+    paragraphs = "\n".join(p.text for p in Document(BytesIO(data)).paragraphs)
+    assert "多輪分析範圍" in paragraphs and "來源1" in paragraphs
+    assert reports.get(J).status == "running" and reports.get(J).docx_basename is None
+    with pytest.raises(ClaimedNroundJobExecutionError):
+        outcome.generate_report()
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("during", [False, True])
+def test_generation_live_policy_revocation_blocks_output(tmp_path, monkeypatch, during):
+    from agent import report_agent
+    c, scope, ev, _, reports, checkpoint, claimed = _case(tmp_path)
+    policy = {"allowed": True}
+    outcome = _run(c, scope, ev, reports, checkpoint, claimed,
+                   FakeES(_verified_page("A"), _verified_page("B")),
+                   owner_index=lambda *_: policy["allowed"])
+    calls = []
+    def model(*args, **kwargs):
+        calls.append(1)
+        policy["allowed"] = False
+        return "PRIVATE_RESULT"
+    monkeypatch.setattr(report_agent, "call_llm", model)
+    if not during:
+        policy["allowed"] = False
+    with pytest.raises(ClaimedNroundJobExecutionError, match="nround_report_generation_failed") as err:
+        outcome.generate_report()
+    assert "PRIVATE" not in str(err.value)
+    assert len(calls) == int(during)
+    assert reports.get(J).docx_basename is None
+
+
+def test_generation_rejects_stale_checkpoint_before_llm(tmp_path, monkeypatch):
+    from agent import report_agent
+    c, scope, ev, _, reports, checkpoint, claimed = _case(tmp_path)
+    outcome = _run(c, scope, ev, reports, checkpoint, claimed,
+                   FakeES(_verified_page("A"), _verified_page("B")))
+    with sqlite3.connect(reports.db_path) as con:
+        con.execute("UPDATE sraf_nround_checkpoints SET revision=revision+1 WHERE job_id=?", (J,))
+    calls = []
+    monkeypatch.setattr(report_agent, "call_llm", lambda *a, **k: calls.append(1))
+    with pytest.raises(ClaimedNroundJobExecutionError):
+        outcome.generate_report()
+    assert not calls

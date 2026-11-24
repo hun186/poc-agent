@@ -22,7 +22,7 @@ from typing import Any, Callable
 from .contracts import QueryConstraints
 from .coordinator import AdaptiveRequestCoordinator
 from .coverage_evaluator import CoverageTarget, RequestWideCoverageEvaluator
-from .evidence_ledger import PrivateCanonicalEvidence
+from .evidence_ledger import CanonicalReportEvidence, PrivateCanonicalEvidence
 from .planner import BoundNextRoundPlan
 from .private_semantic_binding import prepare_private_semantic_grant
 from .worker_scope_binding import WorkerScopeBinding
@@ -42,6 +42,7 @@ class TrustedNroundExecutionResult:
 
     rounds: tuple[CompletedSingleQueryRound, ...] = field(repr=False)
     progress: dict[str, object] = field(repr=False)
+    _report_rows: tuple[CanonicalReportEvidence, ...] = field(default=(), repr=False)
 
     def safe_audit(self) -> dict[str, object]:
         return {
@@ -112,6 +113,8 @@ def run_trusted_nround(
         raise TrustedNroundExecutionError("invalid_trusted_nround_context")
 
     completed: list[CompletedSingleQueryRound] = []
+    report_rows: dict[tuple[str, str], CanonicalReportEvidence] = {}
+    report_chars = 0
     next_plan: BoundNextRoundPlan | None = None
 
     def _persist_checkpoint() -> None:
@@ -262,6 +265,16 @@ def run_trusted_nround(
                 coverage_witnesses=grant.witnesses,
                 semantic_verifier=grant.semantic_verifier,
             )
+            for row in grant._report_rows:
+                previous = report_rows.get(row.pair)
+                if previous is not None:
+                    if previous.doc_id != row.doc_id:
+                        raise TrustedNroundExecutionError("ambiguous_report_source")
+                    continue
+                report_chars += len(row.passage.text) + len(row.title) + len(row.subject)
+                if len(report_rows) >= 4096 or report_chars > 2_000_000:
+                    raise TrustedNroundExecutionError("report_evidence_capacity_exceeded")
+                report_rows[row.pair] = row
             completed.append(fetched)
             _persist_checkpoint()
             progress = coordinator.safe_progress()
@@ -295,7 +308,9 @@ def run_trusted_nround(
                 or any(not r.query_plan_complete for r in completed)):
             raise TrustedNroundExecutionError("round_execution_unverified")
         return TrustedNroundExecutionResult(
-            rounds=tuple(completed), progress=progress)
+            rounds=tuple(completed), progress=progress,
+            _report_rows=tuple(report_rows.values()) if progress["termination"] == "SUFFICIENT" else ())
     except Exception:
+        coordinator.revoke_unpersisted_report_readiness()
         coordinator.cancel()
         raise TrustedNroundExecutionError("trusted_nround_execution_failed") from None

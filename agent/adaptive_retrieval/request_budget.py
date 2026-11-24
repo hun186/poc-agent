@@ -48,6 +48,7 @@ class RequestAdmissionBudget:
         # Request-local, once-only claim for one completed Evidence history.
         # A strategy claim is nonrefundable, even if the planner fails.
         self._strategy_claimed_after = -1
+        self._report_generation_claimed = False
 
     def _read_time(self) -> float:
         value = self._clock()
@@ -96,6 +97,28 @@ class RequestAdmissionBudget:
             self._strategy_claimed_after = completed_rounds
             self._used["planner"] += 1
             return True
+
+    def claim_report_generation(self, completed_rounds: int) -> int:
+        """Spend one nonrefundable report call; return remaining whole seconds.
+
+        The trusted caller must independently prove terminal SUFFICIENT
+        and current Job/owner policy before spending this slot. This does
+        not forcibly cancel an in-flight provider.
+        """
+        if type(completed_rounds) is not int or completed_rounds < 1:
+            return 0
+        with self._lock:
+            try:
+                now = self._read_time()
+                remaining = int(self._end - now)
+            except Exception:
+                return 0
+            if (now < self._start or remaining < 1
+                    or self._report_generation_claimed
+                    or self._used["round"] != completed_rounds):
+                return 0
+            self._report_generation_claimed = True
+            return remaining
 
     def snapshot(self) -> BudgetSnapshot:
         """A conservative planner hint, not an in-flight cancellation deadline."""

@@ -20,7 +20,7 @@ from .coverage_evaluator import (
     CoverageTarget, EvidenceFacetWitness, RequestWideCoverageEvaluator,
 )
 from .evidence_ledger import (
-    PrivateCanonicalEvidence, RoundObservation, observe_canonical_round,
+    CanonicalReportEvidence, PrivateCanonicalEvidence, RoundObservation, observe_canonical_round,
 )
 
 
@@ -36,6 +36,7 @@ class CanonicalSemanticGrant:
     witnesses: tuple[EvidenceFacetWitness, ...] = field(repr=False)
     targets: tuple[CoverageTarget, ...] = field(repr=False)
     _approved: frozenset[tuple[int, str, str]] = field(repr=False)
+    _report_rows: tuple[CanonicalReportEvidence, ...] = field(default=(), repr=False)
 
     def semantic_verifier(
         self, target: CoverageTarget, witness: EvidenceFacetWitness,
@@ -93,6 +94,7 @@ def prepare_private_semantic_grant(
         raise PrivateSemanticBindingError("untrusted_semantic_binding_context")
     # This temporary lookup never leaves the trusted function or persists.
     captured: dict[tuple[str, str], PrivateCanonicalEvidence] = {}
+    report_rows: dict[tuple[str, str], CanonicalReportEvidence] = {}
     try:
         obs = observe_canonical_round(
             es_hits,
@@ -103,7 +105,7 @@ def prepare_private_semantic_grant(
             query_for_snippet=query_for_snippet,
             original_question=constraints.question,
             complete=True,
-            private_evidence=captured,
+            private_evidence=captured, private_report_rows=report_rows,
         )
         if set(captured) != obs.evidence_source_pairs:
             raise ValueError("incomplete_capture")
@@ -118,17 +120,22 @@ def prepare_private_semantic_grant(
                     raise ValueError("untrusted_semantic_verdict")
                 if approved:
                     accepted.add((index, ev, src))
+        # A report may consume only a passage actually approved for at least
+        # one target. Do not reconstruct it later from raw ES hits.
+        selected = tuple(report_rows[pair] for pair in
+                         sorted({(ev, src) for _, ev, src in accepted}))
     except Exception:
         raise PrivateSemanticBindingError("private_semantic_verification_failed") from None
     finally:
         # The grant exposes only identities; private text is no longer needed
         # by this bridge once the injected checker has completed.
         captured.clear()
+        report_rows.clear()
     witnesses = tuple(
         EvidenceFacetWitness(index, ev, src)
         for index, ev, src in sorted(accepted)
     )
     return CanonicalSemanticGrant(
         observation=obs, witnesses=witnesses, targets=targets,
-        _approved=frozenset(accepted),
+        _approved=frozenset(accepted), _report_rows=selected,
     )
