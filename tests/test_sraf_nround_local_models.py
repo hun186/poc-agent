@@ -68,7 +68,7 @@ def test_planner_semantic_and_report_use_explicit_models(monkeypatch):
     m = models()
     assert m.plan("question", system_prompt="system", timeout=12) == '{"action":"stop"}'
     target = CoverageTarget("aspect", "外交")
-    evidence = PrivateCanonicalEvidence("外交資料", "2025-01-01", ())
+    evidence = PrivateCanonicalEvidence("外交資料", "2025-01-01", (), ("event-1",))
     assert m.assess(target, evidence, timeout=3) is True
     assert m.report("report", system_prompt="system", timeout=10, model="report:local",
                     stage="report", extra_params={"options": {}}) == "報告"
@@ -87,7 +87,7 @@ def test_invalid_semantic_result_is_failure_not_false(monkeypatch, raw):
     wire(monkeypatch, Response(raw))
     with pytest.raises(mod.DeepModelError):
         models().assess(CoverageTarget("entity", "甲"),
-                        PrivateCanonicalEvidence("資料", "2025-01-01", ()), timeout=2)
+                        PrivateCanonicalEvidence("資料", "2025-01-01", (), ("event-1",)), timeout=2)
 
 
 def test_truncation_redirect_overflow_and_report_model_mismatch(monkeypatch):
