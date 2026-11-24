@@ -65,3 +65,7 @@
 
 ## 2026-11-24 #413 — deep report model routing candidate
 - Thread an explicit server-owned report model ID from AdaptiveJobRuntime through the claimed generation receipt into shared ReportAgent synthesis, provider request and trace. Ordinary report retains its model; older internal test callers retain default behavior. No HTTP override, provider activation or change to generation budget. Real Worker/SQLite/synthetic ES/DOCX regression verifies the configured deep model differs from ordinary model; Hosted CI/Review pending.
+
+
+## 2026-11-24 #413 — dedicated deep ES connection candidate
+- Dedicated real Elasticsearch SDK connection, explicit existing ES credentials and HTTPS CA, normal hostname verification, no retries or sniffing, SDK PIT partial-shard rejection argument required. Never calls ordinary singleton or mock/acceptance fallback; construction performs no search or ping. CI uses real SDK with synthetic settings and denied transport IO. Lifespan wiring and actual Linux TLS/index/mapping/model acceptance remain pending.
