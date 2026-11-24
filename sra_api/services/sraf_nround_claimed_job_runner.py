@@ -107,6 +107,7 @@ def execute_claimed_nround_job(
     max_pages: int = 20,
     request_timeout_seconds: int = 20,
     max_semantic_checks_per_round: int = 512,
+    report_call: Callable[..., str] | None = None,
 ) -> ClaimedNroundRetrieval:
     """Run an explicitly claimed and pre-registered N-round sidecar job.
 
@@ -124,6 +125,7 @@ def execute_claimed_nround_job(
                 or type(constraints) is not QueryConstraints
                 or type(evaluator) is not RequestWideCoverageEvaluator
                 or not callable(semantic_assessor)
+                or (report_call is not None and not callable(report_call))
                 or not callable(check_owner_index)
                 or not callable(check_question_branches)
                 or checkpoint_store.db_path.resolve() !=
@@ -256,7 +258,7 @@ def execute_claimed_nround_job(
                     kwargs["timeout"] = min(float(kwargs["timeout"]), remaining)
                     if kwargs["timeout"] <= 0:
                         raise ClaimedNroundJobExecutionError("nround_report_budget_denied")
-                    answer = report_agent.call_llm(prompt, **kwargs)
+                    answer = (report_call if report_call is not None else report_agent.call_llm)(prompt, **kwargs)
                     verify_generation()
                     if (coordinator._budget.snapshot().remaining_seconds < 1
                             or type(answer) is not str or not answer.strip()):

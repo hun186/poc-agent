@@ -30,6 +30,8 @@ on:
       - 'tests/test_sraf_nround_claimed_job_runner.py'
       - 'sra_api/services/sraf_nround_claimed_job_runner.py'
       - 'sra_api/services/sraf_adaptive_job_runtime.py'
+      - 'sra_api/services/sraf_nround_local_models.py'
+      - 'tests/test_sraf_nround_local_models.py'
       - 'sra_api/services/report_job_worker.py'
       - 'sra_api/services/report_job_store.py'
       - 'sra_api/services/report_job_service.py'
@@ -84,6 +86,7 @@ jobs:
             tests/test_sraf_nround_safe_progress_sink.py \
             tests/test_sraf_nround_claimed_job_runner.py \
             tests/test_sraf_adaptive_job_runtime.py \
+            tests/test_sraf_nround_local_models.py \
             tests/test_sraf_nround_worker_scope_binding.py \
             tests/test_sraf_nround_persisted_claimed_job_scope.py \
             tests/test_sraf_nround_owned_progress.py \
