@@ -104,3 +104,30 @@ def test_turn_receipt_is_private_and_opt_in(transport, monkeypatch):
         payload=payload, session_id="synthetic", request_id="synthetic", trace={},
         capture_ordinary_scope=True,
     ).ordinary_scope is None
+
+
+@pytest.mark.parametrize("prior_context", [False, True])
+def test_actual_agent_file_context_invalidates_scope(transport, monkeypatch, tmp_path, prior_context):
+    from agent import agent as actual
+    from agent.session_store import FileSessionStore
+    store = FileSessionStore(base_dir=str(tmp_path))
+    if prior_context:
+        state = store.get("synthetic-file-session")
+        store.append_turn(state, "user", "prior synthetic question")
+        store.save(state)
+        # Fresh store instance proves the context is loaded from disk.
+        store = FileSessionStore(base_dir=str(tmp_path))
+    monkeypatch.setattr(actual, "SESSION_STORE", store)
+    monkeypatch.setattr(actual, "SESSION_STORE_ENABLED", True)
+    monkeypatch.setattr(actual, "route_task_mode", lambda *a, **k: {"mode": "SRA_REPORT", "topic": "none"})
+    def report(*a, **k):
+        tool = bind_requirement_acceptance(search_news.ESSearchNews())
+        invoke(tool)
+        return {"answer": "synthetic ordinary report", "citations": []}
+    monkeypatch.setattr(actual, "ask_with_report", report)
+    capture = OrdinaryScopeCapture()
+    with bind_ordinary_scope_capture(capture):
+        result = actual.answer_with_routing(user_msg="synthetic", history_msgs=[], memory_text="",
+                    last_structured={}, session_id="synthetic-file-session", request_id="synthetic", trace={})
+    assert result["mode"] == "SRA_REPORT"
+    assert (capture.seal() is None) is prior_context
