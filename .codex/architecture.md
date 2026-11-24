@@ -79,4 +79,4 @@
 
 
 ## 2026-11-24 #413 — deep startup configuration boundary (candidate)
-- Server-owned `load_deep_startup_config` parses an explicit environment snapshot into immutable DeepScopePolicy and LocalDeepModels only. Absent/0 flag leaves the existing worker unchanged; no implicit model/index or provider calls. Next composition must validate the real ES transport and bind the exact policy/model callbacks to the existing worker before exposing deep admission. This candidate does not mount anything in lifespan.
+- Server-owned `load_deep_startup_config` parses an explicit environment snapshot into immutable DeepGrantConfig and LocalDeepModels only. Absent/0 flag leaves the existing worker unchanged; no implicit model/index or provider calls. Next composition must validate the real ES transport and construct the live DeepScopePolicy from validated grant data and bind the exact policy/model callbacks to the existing worker before exposing deep admission. This candidate does not mount anything in lifespan.
