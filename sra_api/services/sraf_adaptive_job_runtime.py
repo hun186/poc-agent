@@ -118,6 +118,9 @@ class AdaptiveJobRuntime:
     check_owner_index: Callable[[ReportJob, str], bool]
     check_question_branches: Callable[[ReportJob, QueryConstraints, tuple[str, ...]], bool]
     report_call: Callable[..., str]
+    # Explicit server-selected model for the production composition. None is
+    # retained only for existing internal callers using the shared model ID.
+    report_model_id: str | None = None
 
     def __post_init__(self):
         if not all(callable(v) for v in (
@@ -125,6 +128,10 @@ class AdaptiveJobRuntime:
             self.check_owner_index, self.check_question_branches, self.report_call,
         )):
             raise ValueError("adaptive_runtime_unverified")
+        if self.report_model_id is not None:
+            from api.services.sraf_nround_local_models import _model_name
+            if not _model_name(self.report_model_id):
+                raise ValueError("adaptive_runtime_model_invalid")
 
     def execute(self, store: ReportJobStore, job: ReportJob, reports_root: Path) -> None:
         intent = AdaptiveJobIntent.from_options(job.options, job.prompt)
@@ -179,7 +186,7 @@ class AdaptiveJobRuntime:
             coordinator=coordinator, constraints=c, evaluator=evaluator,
             authorized_indexes=c.allowed_indexes, es_client=self.es_client_factory(),
             semantic_assessor=guarded_semantic, check_owner_index=self.check_owner_index,
-            report_call=self.report_call,
+            report_call=self.report_call, report_model_id=self.report_model_id,
             check_question_branches=self.check_question_branches,
             query_for_snippet=c.question[:2048],
         )
