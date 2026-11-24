@@ -85,3 +85,7 @@
 
 ## 2026-11-25 #413 — authenticated chat turn replay candidate
 - #499 merged 8640252612a3 with 6/6 Hosted workflows, 9/9 jobs, latest-head independent Codex code review clean; no live deployment. #500/#501 synchronized to new main; previous CI green but independent review blocked by quota. Add common exact runtime gate, account-generation-bound stable client turn identity, separate reserved auto-chat key namespace and owner-scoped replay revalidation against original prompt, immutable scope/hash and persistent checkpoint. No chat dispatch or public replay route yet. Real SQLite/auth synthetic regression pending CI and review; requires stable OpenWebUI turn token integration.
+
+
+## 2026-11-25 #413 — automatic dual-track Chat candidate
+- #500/#501 merged after exact-head 5/5 and 7/7 CI and clean Codex re-review, prior findings resolved. Candidate wires authenticated Chat to existing deep queue only after ordinary report response/snapshot/session/trace succeeds, exact original compile matches private observed ES scope, verified per-turn key and current owner grant. Verified durable replay works without a new receipt. Default disabled; separate explicit operator auto opt-in plus safe PUBLIC_API_BASE; missing user token/key, META/JSON, ambiguous or contextual scope do not create Jobs. Markdown status link only after verified persisted Job, no token, no private scope, no direct Word before completion. CI/review pending; real OpenWebUI adapter and private live acceptance separate.

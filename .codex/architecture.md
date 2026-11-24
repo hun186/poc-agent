@@ -84,3 +84,7 @@
 
 ## 2026-11-25 #413 — chat retry boundary candidate
 - Internal sraf_chat_deep_turn shares explicit admission's exact Worker/store/policy resolution; authenticated account generation plus one validated client turn token derives a reserved key. A retry may look up the original accepted Job without re-running deep work, after rechecking current grant, original question, request hash and checkpoint. New admission and public chat response not wired by this candidate.
+
+
+## 2026-11-25 #413 — candidate real Chat dispatch integration
+- Startup freezes explicit auto opt-in and trusted browser base. Non-meta authenticated Markdown Chat gets private identity before ordinary execution, enables request-local ES receipt only for eligible turns, then after ordinary response, snapshot/session persistence and trace, exact compile + receipt/owner/policy comparison → existing atomic adaptive Job insert or verified replay → append status link. No provider calls or separate queue in dispatch. Default off; no actual OpenWebUI deployment tested.

@@ -140,3 +140,7 @@
 
 ## 2026-11-25 #413 — automatic chat retry prerequisites
 - The actual OpenWebUI version/header forwarding and unique per-message token remain unverified. Missing/duplicate key fails closed for future auto dispatch; do not substitute random request ID, session header or prompt hash. Hosted tests are synthetic; no live ES/LLM/browser/Word acceptance. Prior #500/#501 independent re-review blocked by review quota, so no bypass merge.
+
+
+## 2026-11-25 #413 — auto Chat candidate limitations
+- Only bounded natural/explicit grammar, exact index set/order, event dates and core terms, no prior context for new admission. OpenWebUI must actually forward an individual SRAF JWT and stable unique per-message Idempotency-Key; shared service keys and raw user/session headers never suffice. Actual private browser/proxy URLs, real ES/LLM, long job resource profile and Word/download verification remain separate. Synthetic CI/review pending.
