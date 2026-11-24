@@ -112,11 +112,12 @@ class AdaptiveJobRuntime:
     semantic_assessor: Callable[..., bool]
     check_owner_index: Callable[[ReportJob, str], bool]
     check_question_branches: Callable[[ReportJob, QueryConstraints, tuple[str, ...]], bool]
+    report_call: Callable[..., str]
 
     def __post_init__(self):
         if not all(callable(v) for v in (
             self.es_client_factory, self.planner_call, self.semantic_assessor,
-            self.check_owner_index, self.check_question_branches,
+            self.check_owner_index, self.check_question_branches, self.report_call,
         )):
             raise ValueError("adaptive_runtime_unverified")
 
@@ -152,6 +153,17 @@ class AdaptiveJobRuntime:
             if budget.snapshot().remaining_seconds <= remaining.generation_reserve_seconds:
                 raise ValueError("adaptive_planner_deadline")
             return result
+        def guarded_semantic(target, evidence) -> bool:
+            policy_check()
+            remaining = budget.snapshot()
+            timeout = remaining.remaining_seconds - remaining.generation_reserve_seconds
+            if timeout < 1:
+                raise ValueError("adaptive_semantic_deadline")
+            result = self.semantic_assessor(target, evidence, timeout=min(timeout, 60))
+            policy_check()
+            if budget.snapshot().remaining_seconds <= remaining.generation_reserve_seconds:
+                raise ValueError("adaptive_semantic_deadline")
+            return result
         coordinator = AdaptiveRequestCoordinator(
             constraints=c, term_groups=intent.term_groups, effective_terms=intent.effective_terms,
             budget=budget, planner=AdaptiveRetrievalPlanner(guarded_planner),
@@ -161,7 +173,8 @@ class AdaptiveJobRuntime:
             report_store=store, checkpoint_store=checkpoint, claimed_job=job,
             coordinator=coordinator, constraints=c, evaluator=evaluator,
             authorized_indexes=c.allowed_indexes, es_client=self.es_client_factory(),
-            semantic_assessor=self.semantic_assessor, check_owner_index=self.check_owner_index,
+            semantic_assessor=guarded_semantic, check_owner_index=self.check_owner_index,
+            report_call=self.report_call,
             check_question_branches=self.check_question_branches,
             query_for_snippet=c.question[:2048],
         )

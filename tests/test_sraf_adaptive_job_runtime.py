@@ -65,14 +65,18 @@ def test_actual_worker_routes_deep_job_to_real_word_without_single_round(tmp_pat
         raise AssertionError("ordinary Agent must not execute")
     monkeypatch.setattr(worker_mod, "execute_agent_turn", forbid)
     monkeypatch.setattr(report_agent, "call_llm",
-                        lambda *a, **k: calls.append(1) or "依來源1與來源2分析。")
+                        forbid)
     def planner(*a, **k):
         return json.dumps({"action": "search", "reason_code": "COVERAGE_GAP",
                            "optional_terms": ["聯合國聲明"], "target_aspects": ["外交回應"]},
                           ensure_ascii=False)
-    runtime = AdaptiveJobRuntime(lambda: fake, planner, lambda *_: True,
+    def semantic(*args, timeout):
+        assert 0 < timeout <= 60
+        return True
+    runtime = AdaptiveJobRuntime(lambda: fake, planner, semantic,
                                  lambda j, i: j.owner_id == "owner" and i == "news_test",
-                                 lambda j, c, branches: j.prompt == c.question and branches == ("CANONICAL_MAIN",))
+                                 lambda j, c, branches: j.prompt == c.question and branches == ("CANONICAL_MAIN",),
+                                 lambda *a, **k: calls.append(1) or "依來源1與來源2分析。")
     root = tmp_path / "reports"
     worker = ReportJobWorker(store, root, adaptive_runtime=runtime)
     claim = store.claim_next()
@@ -93,7 +97,7 @@ def test_deep_worker_fails_closed_without_ordinary_fallback(tmp_path, monkeypatc
         raise AssertionError("must not invoke provider")
     monkeypatch.setattr(worker_mod, "execute_agent_turn", forbidden)
     runtime = AdaptiveJobRuntime(forbidden, forbidden, forbidden,
-                                 lambda *_: False, lambda *_: False)
+                                 lambda *_: False, lambda *_: False, forbidden)
     if mode == "missing_runtime":
         runtime = None
     elif mode in ("missing_checkpoint", "tampered_intent"):
