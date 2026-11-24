@@ -7,9 +7,10 @@ No source Evidence, original prompt, IDs or credentials leave this module.
 from __future__ import annotations
 
 from contextlib import closing
+import json
 import sqlite3
 
-from api.services.report_job_store import ReportJobStore
+from api.services.report_job_store import ADAPTIVE_JOB_OPTION, ADAPTIVE_OWNER_BINDING, ReportJobStore
 from agent.adaptive_retrieval.job_checkpoint import (
     NroundCheckpointStore, _TABLE, _EXPECTED_COLUMN_META,
     _ALLOWED_REASONS,
@@ -36,6 +37,7 @@ _PHASES = frozenset((
 def get_owned_nround_progress(
     *, report_store: ReportJobStore, checkpoint_store: NroundCheckpointStore,
     job_id: str, owner_kind: str, owner_id: str,
+    deep_owner_binding: str | None = None,
 ) -> dict[str, str | int | bool] | None:
     """Read a single trusted principal's N-round *counts*, or return None.
 
@@ -83,12 +85,23 @@ def get_owned_nround_progress(
             if meta != _EXPECTED_COLUMN_META:
                 raise NroundOwnedProgressError("nround_owned_progress_unverified")
             report = con.execute(
-                "SELECT status FROM report_jobs "
+                "SELECT status,options_json,metadata_json FROM report_jobs "
                 "WHERE job_id=? AND owner_kind=? AND owner_id=?",
                 (job_id, owner_kind, owner_id),
             ).fetchone()
             if report is None:
                 return None
+            options = json.loads(report["options_json"])
+            if type(options) is not dict:
+                return None
+            if ADAPTIVE_JOB_OPTION in options:
+                # Same SQLite read snapshot as the owner and checkpoint.
+                if (owner_kind != "user" or type(deep_owner_binding) is not str
+                        or len(deep_owner_binding) != 64
+                        or any(c not in "0123456789abcdef" for c in deep_owner_binding)
+                        or json.loads(report["metadata_json"]) != {
+                            ADAPTIVE_OWNER_BINDING: deep_owner_binding}):
+                    return None
             if report["status"] not in _REPORT_STATUSES:
                 raise NroundOwnedProgressError("nround_owned_progress_unverified")
             checkpoint = con.execute(

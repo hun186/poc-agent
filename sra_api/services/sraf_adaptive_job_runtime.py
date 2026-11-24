@@ -18,12 +18,9 @@ from agent.adaptive_retrieval.coverage_evaluator import RequestWideCoverageEvalu
 from agent.adaptive_retrieval.job_checkpoint import NroundCheckpointStore
 from agent.adaptive_retrieval.planner import AdaptiveRetrievalPlanner
 from agent.adaptive_retrieval.request_budget import RequestAdmissionBudget
-from api.services.report_job_store import ADAPTIVE_JOB_OPTION, ReportJob, ReportJobStore
+from api.services.report_job_store import ADAPTIVE_JOB_OPTION, ADAPTIVE_OWNER_BINDING, ReportJob, ReportJobStore
 from api.services.report_job_service import DEFAULT_REPORT_MODEL, create_job
 from api.services.sraf_nround_claimed_job_runner import execute_claimed_nround_job
-
-
-ADAPTIVE_OWNER_BINDING = "adaptive_owner_binding"
 
 
 @dataclass(frozen=True, repr=False)

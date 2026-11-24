@@ -20,7 +20,7 @@ from api.security.scopes import (
 )
 import api.services.auth_store as auth_store_module
 from api.services.auth_support import VALID_ROLES, normalize_role
-from api.services.report_job_store import ReportJob, ReportJobStore
+from api.services.report_job_store import ADAPTIVE_JOB_OPTION, ReportJob, ReportJobStore
 from api.services.sraf_adaptive_job_runtime import (
     ADAPTIVE_OWNER_BINDING, AdaptiveJobIntent, create_adaptive_job,
 )
@@ -213,3 +213,21 @@ class DeepScopePolicy:
                     and expected.options() == job.options)
         except Exception:
             return False
+
+
+def binding_for_principal(principal: AuthPrincipal) -> str | None:
+    """Only use a principal already authenticated by the server dependency."""
+    if type(principal) is not AuthPrincipal or principal.kind != "user":
+        return None
+    return active_account_binding(principal.subject)
+
+
+def bound_deep_owner_matches(job: ReportJob, principal: AuthPrincipal) -> bool:
+    """Deep results have no cross-owner admin bypass or username reuse grant."""
+    if (type(job) is not ReportJob or type(principal) is not AuthPrincipal
+            or ADAPTIVE_JOB_OPTION not in job.options
+            or job.owner_kind != "user" or principal.kind != "user"
+            or job.owner_id != principal.subject):
+        return False
+    binding = binding_for_principal(principal)
+    return binding is not None and job.metadata == {ADAPTIVE_OWNER_BINDING: binding}
