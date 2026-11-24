@@ -15,6 +15,7 @@ from api.security.models import AuthPrincipal
 from api.security.scopes import REGISTERED_SCOPES
 from api.security.principal import current_principal
 from test_sraf_chat_deep_turn import configured
+from test_sraf_chat_deep_dispatch import http, jobs
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("sraf_openwebui_pipe_fixture", ROOT / "integrations/openwebui/sraf_pipe.py")
@@ -137,3 +138,43 @@ def test_capability_route_requires_individual_principal(tmp_path,monkeypatch):
     assert c.get(url).json()=={"protocol":"sraf-openwebui-scoped-chat-v1"}
     selected["principal"]=AuthPrincipal("service","owner",None,REGISTERED_SCOPES,"synthetic")
     assert c.get(url).status_code==403
+
+
+def test_pipe_to_actual_chat_auth_and_sqlite_replay(http, fixture, monkeypatch):
+    # Real Pipe -> actual FastAPI route and auth dependencies -> durable
+    # SQLite job, with only ordinary model/provider boundary synthetic.
+    from dataclasses import replace
+    from api.services.auth_support import AuthUser
+    from api.services.auth_tokens import create_token
+    from api.services.sraf_session_namespace import bind_openwebui_session
+    _, app, identity, events, auth = http
+    pipe, _ = fixture
+    app.dependency_overrides.pop(current_principal)
+    row = auth.get_user("owner")
+    token = create_token(AuthUser("owner", row["role"], "active"), auth.get_user)
+    user = {"valves": pipe.UserValves(SRAF_ACCESS_TOKEN=token)}
+    seen = []
+    actual = chat.execute_agent_turn
+    def execute(**kwargs):
+        scoped = kwargs["scoped_chat_session"]
+        seen.append(scoped.key)
+        return replace(actual(**kwargs), session_id=scoped.key)
+    monkeypatch.setattr(chat,"execute_agent_turn",execute)
+    real = httpx.AsyncClient
+    def factory(**kwargs):
+        return real(transport=httpx.ASGITransport(app=app),**kwargs)
+    monkeypatch.setattr(pipe_module.httpx,"AsyncClient",factory)
+    answer = invoke(pipe,user)
+    message = answer["choices"][0]["message"]
+    deep = message["context"]["deep_report"]
+    assert deep["status"] == "queued" and deep["browser_status_url"] in message["content"]
+    assert message["context"]["word_export"]["session_id"] == seen[-1]
+    assert seen[-1] == bind_openwebui_session(identity["principal"], ("chat-one",)).key
+    identity["receipt"] = None
+    replay = invoke(pipe,user)["choices"][0]["message"]
+    assert replay["context"]["deep_report"]["job_id"] == deep["job_id"]
+    assert len(jobs(app)) == 1 and seen[0] == seen[1]
+    auth.reject_user("owner", rejected_by="operator")
+    with pytest.raises(pipe_module.AdapterError):
+        invoke(pipe,user)
+    assert len(seen) == 2
