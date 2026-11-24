@@ -66,6 +66,7 @@ def test_actual_worker_routes_deep_job_to_real_word_without_single_round(tmp_pat
     monkeypatch.setattr(worker_mod, "execute_agent_turn", forbid)
     monkeypatch.setattr(report_agent, "call_llm",
                         forbid)
+    monkeypatch.setattr(report_agent, "REPORT_MODEL_ID", "ordinary:synthetic")
     def planner(*a, **k):
         return json.dumps({"action": "search", "reason_code": "COVERAGE_GAP",
                            "optional_terms": ["聯合國聲明"], "target_aspects": ["外交回應"]},
@@ -76,14 +77,16 @@ def test_actual_worker_routes_deep_job_to_real_word_without_single_round(tmp_pat
     runtime = AdaptiveJobRuntime(lambda: fake, planner, semantic,
                                  lambda j, i: j.owner_id == "owner" and i == "news_test",
                                  lambda j, c, branches: j.prompt == c.question and branches == ("CANONICAL_MAIN",),
-                                 lambda *a, **k: calls.append(1) or "依來源1與來源2分析。")
+                                 lambda *a, **k: calls.append(k["model"]) or "依來源1與來源2分析。",
+                                 report_model_id="deep-report:synthetic")
     root = tmp_path / "reports"
     worker = ReportJobWorker(store, root, adaptive_runtime=runtime)
     claim = store.claim_next()
     worker.execute(claim)
     persisted = store.get(job.job_id)
     assert persisted.status == "completed"
-    assert calls == [1]
+    assert calls == ["deep-report:synthetic"]
+    assert report_agent.REPORT_MODEL_ID == "ordinary:synthetic"
     assert len(fake.searches) == 2
     assert "多輪分析範圍" in "\n".join(p.text for p in Document(root / persisted.docx_basename).paragraphs)
 
@@ -141,3 +144,12 @@ def test_adaptive_admission_preserves_original_question_and_legacy_trim(tmp_path
                              model=DEFAULT_REPORT_MODEL, options={}, metadata={},
                              idempotency_key="ordinary", owner_kind="user", owner_id="owner")
     assert ordinary.prompt == original.strip()
+
+
+@pytest.mark.parametrize('model', ['', 'cloud:model', ' model', 123])
+def test_runtime_rejects_invalid_explicit_deep_report_model(model):
+    def forbidden(*a, **k):
+        raise AssertionError('no provider work')
+    with pytest.raises(ValueError, match='adaptive_runtime_model_invalid'):
+        AdaptiveJobRuntime(forbidden, forbidden, forbidden, forbidden, forbidden,
+                           forbidden, report_model_id=model)
