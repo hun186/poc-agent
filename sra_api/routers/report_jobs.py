@@ -14,6 +14,8 @@ from api.security.models import AuthPrincipal
 from api.security.principal import require_scopes
 from api.security.scopes import REPORT_JOB_ADMIN, REPORT_JOB_CREATE, REPORT_JOB_DOWNLOAD, REPORT_JOB_READ
 from api.services.editor_audit import append_audit_event
+from agent.adaptive_retrieval.job_checkpoint import NroundCheckpointStore
+from api.services.sraf_nround_owned_progress import NroundOwnedProgressError, get_owned_nround_progress
 
 router = APIRouter(prefix="/v1/report/jobs", tags=["report jobs"])
 DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -144,7 +146,20 @@ def status(job_id: str, request: Request, principal: AuthPrincipal = Depends(req
         _audit_owner_mismatch(job, principal, "read")
         raise HTTPException(404, "Report job not found")
     _audit_admin_cross_owner(job, principal, "read")
-    return _view(job)
+    result = _view(job)
+    # Only exact owners may discover the optional count-only checkpoint.
+    # An unavailable checkpoint must not disrupt authoritative Job status.
+    result["nround_progress_available"] = False
+    if job.owner_kind == principal.kind and job.owner_id == principal.subject:
+        store = _store(request)
+        try:
+            result["nround_progress_available"] = get_owned_nround_progress(
+                report_store=store, checkpoint_store=NroundCheckpointStore(store.db_path),
+                job_id=job_id, owner_kind=principal.kind, owner_id=principal.subject,
+            ) is not None
+        except NroundOwnedProgressError:
+            pass
+    return result
 
 @router.post("/{job_id}/cancel", responses={
     200: {"description": "Queued job cancelled"},

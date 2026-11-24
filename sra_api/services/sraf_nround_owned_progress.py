@@ -1,7 +1,7 @@
 """Internal owner-scoped, read-only N-round checkpoint projection.
 
-NOT exposed as a route, NOT a JWT/API-key authenticator or report/Word
-capability. The caller must provide a *verified server-side* owner principal.
+Used by the owner-scoped progress route; NOT a JWT/API-key authenticator
+or report/Word capability. The caller must provide a *verified server-side* owner principal.
 No source Evidence, original prompt, IDs or credentials leave this module.
 """
 from __future__ import annotations
@@ -41,7 +41,7 @@ def get_owned_nround_progress(
 
     Unauthorized, unknown, unowned legacy rows and jobs without a checkpoint
     are intentionally indistinguishable. The owner parameters are NOT
-    authenticated here: future API handlers must derive them from actual
+    authenticated here: API handlers must derive them from actual
     server-side principal/REPORT_JOB_READ policy, never query/body input.
     """
     try:

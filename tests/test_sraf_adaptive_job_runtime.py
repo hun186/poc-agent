@@ -6,6 +6,7 @@ import sqlite3
 
 import pytest
 
+from api.services.report_job_service import DEFAULT_REPORT_MODEL, create_job
 from api.services.report_job_store import ADAPTIVE_JOB_OPTION, ReportJobStore, IdempotencyConflict
 from api.services.report_job_worker import ReportJobWorker
 from api.services.sraf_adaptive_job_runtime import AdaptiveJobIntent, AdaptiveJobRuntime, create_adaptive_job
@@ -117,3 +118,22 @@ def test_status_projection_hides_private_intent(tmp_path):
     assert "news_test" not in json.dumps(result)
     with pytest.raises(ValidationError):
         ReportJobCreate(prompt=job.prompt, options=job.options)
+
+
+def test_adaptive_admission_preserves_original_question_and_legacy_trim(tmp_path):
+    store = _queue(tmp_path)
+    intent = _intent()
+    original = " \t" + intent.constraints.question + "\n "
+    padded = replace(intent, constraints=replace(intent.constraints, question=original))
+    job, created = _submit(store, intent=padded)
+    assert created and job.prompt == original
+    assert store.get(job.job_id).prompt == original
+    assert AdaptiveJobIntent.from_options(job.options, job.prompt) == padded
+    replay, created = _submit(store, intent=padded)
+    assert not created and replay.job_id == job.job_id
+    with pytest.raises(IdempotencyConflict):
+        _submit(store, intent=intent)
+    ordinary, _ = create_job(store, prompt=original, filename=None, session_id=None,
+                             model=DEFAULT_REPORT_MODEL, options={}, metadata={},
+                             idempotency_key="ordinary", owner_kind="user", owner_id="owner")
+    assert ordinary.prompt == original.strip()
