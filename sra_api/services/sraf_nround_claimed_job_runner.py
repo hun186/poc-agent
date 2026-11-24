@@ -71,6 +71,7 @@ class ClaimedNroundRetrieval:
         return self._private_result
 
     def safe_audit(self) -> dict[str, int | str | bool]:
+        """Retrieval-handoff snapshot only, never current persisted Job status."""
         audit = self._private_result.safe_audit()
         return {
             "schema": "sraf_nround_claimed_job_runner_v1",
@@ -304,6 +305,11 @@ def execute_claimed_nround_job(
                     report_store, claimed_job, expected_revision=revision,
                     completed_rounds=completed_rounds,
                     reports_root=reports_root, content=content,
+                    recheck_policy=scope.recheck_export_policy,
+                    deadline_valid=lambda: (
+                        coordinator._budget.snapshot().remaining_seconds >= 1
+                        and coordinator.safe_progress() == result.progress
+                    ),
                 ):
                     raise ClaimedNroundJobExecutionError("nround_word_commit_denied")
             except Exception:

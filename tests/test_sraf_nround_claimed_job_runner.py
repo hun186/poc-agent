@@ -516,3 +516,39 @@ def test_sqlite_failure_before_publication_rolls_back_and_cleans_staging(tmp_pat
     assert "PRIVATE" not in str(error.value)
     assert reports.get(J).status == "failed"
     assert list(root.iterdir()) == []
+
+
+def test_policy_revoked_during_staging_never_publishes(tmp_path, monkeypatch):
+    import os
+    allowed = [True]
+    outcome, reports, checkpoint, claimed, root, calls = _publication_case(
+        tmp_path, monkeypatch, policy=lambda *_: allowed[0])
+    original = os.fsync
+    def revoke(fd):
+        original(fd)
+        allowed[0] = False
+    monkeypatch.setattr(os, "fsync", revoke)
+    with pytest.raises(ClaimedNroundJobExecutionError):
+        outcome.generate_and_publish_word(root)
+    assert reports.get(J).status == "failed"
+    assert list(root.iterdir()) == []
+
+
+def test_directory_flush_failure_leaves_only_inaccessible_orphan(tmp_path, monkeypatch):
+    import os
+    import stat
+    if os.name != "posix":
+        pytest.skip("POSIX directory fsync")
+    outcome, reports, checkpoint, claimed, root, calls = _publication_case(tmp_path, monkeypatch)
+    original = os.fsync
+    def fail_directory(fd):
+        if stat.S_ISDIR(os.fstat(fd).st_mode):
+            raise OSError("PRIVATE_DIRECTORY_FLUSH_FAILED")
+        original(fd)
+    monkeypatch.setattr(os, "fsync", fail_directory)
+    with pytest.raises(ClaimedNroundJobExecutionError) as error:
+        outcome.generate_and_publish_word(root)
+    assert "PRIVATE" not in str(error.value)
+    assert reports.get(J).status == "failed"
+    assert reports.get(J).docx_basename is None
+    assert list(root.iterdir()) == [root / (J + ".docx")]

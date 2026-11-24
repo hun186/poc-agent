@@ -19,7 +19,7 @@ from io import BytesIO
 import re
 import secrets
 import sqlite3
-from typing import Any
+from typing import Any, Callable
 
 from api.services.report_job_store import ReportJob, ReportJobStore
 
@@ -498,6 +498,7 @@ class NroundCheckpointStore:
         self, report_store: ReportJobStore, claimed_job: ReportJob, *,
         expected_revision: int, completed_rounds: int,
         reports_root: Path, content: bytes,
+        recheck_policy: Callable[[], None], deadline_valid: Callable[[], bool],
     ) -> bool:
         """Publish an actual generated DOCX then atomically commit Job completion.
 
@@ -513,6 +514,7 @@ class NroundCheckpointStore:
             if (not self._valid_terminal_export_context(
                     report_store, claimed_job, expected_revision, completed_rounds)
                     or not isinstance(reports_root, Path)
+                    or not callable(recheck_policy) or not callable(deadline_valid)
                     or type(content) is not bytes
                     or not 0 < len(content) <= 64 * 1024 * 1024):
                 return False
@@ -536,7 +538,13 @@ class NroundCheckpointStore:
                 handle.flush()
                 os.fsync(handle.fileno())
 
+            # Staging can block. Refresh external policy after staging and
+            # before acquiring the DB lock (policy may itself read SQLite).
+            recheck_policy()
+
             def op(con):
+                if deadline_valid() is not True:
+                    return False
                 if not self._terminal_export_candidate_matches(
                     con, claimed_job, expected_revision, completed_rounds,
                     expected_phase="docx_export",
@@ -555,6 +563,8 @@ class NroundCheckpointStore:
                     return False
                 # Same directory, atomic no-replace publication. A collision
                 # raises and rolls back the DB; never unlink someone else's file.
+                if deadline_valid() is not True:
+                    raise ValueError("nround_docx_deadline_expired")
                 os.link(temp, final)
                 if os.name == "posix":
                     directory = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
@@ -562,6 +572,8 @@ class NroundCheckpointStore:
                         os.fsync(directory)
                     finally:
                         os.close(directory)
+                if deadline_valid() is not True:
+                    raise ValueError("nround_docx_deadline_expired")
                 return True
 
             return self._write(op)
