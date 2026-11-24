@@ -76,3 +76,7 @@
 
 ## 2026-11-15 #406 trace-only Event-local subject borrowing (candidate)
 - `agent/es/evidence_core/topic_shadow.py` now divides rejected two-group, nonliteral subject passages into (a) same structured Event/block as an already date-validated strict TEXT-only, original-question-subject Evidence source, and (b) no such provable context. Uses the existing `event_anchor.same_event_as_strict_anchor` to preserve ES-hit and per-block Event identity; legacy same-document context intentionally cannot qualify as *same Event*. Per-hit and global anchor caps bound worst-case comparisons. The entire stage is still within `SRAF_EVIDENCE_TRACE=1` and remains outside report Evidence admission and output API.
+
+
+## 2026-11-24 #413 — deep startup configuration boundary (candidate)
+- Server-owned `load_deep_startup_config` parses an explicit environment snapshot into immutable DeepScopePolicy and LocalDeepModels only. Absent/0 flag leaves the existing worker unchanged; no implicit model/index or provider calls. Next composition must validate the real ES transport and bind the exact policy/model callbacks to the existing worker before exposing deep admission. This candidate does not mount anything in lifespan.
