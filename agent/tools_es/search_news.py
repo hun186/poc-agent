@@ -9,6 +9,7 @@ from elasticsearch import BadRequestError
 from smolagents import Tool
 
 from agent.es.es_client import safe_search as _safe_es_search
+from agent.es.ordinary_scope_receipt import current_ordinary_scope_capture
 from agent.es.query_terms import compute_effective_terms
 from agent.es.evidence import build_hits_and_evidence
 from agent.es.query_body import build_main_query_body, build_fallback_query_body
@@ -164,6 +165,14 @@ class ESSearchNews(Tool):
                 syn_terms=syn_terms_flat,
                 all_terms=all_terms,
                 original_question=get_original_report_question(),
+            )
+        capture = current_ordinary_scope_capture()
+        if capture is not None:
+            capture.declare_search(
+                index=index, date_from=date_from, date_to=date_to,
+                core_terms=core_terms, body=body, manual=is_manual_entity_query,
+                must_high_value=must_high_value, must_selected=must_selected,
+                raw_query=es_query,
             )
         dbg("[es_search_news] ES query body prepared (content redacted)")
 
