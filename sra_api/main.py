@@ -161,7 +161,7 @@ app.add_middleware(
         allow_origins=cors_origins or (["*"] if wildcard else []),
         allow_credentials=not wildcard,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-OpenWebUI-Chat-Id", "X-Conversation-Id", "X-Session-Id"],
+        allow_headers=["Authorization", "Content-Type", "Idempotency-Key", "X-OpenWebUI-Chat-Id", "X-Conversation-Id", "X-Session-Id", "X-SRAF-OpenWebUI-Chat-Id"],
     )
 
 
