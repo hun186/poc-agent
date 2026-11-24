@@ -19,6 +19,7 @@ on:
       - 'agent/adaptive_retrieval/coverage_evaluator.py'
       - 'agent/adaptive_retrieval/request_budget.py'
       - 'agent/report_agent.py'
+      - 'agent/agent.py'
       - 'agent/es/ordinary_scope_receipt.py'
       - 'agent/es/es_client.py'
       - 'agent/tools_es/common.py'
