@@ -67,7 +67,9 @@ class ReportJobWorker:
             if not job: self.stop_event.wait(self.poll_seconds); continue
             self.execute(job)
     def execute(self, job):
-        if ADAPTIVE_JOB_OPTION in job.options:
+        # Legacy E2E/internal job-shaped callers did not expose options.
+        # Durable ReportJob instances always have a decoded options dict.
+        if ADAPTIVE_JOB_OPTION in getattr(job, "options", {}):
             # Never fall through to the ordinary Agent, even on denial,
             # missing configuration or an invalid persisted intent.
             try:
