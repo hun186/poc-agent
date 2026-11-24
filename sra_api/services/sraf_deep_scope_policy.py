@@ -20,14 +20,11 @@ from api.security.scopes import (
 )
 import api.services.auth_store as auth_store_module
 from api.services.auth_support import VALID_ROLES, normalize_role
+from api.services.sraf_deep_grant_config import DeepGrantConfig, DeepOwnerGrant, DeepScopeDenied
 from api.services.report_job_store import ADAPTIVE_JOB_OPTION, ReportJob, ReportJobStore
 from api.services.sraf_adaptive_job_runtime import (
     ADAPTIVE_OWNER_BINDING, AdaptiveJobIntent, create_adaptive_job,
 )
-
-
-class DeepScopeDenied(ValueError):
-    """Fixed authorization denial, no private information."""
 
 
 class DeepQuestionUnsupported(ValueError):
@@ -36,7 +33,6 @@ class DeepQuestionUnsupported(ValueError):
 
 _REQUIRED = frozenset({DOCUMENT_READ, MODEL_INVOKE, REPORT_JOB_CREATE,
                        REPORT_JOB_READ, REPORT_JOB_DOWNLOAD})
-_INDEX = re.compile(r"[a-z0-9][a-z0-9_.-]{0,127}\Z")
 _LABEL = re.compile(r"[^\W_]+(?:[ -][^\W_]+)*\Z", re.UNICODE)
 _RANGE = re.compile(r"(\d{4}-\d{2}-\d{2})~(\d{4}-\d{2}-\d{2})\Z")
 _UNSUPPORTED = re.compile(r"排除|不含|不得|只限|除了|\b(?:except|exclude|without|only)\b", re.I)
@@ -88,25 +84,6 @@ def compile_explicit_deep_question(prompt: str, indexes: tuple[str, ...]) -> Ada
         raise DeepQuestionUnsupported("deep_question_unsupported") from None
 
 
-@dataclass(frozen=True, repr=False)
-class DeepOwnerGrant:
-    owner_id: str
-    account_created_at: str
-    indexes: tuple[str, ...]
-
-    def __post_init__(self):
-        if (type(self.owner_id) is not str or not 1 <= len(self.owner_id) <= 64
-                or self.owner_id != self.owner_id.strip()
-                or type(self.account_created_at) is not str
-                or not 1 <= len(self.account_created_at) <= 80
-                or self.account_created_at != self.account_created_at.strip()
-                or type(self.indexes) is not tuple or not 1 <= len(self.indexes) <= 8
-                or any(type(i) is not str or not _INDEX.fullmatch(i)
-                       or ".." in i for i in self.indexes)
-                or len(set(self.indexes)) != len(self.indexes)):
-            raise DeepScopeDenied("deep_owner_grant_invalid")
-
-
 def active_account_binding(owner_id: str) -> str | None:
     """Bind an account generation, not a browser session or a credential.
 
@@ -127,18 +104,7 @@ def active_account_binding(owner_id: str) -> str | None:
 
 
 @dataclass(frozen=True, repr=False)
-class DeepScopePolicy:
-    grants: tuple[DeepOwnerGrant, ...]
-    max_active_jobs: int
-
-    def __post_init__(self):
-        if (type(self.grants) is not tuple or not 1 <= len(self.grants) <= 256
-                or any(type(g) is not DeepOwnerGrant for g in self.grants)
-                or len({g.owner_id for g in self.grants}) != len(self.grants)
-                or type(self.max_active_jobs) is not int
-                or not 1 <= self.max_active_jobs <= 1000):
-            raise DeepScopeDenied("deep_policy_invalid")
-
+class DeepScopePolicy(DeepGrantConfig):
     def _live(self, owner: str) -> tuple[DeepOwnerGrant, str, str]:
         grant = next((g for g in self.grants if g.owner_id == owner), None)
         if grant is None:

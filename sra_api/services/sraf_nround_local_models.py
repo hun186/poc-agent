@@ -16,8 +16,11 @@ from urllib.parse import urlsplit
 
 import requests
 
-from agent.adaptive_retrieval.coverage_evaluator import CoverageTarget
-from agent.adaptive_retrieval.evidence_ledger import PrivateCanonicalEvidence
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from agent.adaptive_retrieval.coverage_evaluator import CoverageTarget
+    from agent.adaptive_retrieval.evidence_ledger import PrivateCanonicalEvidence
 
 
 class DeepModelError(ValueError):
@@ -137,6 +140,9 @@ class LocalDeepModels:
 
     def assess(self, target: CoverageTarget, evidence: PrivateCanonicalEvidence,
                *, timeout: float) -> bool:
+        from agent.adaptive_retrieval.coverage_evaluator import CoverageTarget
+        from agent.adaptive_retrieval.evidence_ledger import PrivateCanonicalEvidence
+
         if (type(target) is not CoverageTarget or type(evidence) is not PrivateCanonicalEvidence
                 or type(evidence.text) is not str or not 1 <= len(evidence.text) <= 16000):
             raise DeepModelError("deep_model_evidence_invalid")
