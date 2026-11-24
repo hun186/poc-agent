@@ -140,7 +140,9 @@ def test_complete_report_keeps_old_answer_contract(monkeypatch):
     result = mod.ask_with_report("2025年救援事件")
     assert len(calls) == 1
     assert "search_status" not in calls[0]
-    assert result["answer"] == "初步整理"
+    assert result["answer"].startswith("⚠️ 證據資訊量提醒")
+    assert result["answer"].endswith("初步整理")
+    assert result["evidence_usage"]["evidence_information"]["status"] == "limited_text"
     assert "result_incomplete" not in result
 
 def test_complete_zero_evidence_never_calls_report_llm_or_asserts_no_events(monkeypatch):

@@ -163,6 +163,64 @@ def topic_adaptive_rows(raw: Any) -> list[tuple[str, str]]:
     return rows
 
 
+CITATION_STATUSES = {
+    "labels_match": "編號均可對應（不代表內容正確）",
+    "unmapped": "發現無法對應的引用編號",
+    "no_labels": "未見標準來源編號（不能確認有無引用）",
+    "invalid_contract": "檢查資料不合規，未完成核對",
+    "limit_exceeded": "檢查容量達上限，未完成核對",
+}
+INFORMATION_STATUSES = {
+    "limited_text": "部分片段過短，須核對全文",
+    "measured_only": "已計數，未進行語意正確性判斷",
+    "no_evidence": "本層無 Evidence（另由零證據規則處理）",
+    "not_assessed": "資訊量無法安全計算",
+}
+
+
+def safe_citation_label_audit(raw: Any) -> dict[str, Any]:
+    if type(raw) is not dict or raw.get("schema") != "sraf_report_citation_labels_v1":
+        return {}
+    if type(raw.get("status")) is not str or raw["status"] not in CITATION_STATUSES:
+        return {}
+    keys = ("labels_seen", "unique_labels", "unmapped_labels", "allowed_reference_count")
+    values = {}
+    for name in keys:
+        val = raw.get(name)
+        if type(val) is not int or not 0 <= val <= 10000:
+            return {}
+        values[name] = val
+    if (values["allowed_reference_count"] > 500
+            or values["unmapped_labels"] > values["unique_labels"]
+            or values["unique_labels"] > values["labels_seen"]
+            or (raw["status"] == "labels_match" and
+                (values["labels_seen"] == 0 or values["unmapped_labels"] != 0))
+            or (raw["status"] == "unmapped" and values["unmapped_labels"] == 0)
+            or (raw["status"] == "no_labels" and values["labels_seen"] != 0)):
+        return {}
+    return {"schema": "sraf_report_citation_labels_v1", "status": raw["status"], **values}
+
+
+def safe_evidence_information(raw: Any) -> dict[str, Any]:
+    if type(raw) is not dict or raw.get("schema") != "sraf_report_evidence_information_v1":
+        return {}
+    if type(raw.get("status")) is not str or raw["status"] not in INFORMATION_STATUSES:
+        return {}
+    limits = {"rows": 500, "total_visible_chars": 2_000_000,
+              "short_notes": 500, "date_only_notes": 500}
+    result = {}
+    for key, cap in limits.items():
+        val = raw.get(key)
+        if type(val) is not int or not 0 <= val <= cap:
+            return {}
+        result[key] = val
+    if (result["short_notes"] > result["rows"]
+            or result["date_only_notes"] > result["rows"]
+            or (raw["status"] in ("no_evidence", "not_assessed") and result["rows"] != 0)):
+        return {}
+    return {"schema": "sraf_report_evidence_information_v1", "status": raw["status"], **result}
+
+
 NUMERIC = ("incoming", "strong", "weak", "picked", "compressed", "llm_input",
            "incoming_identified_sources", "picked_identified_sources",
            "llm_input_identified_sources", "max_for_llm", "prompt_chars",
@@ -207,6 +265,12 @@ def safe_evidence_usage(raw: Any) -> dict[str, Any]:
     nround = safe_nround_progress(raw.get("nround_progress"))
     if nround:
         clean["nround_progress"] = nround
+    citation = safe_citation_label_audit(raw.get("citation_labels"))
+    if citation:
+        clean["citation_labels"] = citation
+    information = safe_evidence_information(raw.get("evidence_information"))
+    if information:
+        clean["evidence_information"] = information
     return clean
 
 
@@ -236,6 +300,22 @@ def evidence_usage_rows(raw: Any) -> list[tuple[str, str]]:
     lines.extend(topic_adaptive_rows(u.get("topic_adaptive")))
     lines.extend(review_rows(u.get("review")))
     lines.extend(nround_progress_rows(u.get("nround_progress")))
+    citation = u.get("citation_labels")
+    if citation:
+        lines.append(("來源編號一致性", CITATION_STATUSES[citation["status"]]))
+        lines.append(("來源編號檢查範圍",
+                      f"本層找到 {citation['labels_seen']} 個標記，"
+                      f"其中未能對應 {citation['unmapped_labels']} 個不同編號；"
+                      "僅核對編號，不保證引用內容有事實依據"))
+    information = u.get("evidence_information")
+    if information:
+        lines.append(("Evidence 資訊量提醒", INFORMATION_STATUSES[information["status"]]))
+        lines.append(("Evidence 資訊量計數",
+                      f"傳給模型 {information['rows']} 段；非空白字元約 "
+                      f"{information['total_visible_chars']}；"
+                      f"短片段 {information['short_notes']} 段；"
+                      f"日期型片段 {information['date_only_notes']} 段；"
+                      "這是機械計數，並非品質、完整性或可信度評分"))
     if u["llm_skipped_incomplete"]:
         lines.append(("報告 LLM", "未執行（日期檢索不完整且無有效證據）"))
     elif u["llm_skipped_no_evidence"]:

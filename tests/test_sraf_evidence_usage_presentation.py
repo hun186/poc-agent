@@ -256,3 +256,91 @@ def test_zero_evidence_guard_is_visible_in_word_and_markdown_without_private_fie
     assert "PRIVATE-ZERO-EVIDENCE-QUESTION" not in (md + "\n".join(doc))
     assert safe_evidence_usage({**empty, "llm_skipped_no_evidence": "true"}) == {}
     assert safe_evidence_usage({**empty, "incoming": 1, "strong": 1}) == {}
+
+def test_llm_phantom_source_label_and_short_note_warning_reaches_word(monkeypatch):
+    from test_sraf_report_evidence_trace import _stub_report, _snippet
+    report, calls = _stub_report(monkeypatch, [
+        _snippet(1, text="會面某位代表。"),
+    ])
+    monkeypatch.setattr(report, "call_llm",
+                        lambda prompt, **kw: "來源999聲稱已完成所有驗收。")
+    out = report.ask_with_report("合成短片段報告")
+    assert "無法對應本次有效 Evidence 的來源編號" in out["answer"]
+    assert "Evidence 片段較少或文字過短" in out["answer"]
+    assert out["answer"].endswith("來源999聲稱已完成所有驗收。")
+    assert len(calls) == 0  # replaced call_llm, never an additional model call
+    usage = out["evidence_usage"]
+    assert usage["citation_labels"]["status"] == "unmapped"
+    assert usage["citation_labels"]["unmapped_labels"] == 1
+    assert usage["evidence_information"]["status"] == "limited_text"
+    clean_once = safe_evidence_usage(usage)
+    assert clean_once["citation_labels"]["status"] == "unmapped"
+    assert clean_once["evidence_information"]["status"] == "limited_text"
+    assert safe_evidence_usage(clean_once) == clean_once
+
+    md, paragraphs = _render_both({**_output(out["evidence_usage"]), "answer": out["answer"]})
+    text = "\n".join(paragraphs)
+    assert "來源編號一致性" in md and "來源編號一致性" in text
+    assert "Evidence 資訊量提醒" in md and "Evidence 資訊量提醒" in text
+    assert "無法對應本次有效 Evidence" in md
+    assert "來源999" in md
+
+
+def test_detailed_source_mapped_evidence_keeps_plain_answer(monkeypatch):
+    from test_sraf_report_evidence_trace import _stub_report, _snippet
+    report, calls = _stub_report(monkeypatch, [
+        _snippet(i, text=("事件背景及現場處置資訊。" * 18))
+        for i in range(1, 5)
+    ])
+    monkeypatch.setattr(report, "call_llm",
+                        lambda prompt, **kw: "來源1及來源2顯示尚待追蹤。")
+    out = report.ask_with_report("合成多來源報告")
+    assert out["answer"] == "來源1及來源2顯示尚待追蹤。"
+    assert out["evidence_usage"]["citation_labels"]["status"] == "labels_match"
+    assert out["evidence_usage"]["evidence_information"]["status"] == "measured_only"
+    assert len(calls) == 0
+
+
+def test_malformed_optional_integrity_metrics_do_not_reach_report_word():
+    usage = {**_usage(),
+        "citation_labels": {
+            "schema": "sraf_report_citation_labels_v1", "status": "unmapped",
+            "labels_seen": True, "unique_labels": 1,
+            "unmapped_labels": 1, "allowed_reference_count": 1,
+            "source_id": "PRIVATE-SOURCE-ID",
+        },
+        "evidence_information": {
+            "schema": "sraf_report_evidence_information_v1",
+            "status": "limited_text", "rows": 1,
+            "total_visible_chars": 10, "short_notes": 2,
+            "date_only_notes": 0, "note": "PRIVATE-EVIDENCE",
+        }}
+    safe = safe_evidence_usage(usage)
+    assert "citation_labels" not in safe
+    assert "evidence_information" not in safe
+    md, paragraphs = _render_both(_output(usage))
+    assert "PRIVATE-SOURCE-ID" not in md + "\n".join(paragraphs)
+    assert "PRIVATE-EVIDENCE" not in md + "\n".join(paragraphs)
+
+
+def test_unhashable_optional_integrity_status_preserves_base_usage_and_renderers():
+    # A JSON array/object in optional metadata must not break report export.
+    for bad_status in ([], {}, ["PRIVATE-STATUS"]):
+        usage = {**_usage(),
+            "citation_labels": {
+                "schema": "sraf_report_citation_labels_v1", "status": bad_status,
+                "labels_seen": 1, "unique_labels": 1,
+                "unmapped_labels": 1, "allowed_reference_count": 1,
+            },
+            "evidence_information": {
+                "schema": "sraf_report_evidence_information_v1", "status": bad_status,
+                "rows": 1, "total_visible_chars": 10,
+                "short_notes": 1, "date_only_notes": 0,
+            }}
+        assert safe_evidence_usage(usage) == safe_evidence_usage(_usage())
+        md, paragraphs = _render_both(_output(usage))
+        combined = md + "\n".join(paragraphs)
+        assert "Evidence 選取模式" in combined
+        assert "PRIVATE-STATUS" not in combined
+        assert "來源編號一致性" not in combined
+        assert "Evidence 資訊量提醒" not in combined
