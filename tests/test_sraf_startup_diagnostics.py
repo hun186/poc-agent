@@ -4,6 +4,7 @@ These tests do not start the API, connect to SQL/ES/LLM or run Report Jobs.
 """
 from __future__ import annotations
 
+import ast
 import logging
 from pathlib import Path
 
@@ -61,6 +62,22 @@ def test_lifespan_wraps_existing_critical_steps_without_bypassing_work():
         "validate_signing_config()", 'parse_mode(os.getenv("REQUIREMENT_E2E_EXTERNAL_MODE"))',
         "requirement_store.initialize()", "schedule_store.initialize()",
         "store.initialize()", "store.recover_running()", "worker.start()",
-        "try: yield", "finally: worker.stop()",
     ):
         assert operation in source
+
+    # Check structure rather than the old single-line try/finally spelling.
+    tree = ast.parse(source)
+    lifespan = next(node for node in tree.body if isinstance(node, ast.AsyncFunctionDef)
+                    and node.name == "lifespan")
+    protected = [node for node in ast.walk(lifespan) if isinstance(node, ast.Try)
+                 and any(isinstance(child, ast.Yield) for statement in node.body
+                         for child in ast.walk(statement))]
+    assert protected
+    def stops_worker(node):
+        return (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "stop" and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "worker")
+    assert any(stops_worker(child) for node in protected for statement in node.finalbody
+               for child in ast.walk(statement))
+    # The dedicated lifecycle regression suite also exercises actual Worker
+    # exit, startup rollback and the bounded stop with active ES transport.
