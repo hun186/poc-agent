@@ -83,3 +83,26 @@ def test_invalid_kind_rejected():
     budget = make_budget([0.0])
     with pytest.raises(ValueError, match="invalid_request_admission_kind"):
         budget.admit("report")
+
+
+def test_report_slot_uses_generation_reserve_once_and_does_not_refund():
+    now = [100.0]
+    budget = make_budget(now, max_rounds=2)
+    assert budget.claim_report_generation(1) == 0
+    assert budget.admit("round")
+    assert budget.claim_report_generation(2) == 0
+    now[0] += 1800
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: budget.claim_report_generation(1), range(16)))
+    assert results.count(600) == 1 and results.count(0) == 15
+    assert budget.claim_report_generation(1) == 0
+
+
+def test_report_slot_denies_after_deadline_or_failed_clock():
+    now = [100.0]
+    budget = make_budget(now)
+    assert budget.admit("round")
+    now[0] = float("nan")
+    assert budget.claim_report_generation(1) == 0
+    now[0] = 2500.0
+    assert budget.claim_report_generation(1) == 0

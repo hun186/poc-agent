@@ -17,6 +17,7 @@ from hashlib import sha256
 import json
 from typing import Any
 
+from shared.citations.citation_id import pick_doc_id
 from agent.es.evidence_core.builder import build_hits_and_evidence
 from agent.es.evidence_core.json_utils import as_blocks
 from agent.es.event_time import event_ids_in_block, parse_structured_time
@@ -68,6 +69,37 @@ class PrivateCanonicalEvidence:
             "has_exact_day": bool(self.date_iso),
             "matched_event_times": len(self.matched_event_times),
             "event_ids": len(self.event_ids),
+        }
+
+
+@dataclass(frozen=True)
+class CanonicalReportEvidence:
+    """Private citation projection of the exact canonically assessed passage."""
+
+    pair: tuple[str, str] = field(repr=False)
+    passage: PrivateCanonicalEvidence = field(repr=False)
+    doc_id: str = field(repr=False)
+    title: str = field(repr=False)
+    subject: str = field(repr=False)
+    structured: bool
+    weak: bool
+    scope: str
+    group_hits: int
+
+    def report_snippet(self) -> dict[str, Any]:
+        # Publication dates are intentionally NOT used as event dates.
+        times = [dict(zip(
+            ("source", "time_precision", "time_iso", "date_start", "date_end"), point
+        )) for point in self.passage.matched_event_times]
+        return {
+            "uuid": self.doc_id, "text": self.passage.text,
+            "date_iso": self.passage.date_iso,
+            "article_title": self.title, "subject": self.subject,
+            "structured_time_context": self.structured,
+            "matched_event_time_candidates": times,
+            "event_time_candidates": times,
+            "weak_evidence": self.weak, "match_scope": self.scope,
+            "group_hits": self.group_hits,
         }
 
 
@@ -126,6 +158,7 @@ def observe_canonical_round(
     query_for_snippet: str, original_question: str,
     complete: bool,
     private_evidence: dict[tuple[str, str], PrivateCanonicalEvidence] | None = None,
+    private_report_rows: dict[tuple[str, str], CanonicalReportEvidence] | None = None,
 ) -> RoundObservation:
     """Validate a *single* page/round with the current canonical parser.
 
@@ -138,6 +171,9 @@ def observe_canonical_round(
     if private_evidence is not None and (
             type(private_evidence) is not dict or private_evidence):
         raise ValueError("invalid_private_evidence_collector")
+    if private_report_rows is not None and (
+            type(private_report_rows) is not dict or private_report_rows):
+        raise ValueError("invalid_private_report_collector")
     source_keys = _es_source_keys(es_hits)
     if (type(complete) is not bool or type(term_groups) is not list
             or not 1 <= len(term_groups) <= 32
@@ -166,6 +202,7 @@ def observe_canonical_round(
     verified_sources: set[str] = set()
     evidence_sources: set[tuple[str, str]] = set()
     staged_private: dict[tuple[str, str], PrivateCanonicalEvidence] = {}
+    staged_report: dict[tuple[str, str], CanonicalReportEvidence] = {}
     fallback_rows = 0
     validated_rows = 0
     for row in evidence:
@@ -281,7 +318,7 @@ def observe_canonical_round(
         verified_sources.add(source_keys[ordinal])
         pair = (key, source_keys[ordinal])
         evidence_sources.add(pair)
-        if private_evidence is not None:
+        if private_evidence is not None or private_report_rows is not None:
             item = PrivateCanonicalEvidence(
                 text=contents, date_iso=when,
                 matched_event_times=tuple(time_parts),
@@ -291,6 +328,24 @@ def observe_canonical_round(
             if previous is not None and previous != item:
                 raise ValueError("inconsistent_verified_private_evidence")
             staged_private[pair] = item
+            if private_report_rows is not None:
+                doc_id = pick_doc_id(row)
+                # Unciteable passages may still be useful for retrieval
+                # diagnostics; they cannot enter the later report prompt.
+                doc_id = doc_id if isinstance(doc_id, str) and len(doc_id) <= 256 else ""
+                def optional_text(name):
+                    value = row.get(name)
+                    return value if type(value) is str and len(value) <= 4096 else ""
+                projected = CanonicalReportEvidence(
+                    pair=pair, passage=item, doc_id=doc_id,
+                    title=optional_text("article_title"), subject=optional_text("subject"),
+                    structured=bool(row.get("structured_time_context") or time_parts),
+                    weak=bool(row.get("weak_evidence")), scope=scope, group_hits=groups,
+                )
+                prior = staged_report.get(pair)
+                if prior is not None and prior.doc_id != projected.doc_id:
+                    raise ValueError("inconsistent_report_source")
+                staged_report.setdefault(pair, projected)
     # If one identical passage appears twice in the same parser slice,
     # parser output count can exceed unique verified evidence identities.
     observation = RoundObservation(
@@ -307,6 +362,10 @@ def observe_canonical_round(
         if set(staged_private) != observation.evidence_source_pairs:
             raise ValueError("private_evidence_provenance_incomplete")
         private_evidence.update(staged_private)
+    if private_report_rows is not None:
+        if set(staged_report) != observation.evidence_source_pairs:
+            raise ValueError("private_report_provenance_incomplete")
+        private_report_rows.update(staged_report)
     return observation
 
 

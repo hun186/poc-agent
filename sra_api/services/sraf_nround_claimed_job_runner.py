@@ -19,6 +19,7 @@ or infer real semantic authority from caller-provided policy callbacks.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from time import perf_counter
 from typing import Any, Callable
 
 from api.services.report_job_store import ReportJob, ReportJobStore
@@ -47,6 +48,13 @@ class ClaimedNroundRetrieval:
 
     _private_result: TrustedNroundExecutionResult = field(repr=False)
     _checkpoint_revision: int = field(repr=False)
+    _generate: Callable[[], dict[str, Any]] | None = field(default=None, repr=False)
+
+    def generate_report(self) -> dict[str, Any]:
+        """Internal bound synthesis; no API/Worker switch or artifact grant."""
+        if self._generate is None:
+            raise ClaimedNroundJobExecutionError("nround_report_not_admitted")
+        return self._generate()
 
     @property
     def private_result(self) -> TrustedNroundExecutionResult:
@@ -193,9 +201,78 @@ def execute_claimed_nround_job(
             ):
                 raise ClaimedNroundJobExecutionError(
                     "unverified_atomic_nround_terminal")
+        revision = public["revision"]
+        completed_rounds = len(result.rounds)
+
+        def verify_generation() -> None:
+            if (result.progress["termination"] != "SUFFICIENT"
+                    or result.progress["ready_for_external_report_generation"] is not True
+                    or coordinator.safe_progress() != result.progress):
+                raise ClaimedNroundJobExecutionError("nround_report_not_admitted")
+            binding._check_live_policy()
+            scope._assert_live()
+            if not checkpoint_store.verify_terminal_for_running_report_job(
+                report_store, claimed_job, expected_revision=revision,
+                completed_rounds=completed_rounds,
+            ):
+                raise ClaimedNroundJobExecutionError("nround_report_not_admitted")
+
+        def generate() -> dict[str, Any]:
+            # This closure belongs to the original claimed Job, policy,
+            # coordinator and exact terminal revision, never HTTP input.
+            from agent import report_agent
+            try:
+                verify_generation()
+                sources: dict[str, str] = {}
+                snippets = []
+                for row in result._report_rows:
+                    if (not row.doc_id or not row.passage.text.strip()
+                            or (row.doc_id in sources
+                                and sources[row.doc_id] != row.pair[1])):
+                        raise ClaimedNroundJobExecutionError("nround_report_source_unverified")
+                    sources[row.doc_id] = row.pair[1]
+                    snippets.append(row.report_snippet())
+                if not snippets:
+                    raise ClaimedNroundJobExecutionError("nround_report_no_evidence")
+
+                def guarded_report_call(prompt: str, **kwargs) -> str:
+                    if (type(prompt) is not str or len(prompt) > 200_000
+                            or kwargs.get("stage") != "report"):
+                        raise ClaimedNroundJobExecutionError("nround_report_input_limit")
+                    verify_generation()
+                    remaining = coordinator._budget.claim_report_generation(completed_rounds)
+                    if remaining < 1:
+                        raise ClaimedNroundJobExecutionError("nround_report_budget_denied")
+                    kwargs["timeout"] = min(float(kwargs["timeout"]), remaining)
+                    if kwargs["timeout"] <= 0:
+                        raise ClaimedNroundJobExecutionError("nround_report_budget_denied")
+                    answer = report_agent.call_llm(prompt, **kwargs)
+                    verify_generation()
+                    if (coordinator._budget.snapshot().remaining_seconds < 1
+                            or type(answer) is not str or not answer.strip()):
+                        raise ClaimedNroundJobExecutionError("nround_report_result_unverified")
+                    return answer
+
+                output = report_agent._generate_report_from_payload(
+                    {"question": constraints.question, "question_raw": constraints.question,
+                     "time_range": {"date_from": constraints.event_date.start,
+                                    "date_to": constraints.event_date.end},
+                     "evidence_snippets": snippets},
+                    constraints.question, constraints.question, {}, perf_counter(),
+                    nround_progress=result.progress, report_call=guarded_report_call,
+                )
+                verify_generation()
+                if (not output.get("citations")
+                        or not output.get("evidence_usage", {}).get("llm_input")):
+                    raise ClaimedNroundJobExecutionError("nround_report_no_evidence")
+                return output
+            except Exception:
+                raise ClaimedNroundJobExecutionError("nround_report_generation_failed") from None
+
         return ClaimedNroundRetrieval(
             _private_result=result,
-            _checkpoint_revision=public["revision"],
+            _checkpoint_revision=revision,
+            _generate=generate if result.progress["termination"] == "SUFFICIENT" else None,
         )
     except Exception:
         # Target ONLY this worker's active lease. Do not use global

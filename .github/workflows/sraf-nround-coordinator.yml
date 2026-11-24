@@ -18,6 +18,8 @@ on:
       - 'agent/adaptive_retrieval/round_query_execution.py'
       - 'agent/adaptive_retrieval/coverage_evaluator.py'
       - 'agent/adaptive_retrieval/request_budget.py'
+      - 'agent/report_agent.py'
+      - 'tests/test_sraf_request_admission_budget.py'
       - 'agent/adaptive_retrieval/planner.py'
       - 'agent/es/evidence_core/builder.py'
       - 'tests/test_sraf_nround_coordinator.py'
