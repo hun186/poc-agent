@@ -54,3 +54,8 @@
 - Initial candidate coordinator tests passed on both Python versions and Report Job UI passed; OFF-1B exposed two existing E2E worker fixtures without an options attribute. Restore legacy job-shaped caller compatibility without changing deep intent dispatch; rerun exact-head gates.
 
 - #492 merged e1a61b5ec8c43aff53158cef3875200fc8ebf164 after 6/6 workflows, 9/9 checks and clean exact-head review. #491 preserves exact original adaptive questions, including surrounding whitespace, without changing legacy normalization; integrated #492 before re-review.
+
+
+## 2026-11-24 #413 — deep startup configuration candidate
+- #495 merged `33cddb20d32f` after latest-head 6/6 Hosted workflows, 9/9 jobs and Codex code review with no findings/threads. Deep admission still disabled until runtime composition.
+- Add offline strict explicit opt-in config parser for account generation grants, queue cap and separate local Ollama model IDs/context. No provider IO, AuthStore lookups or lifespan wiring; default disabled, errors redacted. Synthetic tests and Hosted CI/Review pending. Real ES factory, report model routing, startup wiring and live acceptance remain separate.
