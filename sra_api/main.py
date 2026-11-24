@@ -35,9 +35,18 @@ from api.services.auth_support import PRODUCTION_ENVS
 from sra_api.middleware.product_preview_body_limit import ProductPreviewBodyLimitMiddleware
 from shared.runtime_provenance import requirement_sql_registry_path
 from sra_api.startup_diagnostics import startup_phase
+from api.services.sraf_deep_startup_config import load_deep_startup_config
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    previous = getattr(app.state, "report_job_worker", None)
+    previous_thread = getattr(previous, "thread", None)
+    if previous_thread is not None and previous_thread.is_alive():
+        raise RuntimeError("report_worker_previous_lifespan_active")
+    app.state.deep_scope_policy = None
+    with startup_phase("deep_report_config"):
+        env_snapshot = dict(os.environ)
+        deep_config = load_deep_startup_config(env_snapshot)
     with startup_phase("signing_config"):
         validate_signing_config()
     # The API process owns ReportJobWorker and therefore owns/fixes the E2E
@@ -89,19 +98,46 @@ async def lifespan(app: FastAPI):
                     requirement_import_service=app.state.requirement_import_service,
                     schedule_store=schedule_store,
                 )
-    with startup_phase("report_job_store"):
-        store = ReportJobStore(os.getenv("REPORT_JOBS_DB_PATH", ".api_jobs/jobs.sqlite3"), int(os.getenv("REPORT_JOBS_SQLITE_BUSY_TIMEOUT_MS", "5000")))
-        reports_root = Path(os.getenv("REPORT_JOBS_REPORTS_ROOT", ".api_jobs/reports"))
-        store.initialize()
-        store.recover_running()
-    with startup_phase("report_job_worker_start"):
-        worker = ReportJobWorker(store, reports_root)
-        app.state.report_job_store = store
-        app.state.report_jobs_reports_root = reports_root
-        app.state.report_job_worker = worker
-        worker.start()
-    try: yield
-    finally: worker.stop()
+    composition = None
+    worker = None
+    try:
+        if deep_config is not None:
+            with startup_phase("deep_report_runtime"):
+                from api.services.sraf_deep_runtime_composition import compose_deep_runtime
+                composition = compose_deep_runtime(
+                    deep_config, env_snapshot, project_root=Path(__file__).resolve().parents[1])
+        with startup_phase("report_job_store"):
+            store = ReportJobStore(os.getenv("REPORT_JOBS_DB_PATH", ".api_jobs/jobs.sqlite3"), int(os.getenv("REPORT_JOBS_SQLITE_BUSY_TIMEOUT_MS", "5000")))
+            reports_root = Path(os.getenv("REPORT_JOBS_REPORTS_ROOT", ".api_jobs/reports"))
+            store.initialize()
+            store.recover_running()
+        with startup_phase("report_job_worker_start"):
+            if composition is None:
+                worker = ReportJobWorker(store, reports_root)
+            else:
+                def release_deep_runtime():
+                    app.state.deep_scope_policy = None
+                    composition.close()
+                worker = ReportJobWorker(store, reports_root,
+                                         adaptive_runtime=composition.runtime,
+                                         on_exit=release_deep_runtime)
+            app.state.report_job_store = store
+            app.state.report_jobs_reports_root = reports_root
+            app.state.report_job_worker = worker
+            app.state.deep_scope_policy = composition.policy if composition is not None else None
+            worker.start()
+        yield
+    finally:
+        app.state.deep_scope_policy = None
+        try:
+            if worker is not None:
+                worker.stop()
+        finally:
+            # A bounded stop may leave an executing Worker alive. Its own
+            # finally block closes ES only when it actually exits.
+            thread = getattr(worker, "thread", None)
+            if composition is not None and (thread is None or not thread.is_alive()):
+                composition.close()
 
 app = FastAPI(
     title="SRA-Structured Retrieval Agent (OpenAI-compatible)",
