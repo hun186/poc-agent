@@ -61,3 +61,7 @@
 - Add offline strict explicit opt-in config parser for account generation grants, queue cap and separate local Ollama model IDs/context. No provider IO, AuthStore lookups or lifespan wiring; default disabled, errors redacted. Synthetic tests and Hosted CI/Review pending. Real ES factory, report model routing, startup wiring and live acceptance remain separate.
 
 - #496 initial 4/4 workflows passed; P2 review identified import-time AuthStore side effects. Split pure grant config from live policy; defer semantic runtime imports; fresh-process regression blocks auth/Agent imports for both disabled and enabled validation. New head requires CI and review.
+
+
+## 2026-11-24 #413 — deep report model routing candidate
+- Thread an explicit server-owned report model ID from AdaptiveJobRuntime through the claimed generation receipt into shared ReportAgent synthesis, provider request and trace. Ordinary report retains its model; older internal test callers retain default behavior. No HTTP override, provider activation or change to generation budget. Real Worker/SQLite/synthetic ES/DOCX regression verifies the configured deep model differs from ordinary model; Hosted CI/Review pending.

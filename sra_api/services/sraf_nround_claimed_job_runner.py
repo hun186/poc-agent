@@ -108,6 +108,7 @@ def execute_claimed_nround_job(
     request_timeout_seconds: int = 20,
     max_semantic_checks_per_round: int = 512,
     report_call: Callable[..., str] | None = None,
+    report_model_id: str | None = None,
 ) -> ClaimedNroundRetrieval:
     """Run an explicitly claimed and pre-registered N-round sidecar job.
 
@@ -126,6 +127,9 @@ def execute_claimed_nround_job(
                 or type(evaluator) is not RequestWideCoverageEvaluator
                 or not callable(semantic_assessor)
                 or (report_call is not None and not callable(report_call))
+                or (report_model_id is not None and (not callable(report_call)
+                    or type(report_model_id) is not str or not 1 <= len(report_model_id) <= 128
+                    or report_model_id != report_model_id.strip()))
                 or not callable(check_owner_index)
                 or not callable(check_question_branches)
                 or checkpoint_store.db_path.resolve() !=
@@ -272,6 +276,7 @@ def execute_claimed_nround_job(
                      "evidence_snippets": snippets},
                     constraints.question, constraints.question, {}, perf_counter(),
                     nround_progress=result.progress, report_call=guarded_report_call,
+                    nround_report_model_id=report_model_id,
                 )
                 verify_generation()
                 if (not output.get("citations")

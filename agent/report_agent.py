@@ -136,11 +136,18 @@ def _generate_report_from_payload(
     trace: Dict[str, Any], t_total_start: float, *,
     nround_progress: Dict[str, Any] | None = None,
     report_call: Callable[..., str] | None = None,
+    nround_report_model_id: str | None = None,
 ) -> Dict[str, Any]:
     """Shared synthesis only; caller owns retrieval and its authorization."""
     nround = nround_progress is not None
     if nround and not callable(report_call):
         raise ValueError("nround_report_call_required")
+    if nround_report_model_id is not None and (
+            not nround or type(nround_report_model_id) is not str
+            or not 1 <= len(nround_report_model_id) <= 128
+            or nround_report_model_id != nround_report_model_id.strip()):
+        raise ValueError("nround_report_model_invalid")
+    report_model_id = nround_report_model_id if nround_report_model_id is not None else REPORT_MODEL_ID
 
     # A bounded date scan with no verified Evidence is not a "no news"
     # verdict. Do not ask the LLM to write an apparently complete report.
@@ -525,7 +532,7 @@ def _generate_report_from_payload(
     )
     t0 = time.perf_counter()
     with log_duration("[report] call_llm(report)",
-        extra={"model_id": REPORT_MODEL_ID, "timeout_sec": REPORT_LLM_TIMEOUT},
+        extra={"model_id": report_model_id, "timeout_sec": REPORT_LLM_TIMEOUT},
     ):
         report_text = (report_call if nround else call_llm)(
             user_prompt,
@@ -536,7 +543,7 @@ def _generate_report_from_payload(
             extra_params={"options": {}},
             # 可用 REPORT_LLM_TIMEOUT（或舊名 REPORT_TIMEOUT）延長大型報告生成等待秒數
             timeout=REPORT_LLM_TIMEOUT,
-            model=REPORT_MODEL_ID,
+            model=report_model_id,
             stage="report",
         )
     t1 = time.perf_counter()
@@ -600,7 +607,7 @@ def _generate_report_from_payload(
         "input_chars": len(user_prompt),
         "output_chars": len(report_text) if isinstance(report_text, str) else 0,
         "elapsed_sec": round(t1 - t0, 3),
-        "model_id": REPORT_MODEL_ID,
+        "model_id": report_model_id,
     })
     
     # === evidence_snippets 仍可保留給其他用途（例如前端展開全文），但不再用來建 citations ===
