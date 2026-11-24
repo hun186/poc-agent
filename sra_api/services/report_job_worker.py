@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os, threading, time, zipfile
+import logging
 from contextlib import nullcontext
 
 import requests
@@ -47,10 +48,11 @@ def _failure_category(exc: Exception) -> str:
 
 
 class ReportJobWorker:
-    def __init__(self, store: ReportJobStore, reports_root: str | Path, poll_seconds: float = .2, *, adaptive_runtime=None):
+    def __init__(self, store: ReportJobStore, reports_root: str | Path, poll_seconds: float = .2, *, adaptive_runtime=None, on_exit=None):
         # No production default or implicit provider policy. Explicit trusted
         # runtime composition is required before a deep job can execute.
         self.adaptive_runtime = adaptive_runtime
+        self._on_exit = on_exit
         self.store, self.root, self.poll_seconds = store, Path(reports_root), poll_seconds
         self.stop_event = threading.Event(); self.thread = None
     def start(self):
@@ -60,12 +62,19 @@ class ReportJobWorker:
         self.thread = threading.Thread(target=self.run, name="report-job-worker", daemon=True); self.thread.start()
     def stop(self, timeout=5):
         self.stop_event.set()
-        if self.thread: self.thread.join(timeout)
+        if self.thread and self.thread.ident is not None: self.thread.join(timeout)
     def run(self):
-        while not self.stop_event.is_set():
-            job = self.store.claim_next()
-            if not job: self.stop_event.wait(self.poll_seconds); continue
-            self.execute(job)
+        try:
+            while not self.stop_event.is_set():
+                job = self.store.claim_next()
+                if not job: self.stop_event.wait(self.poll_seconds); continue
+                self.execute(job)
+        finally:
+            if self._on_exit is not None:
+                try:
+                    self._on_exit()
+                except Exception:
+                    logging.getLogger('uvicorn.error').error('SRAF report Worker cleanup failed')
     def execute(self, job):
         # Legacy E2E/internal job-shaped callers did not expose options.
         # Durable ReportJob instances always have a decoded options dict.
