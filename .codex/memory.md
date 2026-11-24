@@ -73,3 +73,7 @@
 
 ## 2026-11-24 #413 — deep API lifespan composition candidate
 - Explicit opt-in config → exact live DeepScopePolicy, dedicated real ES SDK, LocalDeepModels, AdaptiveJobRuntime on existing persistent ReportJobWorker. Invalid enabled config fails startup before job-store recovery; disabled stays legacy. Worker owns ES cleanup on exit; bounded stop must not close active transport, same-app overlapping lifespan blocked. No live providers probed; real FastAPI/auth/SQLite/thread/SDK synthetic lifecycle tests pending CI. Natural-language scope and OpenWebUI dispatch remain separate.
+
+
+## 2026-11-25 #413 — bounded natural sentence candidate
+- Add deterministic explicit event year/month/day-range or expressly unbounded date, literal single-topic label and finite known analysis facets. Original prompt unchanged; same compiler at admission and Worker revalidation. Unknown syntax, compound/relative-date/exclusion scopes rejected; no LLM, inferred date, invented aspect or index override. This is not unrestricted natural-language support; ordinary/deep scope consistency and automatic dispatch remain separate gates.
