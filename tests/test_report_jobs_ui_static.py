@@ -116,6 +116,8 @@ def test_report_job_completion_is_not_misrepresented_as_content_verified():
     from pathlib import Path
     html = Path("sra_api/static/report_jobs.html").read_text(encoding="utf-8")
     js = Path("sra_api/static/report_jobs_ui.js").read_text(encoding="utf-8")
+    assert 'id="nroundProgress"' in html
+    assert "'/nround-progress'" in js
     assert 'id="reportContentCaveat"' in html
     assert '「已完成」只代表 Report Job 產製及保存流程完成' in html
     assert '不代表 Word 中的事件、數字、引用或資料來源已經查證' in html

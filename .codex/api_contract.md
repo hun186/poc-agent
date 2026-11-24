@@ -95,3 +95,6 @@
 ## 2026-11-15 #413 B3 — optional authenticated browser prefill URL (PR CANDIDATE)
 - On successful `POST /v1/report/jobs`, the existing 202 response gains additive `browser_status_url: "/report-jobs#job=<opaque_id>"` for a generated safe ID. Authorized `GET /v1/report/jobs/{job_id}` also gains this field; for a malformed legacy ID it is `null` rather than an unsafe fragment.
 - This URL is NOT an unauthenticated signed link or direct `.docx` download. The page only pre-fills an ID. Its user must supply their own `report:job:read` Bearer and explicitly track; Word still requires owner/`report:job:download` plus status=completed. No automatic deep Job dispatch or Chat API response change in this PR.
+
+## 2026-11-24 #413 — owner-only N-round progress candidate
+- GET `/v1/report/jobs/{job_id}/nround-progress` uses existing REPORT_JOB_READ and exact authenticated owner kind/subject (admin does not bypass). 200 fixed count-only checkpoint projection, 404 for absent/foreign/ordinary, 503 redacted storage failure. No new write, credential, Word grant, or inference of completion. Existing status and Word routes remain authoritative; UI optionally polls after an explicit adaptive mode status, never exposes private fields.

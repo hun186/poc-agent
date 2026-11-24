@@ -211,6 +211,48 @@
     completedId = job.status === 'completed' ? currentId : '';
     $('downloadBtn').hidden = !completedId;
   }
+  function clearNround() {
+    const node = $('nroundProgress');
+    if (node) { node.hidden = true; node.textContent = ''; }
+  }
+  async function readNround(job, run, ctrl, access) {
+    clearNround();
+    const node = $('nroundProgress');
+    if (!node || job.execution_mode !== 'adaptive_multiround') return;
+    const current = () => run === generation && !ctrl.signal.aborted &&
+      job.job_id === currentId && access === token();
+    try {
+      const response = await fetch('/v1/report/jobs/' + encodeURIComponent(job.job_id) + '/nround-progress', {
+        method: 'GET', headers: {Authorization: 'Bearer ' + access},
+        signal: ctrl.signal, cache: 'no-store', credentials: 'omit', redirect: 'error'
+      });
+      if (!current()) return;
+      if (!response.ok) throw new Error('progress_unavailable');
+      const data = await response.json();
+      if (!current()) return;
+      const labels = {CREATED:'等待檢索', SEARCHING:'檢索中', ASSESSING:'評估證據',
+        ASSESSED:'本輪評估完成', PLANNING:'規劃下一輪', TERMINAL:'檢索已停止'};
+      const states = new Set(['QUEUED','RUNNING','RETRIEVAL_STOPPED','INTERRUPTED','FAILED','CANCELLED']);
+      const bounded = (value, max) => Number.isInteger(value) && value >= 0 && value <= max;
+      if (!data || data.schema !== 'sraf_nround_owned_progress_v1' ||
+          data.report_job_status !== job.status || !states.has(data.state) ||
+          !Object.prototype.hasOwnProperty.call(labels, data.phase) ||
+          !bounded(data.round_number, 8) || !bounded(data.completed_rounds, data.round_number) ||
+          !bounded(data.es_calls_this_round, 1000)) throw new Error('invalid_progress');
+      // Main Job lifecycle wins; a stale sidecar can never imply work is
+      // still running, or that Word is complete or factually verified.
+      const stage = terminal.has(job.status) ? '任務已結束，以下為最後保存的檢索紀錄' : labels[data.phase];
+      node.textContent = '深度多輪檢索｜' + stage + '｜目前第 ' +
+        data.round_number + ' 輪，已完成 ' + data.completed_rounds +
+        ' 輪；本輪已核准 ES 呼叫 ' + data.es_calls_this_round +
+        ' 次（非成功次數）。';
+      node.hidden = false;
+    } catch (_) {
+      if (!current()) return;
+      node.textContent = '深度檢索紀錄目前無法確認；以任務主狀態為準。';
+      node.hidden = false;
+    }
+  }
   function pollLater(run, delay) {
     if (!watching || run !== generation) return;
     if (document.hidden) {
@@ -223,13 +265,15 @@
     if (!watching || run !== generation || document.hidden) return;
     const ctrl = new AbortController();
     controller = ctrl;
+    const access = token();
     try {
       const response = await fetch('/v1/report/jobs/' + encodeURIComponent(currentId), {
-        method: 'GET', headers: {Authorization: 'Bearer ' + token()},
+        method: 'GET', headers: {Authorization: 'Bearer ' + access},
         signal: ctrl.signal, cache: 'no-store', credentials: 'omit', redirect: 'error'
       });
       if (run !== generation) return;
       if (!response.ok) {
+        clearNround();
         if ([401, 403, 404].includes(response.status)) {
           stop();
           completedId = '';
@@ -244,6 +288,8 @@
       const job = await response.json();
       if (run !== generation) return;
       update(job);
+      await readNround(job, run, ctrl, access);
+      if (run !== generation || ctrl.signal.aborted || access !== token()) return;
       if (terminal.has(job.status)) {
         stop();
         message(job.status === 'completed' ? '報告已完成，可下載 Word；內容、數據與引用仍須查核。' :
@@ -256,6 +302,7 @@
       }
     } catch (err) {
       if (run !== generation || ctrl.signal.aborted) return;
+      clearNround();
       message('無法確認伺服器最新狀態（網路或回應格式異常）；10 秒後再試。', 'warning');
       pollLater(run, 10000);
     } finally {
@@ -277,6 +324,7 @@
     completedId = '';
     $('jobId').value = parsed;
     $('progressCard').hidden = true;
+    clearNround();
     $('downloadBtn').hidden = true;
     watching = true;
     controls();
@@ -462,6 +510,7 @@
     clearHistory();
     $('jobListMessage').textContent = '身分已變更；請重新讀取自己的清單。';
     $('progressCard').hidden = true;
+    clearNround();
     abortDownload();
     if (watching) stop('認證已變更；請重新查詢以確認權限。');
     completedId = '';
@@ -483,6 +532,7 @@
     $('authToken').value = '';
     clearHistory();
     $('progressCard').hidden = true;
+    clearNround();
     abortDownload();
     stop();
     controls();
