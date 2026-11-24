@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import time
 from typing import Any
 
 from fastapi import Request
 
 from agent.agent import answer_with_routing
+from agent.es.ordinary_scope_receipt import (
+    OrdinaryScopeCapture, OrdinaryScopeReceipt, bind_ordinary_scope_capture,
+)
 from api.services.memory import get_memory, render_memory_text
 from api.services.sessions import (
     get_last_structured,
@@ -27,6 +30,7 @@ class AgentTurnResult:
     user_message: str
     output: dict
     trace: dict
+    ordinary_scope: OrdinaryScopeReceipt | None = field(default=None, repr=False)
 
 
 def _resolve_session_id(payload: Any, request: Request | None, session_id: str | None) -> str:
@@ -88,6 +92,7 @@ def execute_agent_turn(
     session_id: str | None = None,
     request_id: str | None = None,
     trace: dict | None = None,
+    capture_ordinary_scope: bool = False,
 ) -> AgentTurnResult:
     """Execute an Agent turn and return its in-memory structured result.
 
@@ -113,18 +118,26 @@ def execute_agent_turn(
     reuse_uuids, refno_uuid_map = _prepare_reuse(previous_output)
 
     started = time.time()
-    output = answer_with_routing(
-        user_msg=user_msg,
-        history_msgs=history_items,
-        memory_text=memory_text,
-        last_structured=previous_output,
-        recent_user_msgs=recent_user_msgs or None,
-        reuse_uuids=reuse_uuids,
-        refno_uuid_map=refno_uuid_map,
-        session_id=session_id,
-        request_id=request_id,
-        trace=trace,
-    )
+    # Scope capture is opt-in for a future auto-dispatch caller. Contextual
+    # turns are not independently provable by the original latest question.
+    capture = OrdinaryScopeCapture() if (
+        capture_ordinary_scope is True and not history_items
+        and not (memory_text or "").strip() and not previous_output
+    ) else None
+    with bind_ordinary_scope_capture(capture):
+        output = answer_with_routing(
+            user_msg=user_msg,
+            history_msgs=history_items,
+            memory_text=memory_text,
+            last_structured=previous_output,
+            recent_user_msgs=recent_user_msgs or None,
+            reuse_uuids=reuse_uuids,
+            refno_uuid_map=refno_uuid_map,
+            session_id=session_id,
+            request_id=request_id,
+            trace=trace,
+        )
+    ordinary_scope = capture.seal() if capture is not None else None
     trace.setdefault("timing", {})["routing_sec"] = time.time() - started
     if not isinstance(output, dict):
         raise TypeError("Agent turn must return a structured dictionary")
@@ -142,4 +155,5 @@ def execute_agent_turn(
         user_message=user_msg,
         output=output,
         trace=trace,
+        ordinary_scope=ordinary_scope if output.get("mode") == "SRA_REPORT" else None,
     )

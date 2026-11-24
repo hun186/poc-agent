@@ -13,6 +13,7 @@ from agent.utils.profiler import log_total
 from agent.llm_utils.ollama_client import call_llm  # 你既有的封裝
 from config.index_loader import INDEX_CONFIG
 from agent.agent_utils import build_query_for_agent_in_agent
+from agent.es.ordinary_scope_receipt import current_ordinary_scope_capture
 from .style_agent import ask_with_style
 from .report_agent import ask_with_report
 from .doc_followup_agent import ask_with_doc_followup
@@ -274,6 +275,12 @@ def answer_with_routing(
             recent_user_msgs = []
         
         file_recent = SESSION_STORE.recent_user_msgs(state, k=10)
+        # This file-backed context can exist even when API memory is empty.
+        # Invalidate the private receipt at the actual restoration boundary,
+        # before adding this turn to persistent history or invoking the router.
+        capture = current_ordinary_scope_capture()
+        if capture is not None and (state.turns or state.context or file_recent or recent_user_msgs):
+            capture.invalidate()
         
         # 合併（檔案舊 → API 新），去重但保留順序
         merged: list[str] = []

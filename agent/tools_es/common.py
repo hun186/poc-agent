@@ -9,6 +9,7 @@ from typing import Iterable
 
 from agent.es.es_client import resolve_index as _resolve_es_index
 from agent.es.evidence_core.topic_audit import current_sink, bind_sink
+from agent.es.ordinary_scope_receipt import current_ordinary_scope_capture, bind_ordinary_scope_capture
 from .question_scope import (
     bind_original_report_question, get_original_report_question,
 )
@@ -21,6 +22,7 @@ _REQUIREMENT_E2E_TOOL_PLAN_ATTR = "_requirement_e2e_admitted_plan"
 # threads can restore provenance without passing it as an LLM tool argument.
 _REPORT_QUESTION_TOOL_ATTR = "_sraf_original_report_question_for_tool"
 _REPORT_AUDIT_TOOL_ATTR = "_sraf_topic_audit_sink_for_tool"
+_ORDINARY_SCOPE_TOOL_ATTR = "_sraf_ordinary_scope_capture_for_tool"
 
 
 def bind_requirement_acceptance(tool: Any) -> Any:
@@ -38,6 +40,7 @@ def bind_requirement_acceptance(tool: Any) -> Any:
     active = bool(requirement_acceptance_active())
     setattr(tool, _REPORT_QUESTION_TOOL_ATTR, get_original_report_question())
     setattr(tool, _REPORT_AUDIT_TOOL_ATTR, current_sink())
+    setattr(tool, _ORDINARY_SCOPE_TOOL_ATTR, current_ordinary_scope_capture())
     setattr(tool, _REQUIREMENT_E2E_TOOL_SCOPE_ATTR, active)
     # smolagents worker threads do not automatically inherit ContextVars.
     # Bind only the immutable plan from this verified job; production binds None.
@@ -67,7 +70,19 @@ def propagate_requirement_acceptance(func):
                 getattr(self, _REPORT_QUESTION_TOOL_ATTR, None)
             ):
                 with bind_sink(getattr(self, _REPORT_AUDIT_TOOL_ATTR, None)):
-                    return func(self, *args, **kwargs)
+                    capture = getattr(self, _ORDINARY_SCOPE_TOOL_ATTR, None)
+                    with bind_ordinary_scope_capture(capture):
+                        if capture is None:
+                            return func(self, *args, **kwargs)
+                        capture.begin_tool(func.__qualname__, acceptance=bool(
+                            getattr(self, _REQUIREMENT_E2E_TOOL_SCOPE_ATTR, False)))
+                        success = False
+                        try:
+                            result = func(self, *args, **kwargs)
+                            success = isinstance(result, dict) and not result.get("error")
+                            return result
+                        finally:
+                            capture.end_tool(success=success)
     return wrapped
 
 

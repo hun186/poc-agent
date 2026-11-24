@@ -79,5 +79,9 @@
 - Add deterministic explicit event year/month/day-range or expressly unbounded date, literal single-topic label and finite known analysis facets. Original prompt unchanged; same compiler at admission and Worker revalidation. Unknown syntax, compound/relative-date/exclusion scopes rejected; no LLM, inferred date, invented aspect or index override. This is not unrestricted natural-language support; ordinary/deep scope consistency and automatic dispatch remain separate gates.
 
 
+## 2026-11-25 #413 — private ordinary report scope receipt candidate
+- Optional request-local capture crosses ES tool threads via per-instance binding. One canonical ESSearchNews branch only; compare actual SDK/index/query digest to declared canonical query, explicit date pair and original core labels. No receipt for other/multiple tool calls, mock transport, changed query or index, implicit year, manual/hard-filter or contextual turns. Private AgentTurnResult field never emitted to output, trace or persisted snapshot. Not full query semantics, authorization, completeness or auto dispatch. Future admission must compare independently compiled original scope and verified account grants. Hosted CI/Review pending.
+
+
 ## 2026-11-25 #413 — authenticated chat turn replay candidate
 - #499 merged 8640252612a3 with 6/6 Hosted workflows, 9/9 jobs, latest-head independent Codex code review clean; no live deployment. #500/#501 synchronized to new main; previous CI green but independent review blocked by quota. Add common exact runtime gate, account-generation-bound stable client turn identity, separate reserved auto-chat key namespace and owner-scoped replay revalidation against original prompt, immutable scope/hash and persistent checkpoint. No chat dispatch or public replay route yet. Real SQLite/auth synthetic regression pending CI and review; requires stable OpenWebUI turn token integration.
