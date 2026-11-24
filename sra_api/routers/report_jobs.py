@@ -57,6 +57,7 @@ def _view(job):
     if ADAPTIVE_JOB_OPTION in job.options:
         # Do not return internal retrieval scope, index names or facets.
         result["options"] = {}
+        result["metadata"] = {}
         result["execution_mode"] = "adaptive_multiround"
     result["status_url"] = f"/v1/report/jobs/{job.job_id}"
     result["download_url"] = f"/v1/report/jobs/{job.job_id}/word"

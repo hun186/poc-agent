@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
+import re
 from typing import Any, Callable
 
 from agent.adaptive_retrieval.contracts import DateWindow, QueryConstraints, _bounded_text
@@ -20,6 +21,9 @@ from agent.adaptive_retrieval.request_budget import RequestAdmissionBudget
 from api.services.report_job_store import ADAPTIVE_JOB_OPTION, ReportJob, ReportJobStore
 from api.services.report_job_service import DEFAULT_REPORT_MODEL, create_job
 from api.services.sraf_nround_claimed_job_runner import execute_claimed_nround_job
+
+
+ADAPTIVE_OWNER_BINDING = "adaptive_owner_binding"
 
 
 @dataclass(frozen=True, repr=False)
@@ -85,7 +89,8 @@ class AdaptiveJobIntent:
 
 def create_adaptive_job(store: ReportJobStore, *, intent: AdaptiveJobIntent,
                         owner_id: str, idempotency_key: str,
-                        max_active_jobs: int, filename: str | None = None):
+                        max_active_jobs: int, filename: str | None = None,
+                        owner_binding: str | None = None):
     """Trusted internal admission only, not a principal authenticator.
 
     Caller MUST verify the actual user and scope BEFORE calling this helper.
@@ -94,11 +99,14 @@ def create_adaptive_job(store: ReportJobStore, *, intent: AdaptiveJobIntent,
     if (type(intent) is not AdaptiveJobIntent or type(owner_id) is not str
             or not owner_id.strip() or owner_id != owner_id.strip()
             or type(idempotency_key) is not str or not idempotency_key.strip()
-            or type(max_active_jobs) is not int or not 1 <= max_active_jobs <= 10000):
+            or type(max_active_jobs) is not int or not 1 <= max_active_jobs <= 10000
+            or (owner_binding is not None and (type(owner_binding) is not str
+                or re.fullmatch(r"[0-9a-f]{64}", owner_binding) is None))):
         raise ValueError("adaptive_admission_unverified")
     return create_job(store, prompt=intent.constraints.question, filename=filename,
                       session_id=None, model=DEFAULT_REPORT_MODEL, options=intent.options(),
-                      metadata={}, idempotency_key=idempotency_key, owner_kind="user",
+                      metadata=({ADAPTIVE_OWNER_BINDING: owner_binding} if owner_binding is not None else {}),
+                      idempotency_key=idempotency_key, owner_kind="user",
                       owner_id=owner_id, max_active_jobs=max_active_jobs,
                       register_adaptive=True)
 
