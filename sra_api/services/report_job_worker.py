@@ -72,8 +72,8 @@ class ReportJobWorker:
         if ADAPTIVE_JOB_OPTION in getattr(job, "options", {}):
             # Never fall through to the ordinary Agent, even on denial,
             # missing configuration or an invalid persisted intent.
+            from api.services.sraf_adaptive_job_runtime import AdaptiveJobRuntime
             try:
-                from api.services.sraf_adaptive_job_runtime import AdaptiveJobRuntime
                 if type(self.adaptive_runtime) is not AdaptiveJobRuntime:
                     raise ValueError("adaptive_runtime_unavailable")
                 self.root.mkdir(parents=True, exist_ok=True)
