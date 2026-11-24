@@ -69,3 +69,7 @@
 
 ## 2026-11-24 #413 — dedicated deep ES connection candidate
 - Dedicated real Elasticsearch SDK connection, explicit existing ES credentials and HTTPS CA, normal hostname verification, no retries or sniffing, SDK PIT partial-shard rejection argument required. Never calls ordinary singleton or mock/acceptance fallback; construction performs no search or ping. CI uses real SDK with synthetic settings and denied transport IO. Lifespan wiring and actual Linux TLS/index/mapping/model acceptance remain pending.
+
+
+## 2026-11-25 #413 — private ordinary report scope receipt candidate
+- Optional request-local capture crosses ES tool threads via per-instance binding. One canonical ESSearchNews branch only; compare actual SDK/index/query digest to declared canonical query, explicit date pair and original core labels. No receipt for other/multiple tool calls, mock transport, changed query or index, implicit year, manual/hard-filter or contextual turns. Private AgentTurnResult field never emitted to output, trace or persisted snapshot. Not full query semantics, authorization, completeness or auto dispatch. Future admission must compare independently compiled original scope and verified account grants. Hosted CI/Review pending.
