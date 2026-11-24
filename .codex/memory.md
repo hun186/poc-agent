@@ -93,3 +93,7 @@
 
 ## 2026-11-25 #413 — scoped OpenWebUI session candidate (dependent on #503)
 - #503 P2 test helper now passes verified account binding for real job counts. OpenWebUI adapter prerequisite: server-owned reserved session ID from actual authenticated account generation and validated chat ID, not caller owner; reject legacy direct namespace selection in Chat/Word/ordinary Job, preserve exact signed Word capability, require same owner for direct bearer export of scoped sessions. Existing unscoped session semantics unchanged. CI/review pending; adapter and deployed identity/TLS still separate.
+
+
+## 2026-11-25 #413 — OpenWebUI personal-auth Pipe candidate
+- Stacked on #503/#504. Standalone importable Pipe forwards short-lived personal SRAF access token only to admin HTTPS origin, requires OpenWebUI encrypted UserValves configuration, no password/shared credential/redirect/retry. Authenticated version probe prevents old API ignoring scoped header. Stable chat+message turn key only fresh user text, no internal tasks or context stripping. Real nonstream response preserved; streaming returns one actual completed Markdown, no fake SSE. Tests use synthetic transport; actual OpenWebUI version, encryption, proxy TLS, token renewal and private report acceptance pending. No installation or enablement.

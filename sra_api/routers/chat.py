@@ -59,6 +59,14 @@ def healthz():
     return {"ok": True}
 
 # --- OpenAI Chat Completions 相容端點（非串流版） ---
+@router.get("/v1/sraf/openwebui/capabilities")
+def openwebui_capabilities(principal: AuthPrincipal = Depends(require_scopes(MODEL_INVOKE))):
+    # Version negotiation, not a grant to auto-admit or a provider probe.
+    # The same authenticated scoped-session gate rejects service identities.
+    bind_openwebui_session(principal, ("capability-probe",))
+    return {"protocol": "sraf-openwebui-scoped-chat-v1"}
+
+
 @router.get("/v1/models", dependencies=[Depends(require_scopes(MODEL_READ))])
 def list_models():
     return {

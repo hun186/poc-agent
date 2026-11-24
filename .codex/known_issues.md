@@ -144,3 +144,7 @@
 
 ## 2026-11-25 #413 — auto Chat candidate limitations
 - Only bounded natural/explicit grammar, exact index set/order, event dates and core terms, no prior context for new admission. OpenWebUI must actually forward an individual SRAF JWT and stable unique per-message Idempotency-Key; shared service keys and raw user/session headers never suffice. Actual private browser/proxy URLs, real ES/LLM, long job resource profile and Word/download verification remain separate. Synthetic CI/review pending.
+
+
+## 2026-11-25 #413 — OpenWebUI pilot limits
+- Standalone Pipe candidate requires actual deployed OpenWebUI support for encrypted UserValves and reserved args, verified TLS CA/host, operator-managed Function access. Personal short-lived token requires manual renewal, no SSO or password persistence. One completed Markdown chunk is not true streaming; no attachments/tools or contextual new deep admission. Private live acceptance still pending; stacked PRs cannot merge ahead of #503/#504.
