@@ -90,3 +90,29 @@ def test_config_is_detached_from_mutable_environment():
     env["SRAF_DEEP_OWNER_GRANTS_JSON"] = "[]"
     assert result.models.report_model == "synthetic-report"
     assert result.policy.grants[0].owner_id == "synthetic-owner"
+
+
+def test_fresh_process_config_does_not_import_auth_or_agent(tmp_path):
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+
+    root = Path(__file__).resolve().parents[1]
+    script = '''
+import sys, json
+from importlib.abc import MetaPathFinder
+class DenyRuntime(MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.startswith(('api.services.auth_', 'sra_api.services.auth_', 'agent.', 'api.services.sraf_deep_scope_policy', 'api.services.sraf_adaptive_job_runtime')):
+            raise AssertionError('unexpected runtime import: ' + fullname)
+sys.meta_path.insert(0, DenyRuntime())
+from api.services.sraf_deep_startup_config import load_deep_startup_config
+assert load_deep_startup_config({}) is None
+assert load_deep_startup_config(json.loads(sys.argv[1])).policy.max_active_jobs == 3
+'''
+    env = dict(os.environ, PYTHONPATH=str(root), PYTHONDONTWRITEBYTECODE='1',
+               SRA_AUTH_USERS_FILE=str(tmp_path / 'auth' / 'users.json'))
+    subprocess.run([sys.executable, '-c', script, json.dumps(valid())],
+                   cwd=tmp_path, env=env, check=True, timeout=30)
+    assert not (tmp_path / 'auth').exists()
