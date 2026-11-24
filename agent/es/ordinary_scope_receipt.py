@@ -65,6 +65,10 @@ class OrdinaryScopeCapture:
         self._scope = None
         self._digest = None
 
+    def invalidate(self):
+        with self._lock:
+            self._invalid = True
+
     def begin_tool(self, name, *, acceptance):
         with self._lock:
             self._started += 1
