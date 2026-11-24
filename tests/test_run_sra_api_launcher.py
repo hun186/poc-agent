@@ -120,10 +120,36 @@ def _start(env: dict[str, str]) -> subprocess.Popen[str]:
     )
 
 
+def _read_optional_text(path: Path) -> str:
+    """A launcher identity file can disappear between restart polls."""
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return ""
+
+
+def _poll_identity(path: Path) -> dict[str, str]:
+    return dict(line.split("=", 1) for line in _read_optional_text(path).splitlines())
+
+
+def test_restart_poll_observes_missing_identity_without_exists_race(tmp_path, monkeypatch):
+    path = tmp_path / "identity"
+    path.write_text("pid=123\nprocess_start_time=456\n", encoding="utf-8")
+    assert _poll_identity(path) == {"pid": "123", "process_start_time": "456"}
+    original = Path.read_text
+    def vanished(self, *args, **kwargs):
+        if self == path:
+            self.unlink()
+            raise FileNotFoundError
+        return original(self, *args, **kwargs)
+    monkeypatch.setattr(Path, "read_text", vanished)
+    assert _poll_identity(path) == {}
+
+
 def _wait_for(path: Path, needle: str, timeout: float = 3) -> str:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        value = path.read_text(encoding="utf-8") if path.exists() else ""
+        value = _read_optional_text(path)
         if needle in value:
             return value
         time.sleep(0.03)
@@ -194,23 +220,28 @@ def test_second_launcher_gracefully_restarts_verified_runtime(launcher_env) -> N
         _wait_for(path, "process_start_time=")
     old_roles = [dict(line.split("=", 1) for line in path.read_text().splitlines()) for path in role_records]
     second = _start(env)
-    _wait_for(events, "api-term")
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
-        content = events.read_text(encoding="utf-8")
-        current = dict(line.split("=", 1) for line in identity.read_text().splitlines()) if identity.exists() else {}
-        current_roles = [dict(line.split("=", 1) for line in path.read_text().splitlines())
-                         if path.exists() else {} for path in role_records]
-        if (current.get("pid") != old["pid"]
-                and all(item.get("pid") and item["pid"] != previous["pid"]
-                        for item, previous in zip(current_roles, old_roles))):
-            break
-        time.sleep(0.03)
-    assert first.wait(timeout=3) == 0
-    assert second.poll() is None, second.communicate(timeout=1)[0]
-    assert all(Path(f"/proc/{item['pid']}").exists() for item in current_roles)
-    assert current["process_start_time"] != old["process_start_time"] or current["pid"] != old["pid"]
-    _stop(second)
+    try:
+        _wait_for(events, "api-term")
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            current = _poll_identity(identity)
+            current_roles = [_poll_identity(path) for path in role_records]
+            if (current.get("pid") and current["pid"] != old["pid"]
+                    and current.get("process_start_time")
+                    and all(item.get("pid") and item["pid"] != previous["pid"]
+                            and item.get("process_start_time")
+                            for item, previous in zip(current_roles, old_roles))):
+                break
+            time.sleep(0.03)
+        else:
+            pytest.fail("replacement launcher and both worker identities were not observed")
+        assert first.wait(timeout=3) == 0
+        assert second.poll() is None, second.communicate(timeout=1)[0]
+        assert all(Path(f"/proc/{item['pid']}").exists() for item in current_roles)
+        assert current["process_start_time"] != old["process_start_time"] or current["pid"] != old["pid"]
+    finally:
+        if second.poll() is None:
+            _stop(second)
 
 
 def test_restart_contender_does_not_truncate_launcher_identity(launcher_env) -> None:
