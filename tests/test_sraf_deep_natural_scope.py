@@ -45,6 +45,13 @@ def test_broad_topic_not_narrowed_by_inferred_facets():
     "請分析2023-08-31至2023-08-01期間，聯合國的外交回應。",
     "請分析2023-02-29至2023-03-01期間，聯合國的外交回應。",
     "請分析2023年期間，聯合國與北約的外交回應。",
+    "請分析2023年期間，埃及及北約的外交回應。",
+    "請分析2023年期間，非聯合國的外交回應。",
+    "請分析2023年期間，非洲聯盟週末的外交回應。",
+    "請分析2023年期間，聯合國週末的外交回應。",
+    "請分析2023年期間，聯合國週一的外交回應。",
+    "請分析2023年期間，聯合國星期日的外交回應。",
+    "請分析2023年期間，聯合國工作日的外交回應。",
     "請分析2023年期間，聯合國的外交回應、外交回應。",
     "請分析2023年期間，聯合國的外交回應，但只限官方資料。",
     "請分析2023年期間，只限聯合國的外交回應。",
@@ -77,7 +84,7 @@ def test_real_policy_rechecks_natural_intent_after_admission(tmp_path, monkeypat
     assert not created and replay.job_id == job.job_id
 
 
-@pytest.mark.parametrize("topic", ["日本", "日本央行", "月球探測", "年輕人"])
+@pytest.mark.parametrize("topic", ["日本", "日本央行", "月球探測", "年輕人", "埃及", "非洲", "非洲聯盟"])
 def test_literal_topic_names_are_not_temporal_qualifiers(topic):
     intent = compile_deep_question("請分析2023年期間，" + topic + "的發展趨勢。", ("news_test",))
     assert intent.constraints.original_core_terms == (topic,)
