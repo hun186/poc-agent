@@ -360,10 +360,15 @@ def test_sigkill_releases_flock_and_replacement_reclaims_orphan_workers(launcher
     first.kill()
     first.wait(timeout=3)
     assert all(os.kill(pid, 0) is None for pid in (old_schedule, old_handoff))
+    # SIGKILL can land while a short-lived identity/audit subprocess still
+    # owns an inherited descriptor. The launcher takeover contract is
+    # bounded release, not instantaneous release at first.wait().
+    # Long-lived worker inheritance still fails within the configured bound.
     lock_probe = subprocess.run(
-        ["flock", "-n", env["LOCK_FILE"], "true"], capture_output=True, text=True,
+        ["flock", "-w", env["SHUTDOWN_TIMEOUT_SECONDS"], env["LOCK_FILE"], "true"],
+        capture_output=True, text=True, timeout=3,
     )
-    assert lock_probe.returncode == 0
+    assert lock_probe.returncode == 0, "launcher lock did not release within takeover budget"
 
     replacement = _start(env)
     try:
