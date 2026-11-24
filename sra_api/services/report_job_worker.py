@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from api.routers.chat_support import ChatMessage
 from api.services.export_word_service import ExportWordService
 from api.services.turn_execution import execute_agent_turn
-from .report_job_store import ReportJobStore
+from .report_job_store import ADAPTIVE_JOB_OPTION, ReportJobStore
 
 def _failure_category(exc: Exception) -> str:
     """Best-effort classified *actual* failure, never infer a timeout by duration.
@@ -47,7 +47,10 @@ def _failure_category(exc: Exception) -> str:
 
 
 class ReportJobWorker:
-    def __init__(self, store: ReportJobStore, reports_root: str | Path, poll_seconds: float = .2):
+    def __init__(self, store: ReportJobStore, reports_root: str | Path, poll_seconds: float = .2, *, adaptive_runtime=None):
+        # No production default or implicit provider policy. Explicit trusted
+        # runtime composition is required before a deep job can execute.
+        self.adaptive_runtime = adaptive_runtime
         self.store, self.root, self.poll_seconds = store, Path(reports_root), poll_seconds
         self.stop_event = threading.Event(); self.thread = None
     def start(self):
@@ -64,6 +67,18 @@ class ReportJobWorker:
             if not job: self.stop_event.wait(self.poll_seconds); continue
             self.execute(job)
     def execute(self, job):
+        if ADAPTIVE_JOB_OPTION in job.options:
+            # Never fall through to the ordinary Agent, even on denial,
+            # missing configuration or an invalid persisted intent.
+            try:
+                from api.services.sraf_adaptive_job_runtime import AdaptiveJobRuntime
+                if type(self.adaptive_runtime) is not AdaptiveJobRuntime:
+                    raise ValueError("adaptive_runtime_unavailable")
+                self.root.mkdir(parents=True, exist_ok=True)
+                self.adaptive_runtime.execute(self.store, job, self.root)
+            except Exception:
+                self.store.fail_adaptive_claim(job)
+            return
         self.root.mkdir(parents=True, exist_ok=True)
         final = self.root / f"{job.job_id}.docx"
         temp = self.root / f".{job.job_id}.{os.getpid()}.{threading.get_ident()}.tmp"

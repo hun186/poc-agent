@@ -29,6 +29,11 @@ on:
       - 'tests/test_sraf_nround_safe_progress_sink.py'
       - 'tests/test_sraf_nround_claimed_job_runner.py'
       - 'sra_api/services/sraf_nround_claimed_job_runner.py'
+      - 'sra_api/services/sraf_adaptive_job_runtime.py'
+      - 'sra_api/services/report_job_worker.py'
+      - 'sra_api/services/report_job_store.py'
+      - 'sra_api/services/report_job_service.py'
+      - 'tests/test_sraf_adaptive_job_runtime.py'
       - 'docs/operations/sraf_nround_claimed_job_runner.md'
       - 'docs/operations/sraf_nround_safe_progress_sink.md'
       - 'tests/test_sraf_nround_worker_scope_binding.py'
@@ -78,6 +83,7 @@ jobs:
             tests/test_sraf_nround_trusted_execution_loop.py \
             tests/test_sraf_nround_safe_progress_sink.py \
             tests/test_sraf_nround_claimed_job_runner.py \
+            tests/test_sraf_adaptive_job_runtime.py \
             tests/test_sraf_nround_worker_scope_binding.py \
             tests/test_sraf_nround_persisted_claimed_job_scope.py \
             tests/test_sraf_nround_owned_progress.py \

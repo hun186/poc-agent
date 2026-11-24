@@ -159,37 +159,47 @@ class NroundCheckpointStore:
                 con.rollback()
                 raise
 
+    @staticmethod
+    def ensure_schema_in_transaction(con: sqlite3.Connection) -> None:
+        """Validate/create sidecar only inside an explicitly authorized write."""
+        found = con.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (_TABLE,),
+        ).fetchone()
+        if not found:
+            con.execute(f"""CREATE TABLE {_TABLE} (
+                job_id TEXT PRIMARY KEY,
+                state TEXT NOT NULL CHECK(state IN (
+                    'QUEUED','RUNNING','RETRIEVAL_STOPPED',
+                    'INTERRUPTED','FAILED','CANCELLED')),
+                phase TEXT NOT NULL,
+                round_number INTEGER NOT NULL DEFAULT 0,
+                completed_rounds INTEGER NOT NULL DEFAULT 0,
+                es_calls_this_round INTEGER NOT NULL DEFAULT 0,
+                termination TEXT NOT NULL DEFAULT 'NONE',
+                lease_hash TEXT,
+                revision INTEGER NOT NULL DEFAULT 0
+            )""")
+        info = tuple(
+            (row["name"], row["type"].upper(), row["notnull"],
+             row["dflt_value"], row["pk"])
+            for row in con.execute(f"PRAGMA table_info({_TABLE})")
+        )
+        # Names alone are insufficient: an externally created same-shape
+        # table without a PRIMARY KEY admits duplicate job IDs and makes
+        # two-worker claim fencing unsafe. Refuse all schema variations.
+        if info != _EXPECTED_COLUMN_META:
+            raise RuntimeError("incompatible_nround_checkpoint_schema")
     def initialize(self) -> None:
-        def init(con):
-            found = con.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
-                (_TABLE,),
-            ).fetchone()
-            if not found:
-                con.execute(f"""CREATE TABLE {_TABLE} (
-                    job_id TEXT PRIMARY KEY,
-                    state TEXT NOT NULL CHECK(state IN (
-                        'QUEUED','RUNNING','RETRIEVAL_STOPPED',
-                        'INTERRUPTED','FAILED','CANCELLED')),
-                    phase TEXT NOT NULL,
-                    round_number INTEGER NOT NULL DEFAULT 0,
-                    completed_rounds INTEGER NOT NULL DEFAULT 0,
-                    es_calls_this_round INTEGER NOT NULL DEFAULT 0,
-                    termination TEXT NOT NULL DEFAULT 'NONE',
-                    lease_hash TEXT,
-                    revision INTEGER NOT NULL DEFAULT 0
-                )""")
-            info = tuple(
-                (row["name"], row["type"].upper(), row["notnull"],
-                 row["dflt_value"], row["pk"])
-                for row in con.execute(f"PRAGMA table_info({_TABLE})")
-            )
-            # Names alone are insufficient: an externally created same-shape
-            # table without a PRIMARY KEY admits duplicate job IDs and makes
-            # two-worker claim fencing unsafe. Refuse all schema variations.
-            if info != _EXPECTED_COLUMN_META:
-                raise RuntimeError("incompatible_nround_checkpoint_schema")
-        self._write(init)
+        self._write(self.ensure_schema_in_transaction)
+
+    @staticmethod
+    def register_in_transaction(con: sqlite3.Connection, job_id: str) -> None:
+        if not NroundCheckpointStore._valid_id(job_id):
+            raise ValueError("invalid_report_job_id")
+        NroundCheckpointStore.ensure_schema_in_transaction(con)
+        con.execute(f"INSERT INTO {_TABLE} (job_id,state,phase) VALUES (?,?,?)",
+                    (job_id, "QUEUED", "CREATED"))
 
     @staticmethod
     def _valid_id(job_id: str) -> bool:
