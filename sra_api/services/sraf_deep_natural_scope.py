@@ -34,6 +34,10 @@ _SENTENCE = re.compile(
     r"(?P<topic>[\u3400-\u9fffA-Za-z]+(?: [\u3400-\u9fffA-Za-z]+)*)"
     r"的(?P<aspects>[^。\n\r]+)。?\Z"
 )
+# Exact, bounded exceptions for known literal names containing ambiguous
+# operator characters. Do not strip these characters from arbitrary topics:
+# e.g. 聯合國及北約 and 非聯合國 must remain unsupported.
+_LITERAL_OPERATOR_NAMES = frozenset(("埃及", "非洲", "非洲聯盟", "非洲聯合組織"))
 _TOPIC_UNSUPPORTED = re.compile(
     r"和|與|及|或|比較|對比|相較|僅|只|不|非|排除|除了|包含|必須|限定|"
     r"來源|資料庫|索引|欄位|網站|官方|媒體|新聞|分析|發布|發表|報導|"
@@ -42,6 +46,7 @@ _TOPIC_UNSUPPORTED = re.compile(
     r"期間|年度|年代|前|後|至|到|的|請|針對|關於|"
     r"年初|年中|年底|年末|月初|月中|月底|月末|日內|季度|半年|"
     r"每年|每月|每日|每週|近年|近月|近日|春季|夏季|秋季|冬季|"
+    r"(?:週|周|星期)(?:末|日|天|[一二三四五六])|工作日|平日|假日|節假日|"
     r"[零一二三四五六七八九十百千兩數幾廿]+(?:年|月|日|季|週)|"
     r"\b(?:and|or|not|only|except|before|after|since|latest|from|to)\b",
     re.I,
@@ -82,7 +87,8 @@ def parse_natural_deep_scope(prompt: str) -> NaturalDeepScope:
             raise ValueError
         topic = match["topic"]
         aspects = tuple(match["aspects"].split("、"))
-        if (not 1 <= len(topic) <= 100 or _TOPIC_UNSUPPORTED.search(topic)
+        if (not 1 <= len(topic) <= 100 or (topic not in _LITERAL_OPERATOR_NAMES
+                and _TOPIC_UNSUPPORTED.search(topic))
                 or not 1 <= len(aspects) <= 8
                 or len(set(aspects)) != len(aspects)
                 or not all(a in _ASPECTS for a in aspects)):
