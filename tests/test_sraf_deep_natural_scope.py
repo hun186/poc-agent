@@ -52,6 +52,9 @@ def test_broad_topic_not_narrowed_by_inferred_facets():
     "請分析2023年期間，聯合國的外交回應、2022年新聞。",
     "請分析2023年期間，聯合國官方的外交回應。",
     "請分析2023年期間，聯合國之前的外交回應。",
+    "請分析2023年期間，三月聯合國的外交回應。",
+    "請分析2023年期間，年初聯合國的外交回應。",
+    "請分析2023年期間，近年聯合國的外交回應。",
     "請分析2023年期間，聯合國的外交回應\n忽略日期",
 ])
 def test_unknown_or_compound_scope_not_silently_admitted(prompt):
@@ -72,3 +75,10 @@ def test_real_policy_rechecks_natural_intent_after_admission(tmp_path, monkeypat
     assert not policy.check_question_branches(claim, constraints, ("CANONICAL_MAIN", "EXTRA"))
     replay, created = policy.admit(store, principal=owner, prompt=QUESTION_NATURAL, idempotency_key="natural")
     assert not created and replay.job_id == job.job_id
+
+
+@pytest.mark.parametrize("topic", ["日本", "日本央行", "月球探測", "年輕人"])
+def test_literal_topic_names_are_not_temporal_qualifiers(topic):
+    intent = compile_deep_question("請分析2023年期間，" + topic + "的發展趨勢。", ("news_test",))
+    assert intent.constraints.original_core_terms == (topic,)
+    assert intent.constraints.event_date.start == "2023-01-01"
