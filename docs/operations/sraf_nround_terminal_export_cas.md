@@ -1,0 +1,5 @@
+# SRAF N-round terminal → DOCX export phase CAS
+
+Issue #413, after #471/#473. The existing read-only terminal receipt is not an atomic phase reservation. The new internal `begin_docx_export_for_terminal_job` checks the same canonical running Job, owner and immutable admission fields, exact checkpoint revision/completed round count, SUFFICIENT terminal, no lease and no prior turn/artifact, then advances agent_execution → docx_export under one SQLite BEGIN IMMEDIATE transaction. Concurrent admissions cannot both win. Other terminal reasons are rejected. The old read-only receipt still has identical semantics.
+
+This is NOT permission to generate or expose a Word report: the future trusted Worker must hold the private retrieval result, enforce actual owner/index/whole-question policy, produce grounded output and use a separate phase/claim-bound artifact completion mechanism. Existing public Report Job behavior is unchanged; no new runtime caller or schema migration. Synthetic SQLite concurrency/negative/error rollback tests run on Python 3.10/3.11. Private ES/LLM/Word not tested.

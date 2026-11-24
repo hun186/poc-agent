@@ -11,6 +11,7 @@ on:
       - 'tests/test_sraf_nround_fail_owned_lease.py'
       - 'tests/test_sraf_nround_terminal_handoff_fence.py'
       - 'docs/operations/sraf_nround_terminal_handoff_fence.md'
+      - 'docs/operations/sraf_nround_terminal_export_cas.md'
       - 'docs/operations/sraf_nround_fail_owned_lease.md'
       - 'docs/operations/sraf_nround_checkpoint.md'
       - 'docs/operations/sraf_nround_reportjob_atomic_checkpoint.md'
