@@ -69,6 +69,24 @@ replay DB 配置或瀏覽器登入。最終接收端仍須重新驗證 scope、g
 帳號 generation、適用 transport 及 OpenWebUI 已登入 context。
 
 
+## 第三步候選：明確傳輸策略（未接入 adapter 或接收端）
+
+- local_http：只接受 literal 127.0.0.1 或 ::1，不接受 localhost/DNS、RFC1918、
+  Docker bridge IP 或 wildcard。僅同一受信任 network namespace 且確認本機
+  listener 不對外暴露時適用；不同容器的 loopback 通常不是同一服務。
+- verified_https：配置可變 HTTPS origin（DNS 或 IP），系統 CA 或指定 CA 檔，
+  嚴格 hostname/SAN 驗證，無 proxy、redirect、重試或不安全 fallback。
+  可使用獨立 SRAF HTTPS ingress，不要求變更既有 OpenWebUI 前端 TLS。
+- 可信後端 helper 發送精確簽署的 JSON bytes；單一 POST endpoint，
+  response <=8 MiB，非 200/非 JSON 拒絕。socket timeout 不是全程 deadline；
+  未完成 adapter 的總時限、取消、實際 TLS ingress 及 listener 配置驗證。
+- 合成測試實際在 loopback HTTP/TLS listener 交換資料，錯誤 CA、SAN 不匹配、
+  redirect 必須失敗。這不是真實部署或完整 API 驗收。
+- 接收端尚未安裝；不得把 X-Forwarded-Proto、Host、IP 或由 reverse proxy
+  轉送的 loopback client address 當成 TLS 或個人身分證明。須確認真正 ingress
+  信任邊界與 header 剝離；其他普通 API 不因本功能改動。
+
+
 ## Chat-only request context 候選（未安裝 HTTP 接收端）
 
 驗證 raw header 的唯一 assertion，拒絕 Authorization/Cookie/其他
