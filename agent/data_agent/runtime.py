@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional, List, Tuple
 from .builder import build_agent, normalize_model_id
 from .types import ENV
 from agent.es.arc_request_budget import data_agent_arc_budget
+from agent.es.arc_frequency_shadow import native_frequency_enabled
 from agent.es.evidence_core.topic_audit import bind_sink, summary as topic_audit_summary
 from agent.tools_es.question_scope import bind_original_report_question
 
@@ -263,7 +264,9 @@ def run_data_agent(
     # its forward decorator restores it only for that tool call.
     report_mode = (mode or "").strip().lower() in ("report", "sra_report")
     topic_audit_sink: list[dict] = []
-    with data_agent_arc_budget(enabled=report_mode and os.getenv("SRAF_ARC_GROUP_FREQUENCY") == "shadow"), bind_sink(topic_audit_sink):
+    with data_agent_arc_budget(enabled=report_mode and (
+        os.getenv("SRAF_ARC_GROUP_FREQUENCY") == "shadow" or native_frequency_enabled()
+    )), bind_sink(topic_audit_sink):
         with bind_original_report_question(question_raw if report_mode else None):
             code_agent = build_agent(mode=mode)
             result = code_agent.run(question_for_agent)

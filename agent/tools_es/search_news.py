@@ -9,6 +9,7 @@ from elasticsearch import BadRequestError
 from smolagents import Tool
 
 from agent.es.es_client import safe_search as _safe_es_search
+from agent.es.arc_frequency_shadow import native_frequency_enabled
 from agent.es.ordinary_scope_receipt import current_ordinary_scope_capture
 from agent.es.query_terms import compute_effective_terms
 from agent.es.evidence import build_hits_and_evidence
@@ -179,7 +180,15 @@ class ESSearchNews(Tool):
         # === T3: ES 查詢 ===
         try:
             with log_duration("[es_search_news][T3] _safe_es_search", extra={"size": size}):
-                res = _safe_es_search(body, index=index)
+                if native_frequency_enabled():
+                    res = _safe_es_search(body, index=index, arc_frequency={
+                        "groups": term_groups, "date_from": date_from,
+                        "date_to": date_to,
+                        "must_high_value": False if must_high_value is None else must_high_value,
+                        "must_selected": False if must_selected is None else must_selected,
+                    })
+                else:
+                    res = _safe_es_search(body, index=index)
         except BadRequestError:
             print("[es_search_news] ES BadRequestError (details suppressed)")
             raise
