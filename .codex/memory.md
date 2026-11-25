@@ -93,3 +93,7 @@
 
 ## 2026-11-25 #413 — Chat/Worker import boundary regression
 - #503 merged c8305ef26b68 with 5/5 workflows and clean latest-head review; #504's separate N-round workflow subsequently exposed an import-order cycle already present in #503. Candidate removes Worker dependency on HTTP router package for ChatMessage and defers exact Worker type import until admission resolution; tests fresh processes in Worker-first, Chat-first, dispatch-first order and extends N-round path filters so future Chat/dispatch changes trigger it. No authorization relaxation, provider traffic or deployment. Latest-head CI/review pending.
+
+
+## 2026-11-25 #413 — additional natural date forms candidate
+- Expand bounded complete Chinese sentences to explicit absolute year/month/day and same-precision ranges, optional comma/期間, topic-first 在/於 and exact 為何 interrogative. Preserve legacy date source text, original question and literal topic/aspects. No implicit time, relative date, unsupported aspect or compound scope. Synthetic regression pending CI and review; does not guarantee ordinary ES receipt alignment.

@@ -89,3 +89,46 @@ def test_literal_topic_names_are_not_temporal_qualifiers(topic):
     intent = compile_deep_question("請分析2023年期間，" + topic + "的發展趨勢。", ("news_test",))
     assert intent.constraints.original_core_terms == (topic,)
     assert intent.constraints.event_date.start == "2023-01-01"
+
+
+@pytest.mark.parametrize("prompt,phrase,first,last,precision", [
+    ("請分析2023年8月聯合國的外交回應。", "2023年8月", "2023-08-01", "2023-08-31", "month"),
+    ("分析2023年, 聯合國的外交回應", "2023年", "2023-01-01", "2023-12-31", "year"),
+    ("請分析聯合國在2023年8月的外交回應。", "2023年8月", "2023-08-01", "2023-08-31", "month"),
+    ("聯合國於2023年8月的外交回應為何？", "2023年8月", "2023-08-01", "2023-08-31", "month"),
+    ("請分析2024年2月29日聯合國的外交回應。", "2024年2月29日", "2024-02-29", "2024-02-29", "day"),
+    ("請分析2023年8月1日至2023年8月31日期間，聯合國的外交回應。", "2023年8月1日至2023年8月31日期間", "2023-08-01", "2023-08-31", "day"),
+    ("請分析2023年8月至2024年2月，聯合國的外交回應。", "2023年8月至2024年2月", "2023-08-01", "2024-02-29", "month"),
+    ("請分析2022年至2023年聯合國的外交回應。", "2022年至2023年", "2022-01-01", "2023-12-31", "year"),
+])
+def test_additional_absolute_date_sentence_forms(prompt, phrase, first, last, precision):
+    intent = compile_deep_question(prompt, ("news_test",))
+    assert intent.constraints.question == prompt
+    assert intent.constraints.original_core_terms == ("聯合國",)
+    assert intent.target_aspects == ("外交回應",)
+    window = intent.constraints.event_date
+    assert (window.start, window.end, window.precision, window.source_text) == (first, last, precision, phrase)
+    assert AdaptiveJobIntent.from_options(intent.options(), prompt) == intent
+
+
+@pytest.mark.parametrize("prompt", [
+    "請分析2023年8月至2月聯合國的外交回應。",
+    "請分析2024年2月至2023年8月聯合國的外交回應。",
+    "請分析2023年2月29日聯合國的外交回應。",
+    "請分析2023年8月至2024年聯合國的外交回應。",
+    "請分析聯合國在去年8月的外交回應。",
+    "請分析聯合國與北約在2023年8月的外交回應。",
+    "聯合國在2023年8月的外交回應為何？另查北約。",
+    "請分析聯合國於2023年8月的外交回應、僅官方。",
+    "請分析2023年8月期間聯合國週末的外交回應。",
+])
+def test_new_forms_still_reject_ambiguous_or_hidden_scope(prompt):
+    with pytest.raises(DeepQuestionUnsupported):
+        compile_deep_question(prompt, ("news_test",))
+
+
+def test_legacy_date_provenance_unchanged():
+    intent = compile_deep_question(QUESTION_NATURAL, ("news_test",))
+    assert intent.constraints.event_date.source_text == "2023年8月期間"
+    assert intent.constraints.event_date.precision == "month"
+    assert intent.target_aspects == ("外交回應", "合作進展")
