@@ -12,6 +12,7 @@ from api.services.turn_execution import execute_agent_turn
 from api.security.models import AuthPrincipal
 from api.security.principal import optional_principal, require_principal_or_capability, require_scopes
 from api.security.scopes import REPORT_LEGACY_DOWNLOAD, REPORT_SYNC
+from api.services.sraf_session_namespace import is_reserved_session, scoped_session_owned
 
 router = APIRouter()
 
@@ -102,6 +103,9 @@ def export_word(
         resource_type="legacy_word", binding={"session_id": session_id, "turn_id": turn_id},
         allowed_query_keys={"session_id", "turn_id"},
     )
+    if is_reserved_session(session_id) and not capability:
+        if not scoped_session_owned(session_id, principal):
+            raise HTTPException(404, "Report not found")
     raw = API_STORE.read_raw() or {}
     last = raw.get("last_structured") or {}
     hist = raw.get("structured_history") or {}

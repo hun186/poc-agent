@@ -14,6 +14,7 @@ from api.security.models import AuthPrincipal
 from api.security.principal import require_scopes
 from api.security.scopes import REPORT_JOB_ADMIN, REPORT_JOB_CREATE, REPORT_JOB_DOWNLOAD, REPORT_JOB_READ
 from api.services.editor_audit import append_audit_event
+from api.services.sraf_session_namespace import is_reserved_session
 from api.services.sraf_deep_scope_policy import binding_for_principal, bound_deep_owner_matches
 from agent.adaptive_retrieval.job_checkpoint import NroundCheckpointStore
 from api.services.sraf_nround_owned_progress import NroundOwnedProgressError, get_owned_nround_progress
@@ -82,6 +83,8 @@ def _view(job):
 
 @router.post("", status_code=202, responses={409: {"description": "Idempotency conflict"}})
 def submit(payload: ReportJobCreate, request: Request, idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"), principal: AuthPrincipal = Depends(require_scopes(REPORT_JOB_CREATE))):
+    if is_reserved_session(payload.session_id):
+        raise HTTPException(400, "Reserved chat session namespace")
     if idempotency_key and idempotency_key.strip().startswith(CHAT_DEEP_KEY_PREFIX):
         raise HTTPException(400, "Reserved Idempotency-Key namespace")
     try:

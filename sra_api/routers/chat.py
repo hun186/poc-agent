@@ -21,6 +21,9 @@ from api.core.url_utils import abs_url
 from api.security.principal import require_scopes
 from api.security.models import AuthPrincipal
 from api.services.sraf_chat_deep_dispatch import prepare_auto_chat, append_deep_chat_status
+from api.services.sraf_session_namespace import (
+    SCOPED_CHAT_HEADER, bind_openwebui_session, require_legacy_session,
+)
 from api.security.scopes import MODEL_INVOKE, MODEL_READ
 from api.security.signed_urls import sign_resource
 
@@ -85,8 +88,11 @@ def chat_completions(
     t_start = time.time()
 
     try:
-        # 0) 決定 session_key
-        session_key = resolve_session_key(payload, request)
+        # Adapter-provided chat IDs are context hints, not ownership.
+        values = tuple(request.headers.getlist(SCOPED_CHAT_HEADER))
+        scoped = bind_openwebui_session(principal, values) if values else None
+        session_key = scoped.key if scoped is not None else require_legacy_session(
+            resolve_session_key(payload, request))
 
         # 建立 trace 雛形
         trace = new_trace(session_id=session_key, request_id=request_id)
@@ -153,6 +159,7 @@ def chat_completions(
                 request_id=request_id,
                 trace=trace,
                 **({"capture_ordinary_scope": True} if deep_identity is not None else {}),
+                **({"scoped_chat_session": scoped} if scoped is not None else {}),
             )
             session_key = turn.session_id
             user_msg = turn.user_message
@@ -246,6 +253,8 @@ def chat_completions(
         append_deep_chat_status(resp, request.app.state, deep_identity, turn)
         return resp
 
+    except HTTPException:
+        raise
     except Exception as e:
         print("=== /v1/chat/completions 發生例外 ===")
         traceback.print_exc()
