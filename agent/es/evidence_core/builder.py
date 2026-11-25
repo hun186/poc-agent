@@ -20,6 +20,7 @@ from .topic_shadow import observe_topic_shadow
 from .question_anchor import derive_explicit_question_anchor
 from .topic_adaptive import consider_low_count, log_adaptive
 from .group_frequency import log_group_frequency, observe_group_frequency
+from .arc_rank_shadow import observe_rank_shadow, log_rank_shadow
 from .prose_anchor import propose_prose_shadow_anchor
 from .topic_audit import record as record_topic_audit
 
@@ -146,6 +147,13 @@ def build_hits_and_evidence(
             allowed_years=allowed_years,
         )
         log_group_frequency(observation)
+        if os.getenv("SRAF_ARC_RANK") == "shadow":
+            try:
+                log_rank_shadow(observe_rank_shadow(evidence, term_groups, observation))
+            except Exception:
+                # Optional diagnostics must never modify or block Evidence.
+                log_rank_shadow({"schema": "sraf_arc_rank_shadow_v1",
+                                 "status": "unavailable"})
     # #406: diagnostic only. The existing strict (or legacy zero-only
     # fallback) Evidence output remains authoritative. Neither two-group
     # matches nor meta-only matches can enter the report from this shadow.
