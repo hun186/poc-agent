@@ -34,6 +34,11 @@ CHARS 是 Python len() 計算的原始片段字元數，含日期驗證前掃描
 - 回應必須有精確 total、所有 shards 成功、無 timeout/提前終止、完整合法 buckets；不完整一律回傳 incomplete 而非零。精確只指該 ES DSL 的完整計數，非語意精確率或真實文章去重。
 - 尚未發出 ES 請求。正式接入前驗證授權 index/scope、mapping/analyzer、查詢負載、跨輪次共享預算、timeout/transport 取消及私有快照 A/B。不得以模擬 DSL 測試宣稱實機 count 驗收。
 
+### ARC 跨輪次共用預算基礎（尚未接入 coordinator）
+以單份報告獨有的 ArcRequestBudget 物件提供 thread-safe、原子式 reservation；每次工作先保留所有所需維度，再執行。失敗不扣額度；已成功保留的額度即使後續工作失敗也不退款，防止無界重試。每輪及全報告同時檢查，seal 後不接受新工作。不得把保留額度當實際使用量。
+暫定硬上限（全報告／單輪）：切片 8／4、來源文件 1024／512、片段 2048／1024、原文字元 1048576／524288、額外 ES calls 2／1、額外 LLM calls 2／1；可由可信呼叫者降低限額。這些不是實測最佳值。輪次 ordinal 必須由 coordinator 提供；不准模型指定，不使用 process-global singleton。
+目前僅有離線物件與競爭測試，尚未接入 report、tool worker、ES transport 或 LLM client；仍需驗證普通／深度流程的生命週期、跨執行緒傳遞、重試及取消、時間/token/bytes 的獨立限制，才能啟用真實查詢。
+
 ## 後續 gate
 - A1：Word/Markdown 分開未測與實測零值，再以真正 term_groups 顯示群組；歷史扁平清單不得推測歸屬。
 - A2：中英文雙向查漏及兩岸異譯；原始必要詞優先、同群組 OR、總/每組預算、跨組正規化碰撞與英文單詞邊界、短語 precision、人工指定/排除控制；獨立 opt-in 與 A/B。
