@@ -123,3 +123,7 @@
 
 ## 2026-11-25 #413 — explicit handoff sender transport candidate
 - Private direct HTTP client, explicit literal-loopback HTTP or verified HTTPS operator origin, no proxy/redirect/retry/downgrade, bounded response, exact signed body bytes. Synthetic loopback HTTP/TLS with matching/mismatching SAN/CA tests. Not receiver, listener attestation, adapter total deadline, browser login, live acceptance or deployment; #505 remains HOLD. No change to existing OpenWebUI TLS/keys.
+
+
+## 2026-11-25 #413 — private handoff Chat context candidate
+- Combine unique raw assertion and reject conflicting browser/auth/session/turn headers, durable nonce and live mapping into restricted Chat-only principal with generation fence, stable logical scoped session/turn ID independent of IP/key/nonce, revalidate current mapping/role/generation. No new public auth dependency or token/route; actual trusted ingress and execution wiring remain separate. Synthetic tests only; no production.

@@ -150,7 +150,9 @@ class DeepScopePolicy(DeepGrantConfig):
                 or auth_store_module.AUTH_STORE.is_token_denied(principal.credential_id)):
             raise DeepScopeDenied("deep_owner_denied")
         grant, binding, role = self._live(principal.subject)
-        if principal.role != role:
+        if (principal.role != role
+                or (principal.account_created_at is not None
+                    and principal.account_created_at != grant.account_created_at)):
             raise DeepScopeDenied("deep_owner_denied")
         return grant, binding
 
@@ -203,7 +205,21 @@ def binding_for_principal(principal: AuthPrincipal) -> str | None:
     """Only use a principal already authenticated by the server dependency."""
     if type(principal) is not AuthPrincipal or principal.kind != "user":
         return None
-    return active_account_binding(principal.subject)
+    if principal.account_created_at is None:
+        return active_account_binding(principal.subject)
+    # Delegated requests carry the exact generation observed by the
+    # trusted mapper, not a new generation inferred from the same username.
+    try:
+        row = auth_store_module.AUTH_STORE.get_user(principal.subject)
+        if (type(row) is not dict or row.get("status") != "active"
+                or row.get("created_at") != principal.account_created_at
+                or row.get("role") not in VALID_ROLES
+                or normalize_role(row["role"]) != principal.role):
+            return None
+        return hashlib.sha256(json.dumps([principal.subject, principal.account_created_at],
+            ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+    except Exception:
+        return None
 
 
 def bound_deep_owner_matches(job: ReportJob, principal: AuthPrincipal) -> bool:
