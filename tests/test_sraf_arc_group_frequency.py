@@ -173,3 +173,88 @@ def test_arc_shared_budget_exhaustion_preserves_evidence(monkeypatch, caplog):
     assert budget.snapshot()[0] == ArcUnits(
         slices=4, hits=512, rows=1024, chars=524288,
     )
+
+
+def _rank_record(caplog):
+    prefix = "SRAF_ARC_RANK_SHADOW="
+    records = [json.loads(r.getMessage().split(prefix, 1)[1])
+               for r in caplog.records if r.getMessage().startswith(prefix)]
+    assert len(records) == 1
+    return records[0]
+
+
+def test_arc_a4_rank_shadow_preserves_output_and_measures_rarity_displacement(monkeypatch, caplog):
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    axes = [{"美國"}, {"政策"}, {"出口管制"}, {"半導體"}]
+    hits = [
+        _hit(["美國 政策 出口管制"], uuid=f"private-{i}", docid=str(i))
+        for i in range(24)
+    ] + [_hit(["美國 政策 半導體"], uuid="private-rare", docid="rare")]
+    monkeypatch.delenv("SRAF_ARC_GROUP_FREQUENCY", raising=False)
+    monkeypatch.delenv("SRAF_ARC_RANK", raising=False)
+    expected = _build(hits, axes=axes)
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_RANK", "shadow")
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)):
+        assert _build(hits, axes=axes) == expected
+    r = _rank_record(caplog)
+    assert r["status"] == "observed_rank"
+    assert r["strict_count"] == 25
+    assert r["top_k_replaced"] == r["rarity_only_top_k_replaced"] == 1
+    assert r["original_source_hits"] == r["shadow_source_hits"] == 20
+    assert r["original_strong"] == r["shadow_strong"] == 20
+    assert budget.snapshot()[0] == ArcUnits(slices=2, hits=128, rows=384, chars=262144)
+    serialized = json.dumps(r, ensure_ascii=False)
+    for private in ("private-", "美國", "政策", "半導體", "出口管制"):
+        assert private not in serialized
+
+
+def test_arc_a4_no_rarity_override_of_strong_or_coverage_and_zero_df_is_neutral():
+    from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
+    from agent.es.evidence_core.arc_rank_shadow import observe_rank_shadow
+    from agent.es.evidence_core.models import EvidenceSnippet
+    groups = [{"甲"}, {"乙"}, {"丙"}, {"丁"}]
+    frequency = {"schema": "sraf_arc_group_frequency_v1",
+                 "scope": "ordered_parser_slice_date_valid_sample_text_only",
+                 "status": "observed_sample", "eligible_hits": 32,
+                 "groups": [{"group_ordinal": i, "sample_hit_frequency": df}
+                            for i, df in enumerate((32, 32, 1, 0), 1)]}
+
+    def row(i, text, count, weak=False):
+        return EvidenceSnippet(uuid=f"private-{i}", text=text, date_iso="2023-08-24",
+                               article_date_iso="2023-08-24", group_hits=count,
+                               match_scope="text", weak_evidence=weak,
+                               source_hit_ordinal=i)
+
+    strong = [row(i, "甲乙丁", 3) for i in range(20)]
+    # A rare group cannot outweigh the existing higher total coverage or strong tier.
+    candidates = strong + [row(20, "甲丙", 2), row(21, "甲乙丙丁", 4, True)]
+    with bind_arc_budget((ArcRequestBudget(), 1)):
+        r = observe_rank_shadow(candidates, groups, frequency)
+    assert r["status"] == "observed_rank" and r["top_k_replaced"] == 0
+    # An unseen group gets neutral weight, not an invented maximal rarity score.
+    frequency["groups"][2]["sample_hit_frequency"] = 32
+    candidates = [row(i, "甲乙丙", 3) for i in range(20)] + [row(20, "甲乙丁", 3)]
+    with bind_arc_budget((ArcRequestBudget(), 1)):
+        r = observe_rank_shadow(candidates, groups, frequency)
+    assert r["top_k_replaced"] == 0
+
+
+def test_arc_a4_rank_skips_when_sample_or_budget_insufficient(monkeypatch, caplog):
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    hits = [_hit(["甲軸乙軸丙軸"] * 2, uuid=f"d-{i}", docid=str(i)) for i in range(20)]
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_RANK", "shadow")
+    budget = ArcRequestBudget(
+        request_limit=ArcUnits(slices=1, hits=128, rows=256, chars=131072),
+        round_limit=ArcUnits(slices=1, hits=128, rows=256, chars=131072),
+    )
+    with bind_arc_budget((budget, 1)):
+        _build(hits)
+    assert _rank_record(caplog)["status"] == "shared_budget_exhausted"
+    caplog.clear()
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY_MAX_HITS", "2")
+    with bind_arc_budget((ArcRequestBudget(), 1)):
+        _build(hits)
+    assert _rank_record(caplog)["status"] == "insufficient_sample"
