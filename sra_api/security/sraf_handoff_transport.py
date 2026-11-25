@@ -74,6 +74,48 @@ class HandoffTransport:
             raise HandoffDenied("handoff_transport_invalid") from None
 
 
+def _direct_connection(transport: HandoffTransport, timeout: int):
+    if type(transport) is not HandoffTransport:
+        raise HandoffDenied("handoff_transport_invalid")
+    parts = urlsplit(transport.origin)
+    if transport.mode == "verified_https":
+        context = ssl.create_default_context(
+            cafile=str(transport.ca_file) if transport.ca_file else None)
+        if not context.check_hostname or context.verify_mode != ssl.CERT_REQUIRED:
+            raise HandoffDenied("handoff_transport_invalid")
+        return http.client.HTTPSConnection(parts.hostname, parts.port,
+                                           timeout=timeout, context=context)
+    return http.client.HTTPConnection(parts.hostname, parts.port, timeout=timeout)
+
+
+def probe_handoff_transport(transport: HandoffTransport) -> None:
+    """Read-only GET to configured Chat path; no assertion or prompt is sent.
+
+    Matching 405/Allow: POST is only a route/transport observation, not proof
+    of private listener identity beyond TLS, authentication, or authorization.
+    The same observation may occur on the ordinary API.
+    """
+    connection = None
+    try:
+        connection = _direct_connection(transport, 5)
+        connection.request("GET", _CHAT_PATH, headers={
+            "Accept": "application/json", "Connection": "close",
+        })
+        response = connection.getresponse()
+        methods = {part.strip().upper()
+                   for part in (response.getheader("Allow") or "").split(",")}
+        if response.status != 405 or methods != {"POST"}:
+            raise HandoffDenied("handoff_probe_route_unconfirmed")
+        # Do not need or expose the response body.
+    except HandoffDenied:
+        raise
+    except Exception:
+        raise HandoffDenied("handoff_probe_transport_unavailable") from None
+    finally:
+        if connection is not None:
+            connection.close()
+
+
 def send_signed_chat(transport: HandoffTransport, trust: HandoffTrust, *,
                      key_id: str, external_subject: str, chat_id: str,
                      message_id: str, body: bytes) -> bytes:
@@ -86,19 +128,9 @@ def send_signed_chat(transport: HandoffTransport, trust: HandoffTrust, *,
     """
     if type(transport) is not HandoffTransport:
         raise HandoffDenied("handoff_transport_invalid")
-    parts = urlsplit(transport.origin)
     connection = None
     try:
-        if transport.mode == "verified_https":
-            context = ssl.create_default_context(
-                cafile=str(transport.ca_file) if transport.ca_file else None)
-            if not context.check_hostname or context.verify_mode != ssl.CERT_REQUIRED:
-                raise HandoffDenied("handoff_transport_invalid")
-            connection = http.client.HTTPSConnection(
-                parts.hostname, parts.port, timeout=transport.timeout_seconds, context=context)
-        else:
-            connection = http.client.HTTPConnection(
-                parts.hostname, parts.port, timeout=transport.timeout_seconds)
+        connection = _direct_connection(transport, transport.timeout_seconds)
         assertion = sign_chat_assertion(trust, key_id=key_id,
                                         external_subject=external_subject, chat_id=chat_id,
                                         message_id=message_id, body=body)

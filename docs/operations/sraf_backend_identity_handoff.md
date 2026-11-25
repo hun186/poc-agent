@@ -235,6 +235,26 @@ ordinary receipt 的 session_id 必須與 admission context 完全一致。
 若以新版重送舊訊息，需先核對是否已有歷史任務。深度顯式 API 不變。
 
 
+## Sender 部署前／遷移後唯讀診斷（候選）
+
+在實際 OpenWebUI 容器／sender namespace 內執行新生成的單檔 bundle：
+```bash
+python sraf_backend_pipe_bundle.py --check-config
+python sraf_backend_pipe_bundle.py --probe-transport
+```
+第一條只讀 sender manifest、受限 key 與 CA 路徑，不連線。
+第二條對同一 operator origin 執行 GET /v1/chat/completions，無 body、
+assertion、Token、帳號或問題，不提交 Chat 或 Job；只觀察 405 Allow: POST。
+HTTPS 使用與正式 sender 同一直接 CA/hostname 驗證實作，不使用 proxy、
+redirect 或降級。socket timeout 5 秒（不是 DNS / 全程硬 deadline）。
+只輸出固定分類、不顯示網址、路徑、key 或 upstream response。
+PASS_PARTIAL / exit 2 不代表實際私有 listener 身分、帳號映射、金鑰配對、
+OpenWebUI API 版本或報告成功。普通 Chat port 亦可能回 405；務必對照
+receiver manifest 的私有 port 與 topology，不能只憑此判定上線。
+FAIL / exit 1 時先核對配置、DNS/SAN/CA、容器網路與 port，不放寬驗證。
+未指定 operation 不執行，回 NOT_TESTED/exit 2。
+
+
 ## 整合回歸候選
 - Generated Pipe → 實際 private Uvicorn socket（loopback / temporary TLS）→ 簽章、replay SQLite、真 AuthStore、scoped Chat、真持久 Job/Checkpoint → 真 browser bearer owner authorization。驗證錯誤 TLS 名稱不會送出問題、queued Word 拒絕、他人 status/download 拒絕、停機移動配置目錄與 port 後沿用同一 Job、撤銷帳號後拒絕。
 - OpenWebUI 資料列及一般 Agent、渲染與 session persistence 邊界為合成 fixture；沒有實際 OpenWebUI、ES、LLM、已完成 Word 或跨物理主機的證據。不能替代現場驗收。
