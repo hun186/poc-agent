@@ -20,6 +20,7 @@ from api.services.report_job_service import normalized_hash, DEFAULT_REPORT_MODE
 from api.services.sraf_adaptive_job_runtime import AdaptiveJobRuntime, AdaptiveJobIntent
 from api.services.sraf_deep_scope_policy import DeepScopePolicy, DeepScopeDenied
 from agent.adaptive_retrieval.job_checkpoint import NroundCheckpointStore
+from api.services.sraf_session_namespace import ScopedChatSession, scoped_session_owned
 
 
 class DeepRuntimeUnavailable(ValueError):
@@ -50,11 +51,13 @@ class ChatDeepTurn:
     principal: AuthPrincipal
     account_binding: str
     key: str
+    session_key: str
     policy: DeepScopePolicy = field(compare=False)
     store: ReportJobStore = field(compare=False)
 
 
-def prepare_chat_deep_turn(state, principal: AuthPrincipal, *, turn_tokens: tuple[str, ...]):
+def prepare_chat_deep_turn(state, principal: AuthPrincipal, *, turn_tokens: tuple[str, ...],
+                           scoped_session: ScopedChatSession):
     """Trusted HTTP caller passes all Idempotency-Key header values.
 
     Missing or duplicate header, malformed value, non-user identity or
@@ -64,14 +67,16 @@ def prepare_chat_deep_turn(state, principal: AuthPrincipal, *, turn_tokens: tupl
     if (type(turn_tokens) is not tuple or len(turn_tokens) != 1
             or type(turn_tokens[0]) is not str or not _TOKEN.fullmatch(turn_tokens[0])):
         raise DeepScopeDenied("deep_chat_turn_key_invalid")
+    if type(scoped_session) is not ScopedChatSession or not scoped_session_owned(scoped_session.key, principal):
+        raise DeepScopeDenied("deep_chat_session_unverified")
     policy, store = resolve_deep_admission(state)
     _, binding = policy._verified_principal(principal)
     # Intentionally exclude prompt and access token from the key: same turn
     # with changed prompt must conflict, while a refreshed JWT can replay.
-    raw = json.dumps([principal.subject, binding, turn_tokens[0]],
+    raw = json.dumps(["scoped-turn-v2", principal.subject, binding, scoped_session.key, turn_tokens[0]],
                      ensure_ascii=False, separators=(",", ":")).encode()
     key = CHAT_DEEP_KEY_PREFIX + hashlib.sha256(raw).hexdigest()
-    return ChatDeepTurn(principal, binding, key, policy, store)
+    return ChatDeepTurn(principal, binding, key, scoped_session.key, policy, store)
 
 
 def replay_chat_deep_turn(state, turn: ChatDeepTurn, *, prompt: str):
@@ -88,7 +93,7 @@ def replay_chat_deep_turn(state, turn: ChatDeepTurn, *, prompt: str):
     if policy is not turn.policy or store is not turn.store:
         raise DeepRuntimeUnavailable("deep_runtime_unavailable")
     _, binding = policy._verified_principal(turn.principal)
-    if binding != turn.account_binding:
+    if binding != turn.account_binding or not scoped_session_owned(turn.session_key, turn.principal):
         raise DeepScopeDenied("deep_owner_denied")
     job = store.get_chat_deep_replay(owner_id=turn.principal.subject, key=turn.key)
     if job is None:

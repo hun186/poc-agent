@@ -139,3 +139,7 @@
 
 ## 2026-11-25 #413 — supervised optional listener candidate
 - #515 merged after 4/4 CI and clean exact-head review. Candidate same-event-loop dedicated Uvicorn listener started only with explicit enabled config and actual single-process launcher public port, prebind/collision rejection, no signal/proxy trust, fixed startup/runtime status, graceful drain before shared Worker shutdown. Real synthetic socket/lifespan tests; no live deployment/security acceptance.
+
+
+## 2026-11-25 #413 — auto Chat scoped-turn fence candidate
+- Require verified owner-scoped Chat session before auto admission; hash domain includes session key, preserve no-prompt/no-token identity semantics; ordinary receipt session must equal context before replay or creation. Legacy ordinary Chat continues without auto dispatch; old auto Job remains accessible but old hashes are not guessed or migrated. Real synthetic Chat/SQLite regressions. No live acceptance.

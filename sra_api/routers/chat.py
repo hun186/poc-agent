@@ -169,7 +169,7 @@ def _execute_chat(payload, request, principal, *, handoff=None):
         fmt = (payload.format or "markdown").lower()
         deep_identity = prepare_auto_chat(
             request.app.state, principal,
-            turn_tokens=turn_tokens, fmt=fmt,
+            turn_tokens=turn_tokens, fmt=fmt, scoped_session=scoped,
         )
         # 3) 一般任務由共用 turn execution service 執行。
         #query_for_agent = _build_query_for_agent(

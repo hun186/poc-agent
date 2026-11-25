@@ -18,6 +18,7 @@ from api.services.sraf_deep_scope_policy import compile_deep_question, DeepScope
 from api.services.sraf_adaptive_job_runtime import create_adaptive_job
 from api.services.sraf_deep_startup_config import validate_chat_public_base
 from api.services.report_job_service import browser_status_url
+from api.services.sraf_session_namespace import ScopedChatSession
 
 _STATUS = {
     "queued": "排隊中",
@@ -30,15 +31,16 @@ _STATUS = {
 
 
 def prepare_auto_chat(state, principal: AuthPrincipal, *, turn_tokens: tuple[str, ...],
-                      fmt: str) -> ChatDeepTurn | None:
+                      fmt: str, scoped_session: ScopedChatSession | None = None) -> ChatDeepTurn | None:
     """Return an optional private admission context; never fail ordinary chat."""
     if (getattr(state, "deep_chat_auto_base_url", None) is None
             or type(principal) is not AuthPrincipal or principal.kind != "user"
-            or fmt != "markdown"):
+            or fmt != "markdown" or type(scoped_session) is not ScopedChatSession):
         return None
     try:
         validate_chat_public_base(state.deep_chat_auto_base_url)
-        return prepare_chat_deep_turn(state, principal, turn_tokens=turn_tokens)
+        return prepare_chat_deep_turn(state, principal, turn_tokens=turn_tokens,
+                                      scoped_session=scoped_session)
     except Exception:
         return None
 
@@ -63,7 +65,8 @@ def _scope_matches(receipt: OrdinaryScopeReceipt | None, constraints) -> bool:
 def admit_after_ordinary(state, identity: ChatDeepTurn, ordinary: AgentTurnResult):
     """Trusted post-response builder; return only a verified persisted Job."""
     if (type(identity) is not ChatDeepTurn or type(ordinary) is not AgentTurnResult
-            or ordinary.output.get("mode") != "SRA_REPORT"):
+            or ordinary.output.get("mode") != "SRA_REPORT"
+            or ordinary.session_id != identity.session_key):
         raise DeepScopeDenied("deep_chat_scope_unverified")
     if getattr(state, "deep_chat_auto_base_url", None) is None:
         raise DeepRuntimeUnavailable("deep_runtime_unavailable")

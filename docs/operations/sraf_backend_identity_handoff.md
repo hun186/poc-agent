@@ -176,3 +176,16 @@ HTTP 或 shared key。無自動重啟。未知核心錯誤仍由原 startup 規�
 仍執行時搬動 replay DB 或啟動第二個程序。RUNNING 只證明本機 socket
 server 已啟動，不是 TLS/遠端/實機 ES 或完整報告驗收。
 此候選有實際 loopback socket 測試；尚未實機部署或獨立 Security Review。
+
+
+## 自動深度派送的 scoped-turn fence（候選）
+
+自動深度派送只接受已驗證 account-generation-scoped session（私有
+handoff 或已登入的 scoped Chat header），不接受舊 raw session。
+一般 Chat/Word 行為不變；legacy Chat 不自動建立深度 Job。
+Idempotency key 的 hash 增加 scoped session 與 domain version；
+同帳號不同 chat 即使 message token 相同也不能讀取/沿用彼此的 Job。
+ordinary receipt 的 session_id 必須與 admission context 完全一致。
+既有舊 hash 的 Job 保留並可由本人歷史清單及進度頁存取，
+不會嘗試用不明 legacy session 自動認領或重新遷移舊 Job；
+若以新版重送舊訊息，需先核對是否已有歷史任務。深度顯式 API 不變。
