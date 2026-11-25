@@ -106,3 +106,53 @@ def test_report_slot_denies_after_deadline_or_failed_clock():
     assert budget.claim_report_generation(1) == 0
     now[0] = 2500.0
     assert budget.claim_report_generation(1) == 0
+
+
+def test_optional_es_admission_keeps_mandatory_slots_and_deadline():
+    now = [0.0]
+    budget = make_budget(now, max_es_calls=5)
+    assert not budget.admit_optional_es(1)
+    assert budget.admit("round")
+    assert budget.admit("es") and budget.admit("es")
+    assert budget.admit_optional_es(1)
+    assert budget.snapshot().remaining_es_calls == 2
+    assert not budget.admit_optional_es(1)
+    assert budget.admit("round")
+    assert not budget.admit_optional_es(2)
+    assert budget.admit("es") and budget.admit("es")
+    assert budget.snapshot().remaining_es_calls == 0
+
+
+def test_optional_es_atomic_per_round_and_request_cap():
+    budget = make_budget([0.0], max_es_calls=20)
+    for ordinal in (1, 2):
+        assert budget.admit("round")
+        with ThreadPoolExecutor(max_workers=12) as pool:
+            results = list(pool.map(lambda _: budget.admit_optional_es(ordinal), range(40)))
+        assert sum(results) == 1
+    assert budget.admit("round")
+    assert not budget.admit_optional_es(3)
+    assert budget.snapshot().remaining_es_calls == 18
+
+
+def test_optional_es_denies_invalid_round_late_clock_and_after_planning():
+    now = [100.0]
+    budget = make_budget(now)
+    assert budget.admit("round")
+    for invalid in (True, 0, -1, 2, "1"):
+        assert not budget.admit_optional_es(invalid)
+    for clock in (float("nan"), 99.0, 1891.0, 1900.0):
+        now[0] = clock
+        assert not budget.admit_optional_es(1)
+    now[0] = 1890.0
+    assert budget.claim_next_strategy(1)
+    assert not budget.admit_optional_es(1)
+    assert budget.snapshot().remaining_es_calls == 24
+
+
+def test_optional_es_denies_after_report_generation_claim():
+    budget = make_budget([0.0])
+    assert budget.admit("round")
+    assert budget.claim_report_generation(1) > 0
+    assert not budget.admit_optional_es(1)
+    assert budget.snapshot().remaining_es_calls == 24
