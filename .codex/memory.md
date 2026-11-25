@@ -167,3 +167,5 @@
 - #521 first CI: both Python versions 402 PASS/2 fail in shell test due to asynchronous process-substitution logger read before EOF. Explicit completion marker and bounded wait in test only; production launcher unchanged, rerun exact head.
 
 - #519 merged 48cb32512b6f: both Python versions 401 regression + 2 integrated socket PASS, 4/4 CI, clean review. #522 initial OFF1 restart contender test timed out: old event wait can pass before replacement startup. Candidate synchronizes new launcher identity, second handoff event and both role records; adds actual existing supervisor subprocess fixture for opt-in preserving API PID/port and all three roles. No change to production restart policy; no claim of arbitrary mid-start shutdown safety.
+
+- #521 Codex P2: strict OFF-1S listener attestation denied the new supervised argv if optional setproctitle absent. Extend only exact Python executable/module/--public/--http/--port sequence, preserving live PID/start tick/effective UID/cwd/exclusive socket checks. Tests deny altered port, SSL, missing HTTP flag, extra workers and different module/executable. Exact-head review/CI pending.
