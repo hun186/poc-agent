@@ -244,3 +244,30 @@ def test_arc_a2_unicode_latin_boundaries():
     assert alias_matches("Å", "瑞典 Å 政策")
     assert alias_matches("US", "美國US政策")
     assert not alias_matches("US", "US２")
+
+
+def test_arc_a2b_bilingual_proposal_preserves_groups_and_exclusions():
+    import json
+    from agent.es.arc_bilingual_proposal import build_proposal_input, parse_proposal, SYSTEM_PROMPT
+    original = [{"半導體", "半导体"}, {"Export controls"}, {"甲機構"}]
+    payload = json.loads(build_proposal_input("半導體出口管制", original))
+    assert payload["groups"] == [sorted(g) for g in original]
+    assert "中文到英文及英文到中文" in SYSTEM_PROMPT
+    assert "繁簡轉換不是異譯" in SYSTEM_PROMPT
+    raw = json.dumps([["semiconductor", "EC"], ["出口管制", "ＥＣ"], ["甲機構", "Agency A"]])
+    result = parse_proposal(raw, original, excluded={"agency a", "半導體"})
+    assert result == [{"半導體", "半导体", "semiconductor"},
+                      {"Export controls", "出口管制"}, {"甲機構"}]
+    assert original == [{"半導體", "半导体"}, {"Export controls"}, {"甲機構"}]
+
+
+def test_arc_a2b_invalid_model_payload_is_unavailable_not_empty():
+    from agent.es.arc_bilingual_proposal import parse_proposal, build_proposal_input, MAX_QUERY_CHARS
+    original = [{"甲"}, {"乙"}]
+    for raw in ('{}', '[[]]', '[[],[],[]]', '[[1],[]]', '[[""],[]]', 'not json',
+                ' ' * 24001):
+        assert parse_proposal(raw, original) is None
+    assert parse_proposal('[[],[]]', original) == original
+    assert build_proposal_input("甲" * (MAX_QUERY_CHARS + 1), original) is None
+    assert build_proposal_input("甲", []) is None
+    assert parse_proposal('[[],[]]', original, excluded={"甲"}) == original
