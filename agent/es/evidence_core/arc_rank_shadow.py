@@ -93,12 +93,15 @@ def observe_rank_shadow(evidence: list[EvidenceSnippet], groups: list[set[str]],
         priorities.append((int(not e.weak_evidence), e.group_hits, len(matched),
                            sum(weights[j] for j in matched), -i))
     order = sorted(range(len(prefix)), key=priorities.__getitem__, reverse=True)
+    coverage_only = sorted(range(len(prefix)),
+                           key=lambda i: (*priorities[i][:3], -i), reverse=True)
     baseline = set(range(TOP_K))
     selected = set(order[:TOP_K])
     result.update(
         status="observed_rank",
         top_k=TOP_K,
         top_k_replaced=len(baseline - selected),
+        rarity_only_top_k_replaced=len(set(coverage_only[:TOP_K]) - selected),
         original_source_hits=len({prefix[i].source_hit_ordinal for i in baseline}),
         shadow_source_hits=len({prefix[i].source_hit_ordinal for i in selected}),
         original_strong=sum(not prefix[i].weak_evidence for i in baseline),
