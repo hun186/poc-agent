@@ -116,12 +116,24 @@ def parse_natural_deep_scope(prompt: str) -> NaturalDeepScope:
     """
     try:
         _original_question(prompt)
-        matches = [m for grammar in _SENTENCES
+        matches = [(i, m) for i, grammar in enumerate(_SENTENCES)
                    if (m := grammar.fullmatch(prompt.strip())) is not None]
         if len(matches) != 1:
             raise ValueError
-        match = matches[0]
+        grammar_id, match = matches[0]
         topic = match["topic"]
+        # Without a delimiter, do not swallow a narrower date qualifier
+        # into the topic (e.g. 八月初 / 八月下旬 / 八月中).
+        # Ambiguous names may use the original comma-delimited form.
+        if (grammar_id == 1 and not match["time"].endswith("期間")
+                and re.match(r"初|末|底|起|迄|中(?!國|華)|上旬|下旬|"
+                             r"上半|下半|第[一二三四五六七八九十]|內|間|整月|整年",
+                             topic)):
+            raise ValueError
+        # A second location/time connector inside a topic-first label is
+        # not a verified single literal topic.
+        if grammar_id in (2, 3) and re.search(r"在|於", topic):
+            raise ValueError
         aspects = tuple(match["aspects"].split("、"))
         if (not 1 <= len(topic) <= 100 or (topic not in _LITERAL_OPERATOR_NAMES
                 and _TOPIC_UNSUPPORTED.search(topic))

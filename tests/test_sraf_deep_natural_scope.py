@@ -121,6 +121,11 @@ def test_additional_absolute_date_sentence_forms(prompt, phrase, first, last, pr
     "聯合國在2023年8月的外交回應為何？另查北約。",
     "請分析聯合國於2023年8月的外交回應、僅官方。",
     "請分析2023年8月期間聯合國週末的外交回應。",
+    "請分析2023年8月初聯合國的外交回應。",
+    "請分析2023年8月下旬聯合國的外交回應。",
+    "請分析2023年8月中聯合國的外交回應。",
+    "請分析2023年8月下半月聯合國的外交回應。",
+    "請分析聯合國在日本在2023年8月的外交回應。",
 ])
 def test_new_forms_still_reject_ambiguous_or_hidden_scope(prompt):
     with pytest.raises(DeepQuestionUnsupported):
