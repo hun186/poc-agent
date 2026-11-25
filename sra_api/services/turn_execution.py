@@ -20,6 +20,10 @@ from api.services.sessions import (
     save_structured_snapshot,
 )
 from telemetry import new_request_id, new_trace
+from fastapi import HTTPException
+from api.services.sraf_session_namespace import (
+    SCOPED_CHAT_HEADER, ScopedChatSession, require_legacy_session,
+)
 
 
 @dataclass(frozen=True)
@@ -35,16 +39,18 @@ class AgentTurnResult:
 
 def _resolve_session_id(payload: Any, request: Request | None, session_id: str | None) -> str:
     if session_id and session_id.strip():
-        return session_id.strip()
+        return require_legacy_session(session_id.strip())
     if request is None:
         return infer_session_key_from_payload(payload.messages or [])
+    if request.headers.getlist(SCOPED_CHAT_HEADER):
+        raise HTTPException(400, "Scoped chat header requires the Chat endpoint")
     session_id = (
         request.headers.get("x-openwebui-chat-id")
         or request.headers.get("x-conversation-id")
         or request.headers.get("x-session-id")
         or ""
     ).strip()
-    return session_id or infer_session_key_from_payload(payload.messages or [])
+    return require_legacy_session(session_id or infer_session_key_from_payload(payload.messages or []))
 
 
 def _extract_turn_inputs(payload: Any, sessions: dict, session_id: str):
@@ -93,6 +99,7 @@ def execute_agent_turn(
     request_id: str | None = None,
     trace: dict | None = None,
     capture_ordinary_scope: bool = False,
+    scoped_chat_session: ScopedChatSession | None = None,
 ) -> AgentTurnResult:
     """Execute an Agent turn and return its in-memory structured result.
 
@@ -102,7 +109,12 @@ def execute_agent_turn(
     sessions = get_sessions()
     last_structured = get_last_structured()
     request_id = str(request_id or new_request_id())
-    session_id = _resolve_session_id(payload, request, session_id)
+    if scoped_chat_session is not None:
+        if type(scoped_chat_session) is not ScopedChatSession or session_id is not None:
+            raise ValueError("invalid_scoped_chat_session")
+        session_id = scoped_chat_session.key
+    else:
+        session_id = _resolve_session_id(payload, request, session_id)
     trace = trace if trace is not None else new_trace(
         session_id=session_id,
         request_id=request_id,
