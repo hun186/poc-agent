@@ -49,6 +49,8 @@ class RequestAdmissionBudget:
         # A strategy claim is nonrefundable, even if the planner fails.
         self._strategy_claimed_after = -1
         self._report_generation_claimed = False
+        self._optional_es_last_round = 0
+        self._optional_es_used = 0
 
     def _read_time(self) -> float:
         value = self._clock()
@@ -71,6 +73,36 @@ class RequestAdmissionBudget:
                     or (kind != "round" and self._used["round"] == 0)):
                 return False
             self._used[kind] += 1
+            return True
+
+    def admit_optional_es(self, round_number: int) -> bool:
+        """Charge one nonessential ES call without consuming the last two slots.
+
+        This is accounting only, not an authorization or PIT execution ticket.
+        A future trusted adapter must also prove the current owner, active
+        frozen plan and ARC reservation. Call only after the required page
+        chain has completed. Leave at least two ES slots for another PIT
+        open/page and at least ten seconds before the retrieval deadline.
+        No more than one optional slot per round and two per request.
+        """
+        if type(round_number) is not int or round_number < 1:
+            return False
+        with self._lock:
+            try:
+                now = self._read_time()
+            except Exception:
+                return False
+            if (now < self._start or self._retrieval_end - now < 10
+                    or self._used["round"] != round_number
+                    or self._optional_es_last_round >= round_number
+                    or self._optional_es_used >= 2
+                    or self._report_generation_claimed
+                    or self._strategy_claimed_after >= round_number
+                    or self._max["es"] - self._used["es"] <= 2):
+                return False
+            self._used["es"] += 1
+            self._optional_es_last_round = round_number
+            self._optional_es_used += 1
             return True
 
     def claim_next_strategy(self, completed_rounds: int) -> bool:
