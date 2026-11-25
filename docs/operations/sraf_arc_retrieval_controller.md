@@ -48,9 +48,6 @@ CHARS 是 Python len() 計算的原始片段字元數，含日期驗證前掃描
 在單次 trusted loop 開始建立共用 ArcRequestBudget，於既有 canonical grant 與 complete_round 的 Evidence 路徑傳入實際輪次 ordinal；退出或失敗時 seal。兩次既有 canonical 解析各自保留一次配額，不能把兩份樣本統計當成唯一文件的累計 DF。預算不足只省略額外統計，不修改原本 coverage、PIT、語意覆核、checkpoint 或報告生成條件。
 測試用 synthetic two-round PIT/semantic loop 及故意較低的統計配額驗證第二輪仍正常完成；不是私有 ES 或 LLM 實機驗收。仍未接入 A3b 真實聚合或 A2b LLM 擴充，額外時間/token/bytes 預算待完成。
 
-### A3b 深度報告統計 scope plan（離線，不發送）
-由 active FrozenSingleQueryPlan 與原始 coordinator 語意群組建構，保留日期及必要實體 root candidate filter，不納入 planner 新增詞或相關性 should。無界日期、analysis date、固定欄位未支援時拒絕。計畫本身不包含 PIT ID、不消耗 ES 額度、不宣稱 owner 授權或分支證明。未來 transport 必須保留同一授權 PIT 最新 ID、原本 ES/時間及 ARC 雙重預算、當前 owner 複查、PIT 更新與 cleanup、完整 shard/count 回應；不得污染 Evidence 分頁證明。尚無 live mapping/analyzer/負載驗收。
-
 ## 後續 gate
 - A1：Word/Markdown 分開未測與實測零值，再以真正 term_groups 顯示群組；歷史扁平清單不得推測歸屬。
 - A2：中英文雙向查漏及兩岸異譯；原始必要詞優先、同群組 OR、總/每組預算、跨組正規化碰撞與英文單詞邊界、短語 precision、人工指定/排除控制；獨立 opt-in 與 A/B。
@@ -61,3 +58,7 @@ CHARS 是 Python len() 計算的原始片段字元數，含日期驗證前掃描
 - A9：普通及深度報告在共同規則及各自資源預算上整合。任何 on/預設改變前須在同一私有 news_test 快照，以人工標記相關性、精確率/召回率、p50/p95、ES 查詢數/CPU/傳輸量、LLM calls/token、來源多樣性、事件日期與必要主題保持作驗收。
  
 此文件不是實機效能、已完成自適應重查或上線核准。
+
+## 深度報告統計計畫補充
+### A3b 深度報告統計 scope plan（離線，不發送）
+由 active FrozenSingleQueryPlan 與原始 coordinator 語意群組建構，保留日期及必要實體 root candidate filter，不納入 planner 新增詞或相關性 should。無界日期、analysis date、固定欄位未支援時拒絕。計畫本身不包含 PIT ID、不消耗 ES 額度、不宣稱 owner 授權或分支證明。未來 transport 必須保留同一授權 PIT 最新 ID、原本 ES/時間及 ARC 雙重預算、當前 owner 複查、PIT 更新與 cleanup、完整 shard/count 回應；不得污染 Evidence 分頁證明。尚無 live mapping/analyzer/負載驗收。
