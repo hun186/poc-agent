@@ -218,3 +218,52 @@ def test_cancel_during_semantic_callback_is_not_reversed():
     assert c.history == ()
     assert calls == []
     assert semantic_calls == [1]
+
+
+def test_arc_shadow_budget_is_shared_between_deep_rounds_and_sealed(monkeypatch, caplog):
+    from agent.adaptive_retrieval import trusted_execution_loop as loop
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, current_arc_budget
+    # A one-round-sized request budget deliberately exhausts before round 2.
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY", "shadow")
+    owned = ArcRequestBudget(
+        request_limit=ArcUnits(slices=2, hits=256, rows=512, chars=262144),
+        round_limit=ArcUnits(slices=2, hits=256, rows=512, chars=262144),
+    )
+    monkeypatch.setattr(loop, "ArcRequestBudget", lambda: owned)
+    c, scope, evaluator, budget, planner_calls, _ = _setup()
+    es = FakeES(_verified_page("A"), _verified_page("B"))
+    result = _run(c, scope, evaluator, es)
+    assert len(result.rounds) == 2
+    assert c.safe_progress()["termination"] == "SUFFICIENT"
+    assert len(es.searches) == 2 and planner_calls == [1]
+    assert budget.snapshot().remaining_es_calls == 20
+    prefix = "SRAF_ARC_GROUP_FREQUENCY="
+    rows = [json.loads(r.getMessage().split(prefix, 1)[1])
+            for r in caplog.records if r.getMessage().startswith(prefix)]
+    assert len(rows) == 4
+    assert all(r["status"] == "observed_sample" for r in rows[:2])
+    assert all(r["status"] == "shared_budget_exhausted" for r in rows[2:])
+    total, rounds = owned.snapshot()
+    assert total == ArcUnits(slices=2, hits=256, rows=512, chars=262144)
+    assert set(rounds) == {1}
+    assert current_arc_budget() is None
+    assert not owned.reserve(2, ArcUnits(slices=1))
+
+
+def test_arc_deep_scope_restored_and_sealed_on_failed_attestation(monkeypatch):
+    from agent.adaptive_retrieval import trusted_execution_loop as loop
+    from agent.es.arc_request_budget import (
+        ArcRequestBudget, ArcUnits, bind_arc_budget, current_arc_budget,
+    )
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY", "shadow")
+    parent, owned = ArcRequestBudget(), ArcRequestBudget()
+    monkeypatch.setattr(loop, "ArcRequestBudget", lambda: owned)
+    c, scope, ev, _, _, _ = _setup()
+    with bind_arc_budget((parent, 3)):
+        with pytest.raises(TrustedNroundExecutionError):
+            _run(c, scope, ev, FakeES(_verified_page("A")), attestor=lambda *_: False)
+        assert current_arc_budget() == (parent, 3)
+    assert parent.snapshot()[0] == ArcUnits()
+    assert owned.snapshot()[0] == ArcUnits()
+    assert not owned.reserve(1, ArcUnits(slices=1))
+    assert current_arc_budget() is None
