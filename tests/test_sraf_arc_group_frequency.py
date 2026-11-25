@@ -148,3 +148,28 @@ def test_arc_budget_rejects_invalid_limits_units_and_rounds():
         assert not budget.reserve(invalid, ArcUnits(slices=1))
     assert not budget.reserve(1, ArcUnits())
     assert budget.snapshot()[0] == ArcUnits()
+
+
+def test_arc_shared_budget_exhaustion_preserves_evidence(monkeypatch, caplog):
+    from agent.es.arc_request_budget import (
+        ArcRequestBudget, ArcUnits, bind_arc_budget,
+    )
+    hits = [_hit(["甲軸乙軸丙軸"], uuid="private-doc", docid="1")]
+    monkeypatch.delenv("SRAF_ARC_GROUP_FREQUENCY", raising=False)
+    expected = _build(hits)
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY", "shadow")
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)):
+        for _ in range(5):
+            assert _build(hits) == expected
+    prefix = "SRAF_ARC_GROUP_FREQUENCY="
+    rows = [json.loads(r.getMessage().split(prefix, 1)[1])
+            for r in caplog.records if r.getMessage().startswith(prefix)]
+    assert len(rows) == 5
+    assert all(r["status"] == "observed_sample" for r in rows[:4])
+    assert rows[4]["status"] == "shared_budget_exhausted"
+    assert rows[4]["sample_limited"] and rows[4]["groups"] == []
+    assert rows[4]["scanned_hits"] == rows[4]["inspected_rows"] == rows[4]["text_chars"] == 0
+    assert budget.snapshot()[0] == ArcUnits(
+        slices=4, hits=512, rows=1024, chars=524288,
+    )
