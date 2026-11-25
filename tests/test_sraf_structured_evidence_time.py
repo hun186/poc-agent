@@ -745,3 +745,94 @@ def test_sort_compat_does_not_imitate_joint_max_event_date():
     # a mapped stable docvalue, PIT or unique key; do not claim full stability.
     assert len({(r["score"], r["import_dt"]) for r in records}) == len(records)
     assert body["sort"] == _query(date_from="2023-08-24", date_to="2023-08-24")["sort"]
+
+
+def test_arc_a3b_frequency_plan_counts_root_docs_and_keeps_scope():
+    from agent.es.arc_frequency_plan import build_frequency_plan
+    from agent.es.query_body import _structured_date_filter
+    body = build_frequency_plan([{"美國", "United States"}, {"出口管制"}],
+                                date_from="2020-01-01", date_to="2020-12-31",
+                                must_selected=True, must_high_value=True)
+    assert body["size"] == 0 and body["_source"] is False
+    assert body["track_total_hits"] is True and body["timeout"] == "2s"
+    assert body["query"]["bool"]["filter"] == [
+        _structured_date_filter("2020-01-01", "2020-12-31"),
+        {"term": {"ai.classLabels.highValue": True}},
+        {"term": {"selectedMessage": True}},
+    ]
+    buckets = body["aggs"]["group_frequency"]["filters"]["filters"]
+    assert set(buckets) == {"1", "2"}
+    nested = buckets["1"]["nested"]
+    assert nested["path"] == "multidim_event_json"
+    child = nested["query"]["nested"]
+    assert child["path"] == "multidim_event_json.evidence_snippets"
+    assert child["query"]["bool"]["minimum_should_match"] == 1
+    assert len(child["query"]["bool"]["should"]) == 2
+    serialized = json.dumps(body)
+    assert "inner_hits" not in serialized and "highlight" not in serialized
+
+
+@pytest.mark.parametrize("first,last", [
+    (None, "2020-12-31"), ("2020-01-01", None),
+    ("2020-02-30", "2020-12-31"), ("2021-01-01", "2020-01-01"),
+    ("1900-01-01", "2020-01-01"), ("20200101", "2020-12-31"),
+])
+def test_arc_a3b_rejects_unsupported_date_windows(first, last):
+    from agent.es.arc_frequency_plan import build_frequency_plan
+    assert build_frequency_plan([{"甲"}], date_from=first, date_to=last) is None
+
+
+def test_arc_a3b_rejects_unbounded_groups_and_invalid_flags():
+    from agent.es.arc_frequency_plan import build_frequency_plan, MAX_GROUPS, MAX_TERMS
+    dates = {"date_from": "2020-01-01", "date_to": "2020-12-31"}
+    assert build_frequency_plan([{"甲"}] * (MAX_GROUPS + 1), **dates) is None
+    assert build_frequency_plan([{f"詞{i}" for i in range(MAX_TERMS + 1)}], **dates) is None
+    assert build_frequency_plan([{" "}], **dates) is None
+    assert build_frequency_plan([{"甲"}], must_selected="false", **dates) is None
+
+
+def _arc_frequency_response():
+    return {"timed_out": False, "_shards": {"total": 2, "successful": 2, "failed": 0},
+            "hits": {"total": {"value": 20, "relation": "eq"}},
+            "aggregations": {"group_frequency": {"buckets": {
+                "1": {"doc_count": 18}, "2": {"doc_count": 0}}}}}
+
+
+def test_arc_a3b_exact_counts_distinguish_measured_zero():
+    from agent.es.arc_frequency_plan import parse_frequency_response
+    result = parse_frequency_response(_arc_frequency_response(), group_count=2)
+    assert result["status"] == "exact_es_query_counts"
+    assert result["eligible_documents"] == 20
+    assert result["groups"] == [
+        {"group_ordinal": 1, "document_frequency": 18},
+        {"group_ordinal": 2, "document_frequency": 0}]
+
+
+@pytest.mark.parametrize("failure", [
+    "timeout", "failed_shard", "no_shards", "lower_bound",
+    "missing_bucket", "bad_count", "terminated", "boolean_count", "missing_timeout",
+])
+def test_arc_a3b_incomplete_responses_never_become_zero(failure):
+    from agent.es.arc_frequency_plan import parse_frequency_response
+    r = _arc_frequency_response()
+    if failure == "timeout":
+        r["timed_out"] = True
+    elif failure == "failed_shard":
+        r["_shards"].update(successful=1, failed=1)
+    elif failure == "no_shards":
+        r["_shards"].update(total=0, successful=0)
+    elif failure == "lower_bound":
+        r["hits"]["total"]["relation"] = "gte"
+    elif failure == "missing_bucket":
+        del r["aggregations"]["group_frequency"]["buckets"]["2"]
+    elif failure == "bad_count":
+        r["aggregations"]["group_frequency"]["buckets"]["1"]["doc_count"] = 21
+    elif failure == "terminated":
+        r["terminated_early"] = True
+    elif failure == "boolean_count":
+        r["hits"]["total"]["value"] = True
+    else:
+        del r["timed_out"]
+    result = parse_frequency_response(r, group_count=2)
+    assert result["status"] == "incomplete"
+    assert result["eligible_documents"] is None and result["groups"] == []
