@@ -155,3 +155,5 @@
 
 ## 2026-11-25 #413 — integrated socket regression candidate
 - #518 merged after exact-head 5/5 CI and clean review. Generated standalone Pipe -> real optional private Uvicorn loopback/TLS -> auth/replay SQLite -> scoped Chat/atomic deep admission -> real browser bearer owner API; quiescent directory/port relocation and revoked account tests. OpenWebUI rows and ordinary Agent/render/session persistence are synthetic; no live providers, actual completed Word, physical cross-host or independent security acceptance.
+
+- 2026-11-25 #519 exact head dcc77b679171: Python3.11 399 passed, Python3.10 stalled at 54% and cancelled at 25-minute workflow limit. Other 3 workflows passed and review clean, NOT mergeable under gate. Separate bounded verbose integration run with faulthandler to locate stall; no timeout increase or skip; new CI pending.
