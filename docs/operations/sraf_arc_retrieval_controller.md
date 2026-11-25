@@ -48,6 +48,10 @@ CHARS 是 Python len() 計算的原始片段字元數，含日期驗證前掃描
 在單次 trusted loop 開始建立共用 ArcRequestBudget，於既有 canonical grant 與 complete_round 的 Evidence 路徑傳入實際輪次 ordinal；退出或失敗時 seal。兩次既有 canonical 解析各自保留一次配額，不能把兩份樣本統計當成唯一文件的累計 DF。預算不足只省略額外統計，不修改原本 coverage、PIT、語意覆核、checkpoint 或報告生成條件。
 測試用 synthetic two-round PIT/semantic loop 及故意較低的統計配額驗證第二輪仍正常完成；不是私有 ES 或 LLM 實機驗收。仍未接入 A3b 真實聚合或 A2b LLM 擴充，額外時間/token/bytes 預算待完成。
 
+### A3b 普通報告原生統計 shadow transport（待實機驗收）
+預設關閉；SRAF_ARC_ES_FREQUENCY=shadow 且 SRAF_ARC_ES_FREQUENCY_VERIFIED_INDEX=<單一具體索引名稱> 才可嘗試。後者為操作員明確批准該資料集合可做 corpus 統計、並已核對 live mapping/analyzer 的聲明，不是程式自動驗證。未核對勿設定。僅 report/sra_report Data Agent 的私有預算範圍、正常主查詢成功且完整、至少一筆 _index 精確吻合、原主查詢 root filters 完全相同時，保留一次 ES 配額後使用同一 SDK client 發出 size:0 聚合。無 wildcard/alias/remote cluster，明確日期雙端且不超過原計畫限制；不在 Requirement E2E、ordinary scope capture、highlight retry 或分頁重試增加統計。空結果無具體索引證據則略過；不改普通查詢或深度授權 receipt。
+每輪最多一次額外 ES 請求，SDK timeout 3s、ES timeout 2s、零重試，拒絕部分結果及缺索引；兩個 timeout 不是 server CPU 硬上限。額度保留後不退款。失敗僅記固定狀態；完整結果僅記群組序號與計數，不記原詞、索引、日期、ID、DSL 或後端錯誤，且不送入報告／模型。尚未接入深度報告 PIT 統計；普通報告真實索引/授權/分析器/負載實測仍為獨立驗收 gate。
+
 ## 後續 gate
 - A1：Word/Markdown 分開未測與實測零值，再以真正 term_groups 顯示群組；歷史扁平清單不得推測歸屬。
 - A2：中英文雙向查漏及兩岸異譯；原始必要詞優先、同群組 OR、總/每組預算、跨組正規化碰撞與英文單詞邊界、短語 precision、人工指定/排除控制；獨立 opt-in 與 A/B。
