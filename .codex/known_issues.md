@@ -148,3 +148,7 @@
 
 ## 2026-11-25 #413 — import-order regression after #503
 - #504 N-round Python 3.10/3.11 failed at collection when importing Worker before routers. Candidate fix submitted independently against main; do not merge dependent scoped-chat and Pipe candidates until the fix passes and they are retargeted/revalidated. Prior #503 green UI suite did not cover this import order. No live acceptance inferred.
+
+
+## 2026-11-25 #413 — portable deep runtime / ordinary-only isolation candidate
+- Co-located loopback validation is bounded and does not attest remote ES host identity. Deep startup SDK construction does not probe TLS/ES or model availability; later provider failure remains isolated to that Job. Explicit ordinary_only startup does not guarantee ordinary queue capacity when global ceiling counts held deep rows; running jobs retain existing restart interruption behavior. No production change.

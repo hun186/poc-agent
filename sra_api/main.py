@@ -13,6 +13,7 @@ from api.core.proctitle import init_proctitle
 init_proctitle(app_name="SRA-API")
 
 import os
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -35,7 +36,7 @@ from api.services.auth_support import PRODUCTION_ENVS
 from sra_api.middleware.product_preview_body_limit import ProductPreviewBodyLimitMiddleware
 from shared.runtime_provenance import requirement_sql_registry_path
 from sra_api.startup_diagnostics import startup_phase
-from api.services.sraf_deep_startup_config import load_deep_startup_config
+from api.services.sraf_deep_startup_config import load_deep_startup_config, DeepStartupConfigError
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -45,9 +46,21 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("report_worker_previous_lifespan_active")
     app.state.deep_scope_policy = None
     app.state.deep_chat_auto_base_url = None
-    with startup_phase("deep_report_config"):
-        env_snapshot = dict(os.environ)
-        deep_config = load_deep_startup_config(env_snapshot)
+    env_snapshot = dict(os.environ)
+    # Explicit operator choice only; never silently downgrade security.
+    failure_policy = env_snapshot.get("SRAF_DEEP_STARTUP_FAILURE_POLICY", "fail_startup")
+    if failure_policy not in ("fail_startup", "ordinary_only"):
+        raise RuntimeError("deep_startup_failure_policy_invalid")
+    app.state.deep_startup_status = "DISABLED"
+    deep_config = None
+    try:
+        with startup_phase("deep_report_config"):
+            deep_config = load_deep_startup_config(env_snapshot)
+    except DeepStartupConfigError:
+        if failure_policy != "ordinary_only":
+            raise
+        app.state.deep_startup_status = "DEGRADED_CONFIG"
+        logging.getLogger("uvicorn.error").warning("SRAF deep runtime disabled: configuration invalid; ordinary-only startup")
     with startup_phase("signing_config"):
         validate_signing_config()
     # The API process owns ReportJobWorker and therefore owns/fixes the E2E
@@ -103,10 +116,17 @@ async def lifespan(app: FastAPI):
     worker = None
     try:
         if deep_config is not None:
-            with startup_phase("deep_report_runtime"):
-                from api.services.sraf_deep_runtime_composition import compose_deep_runtime
-                composition = compose_deep_runtime(
-                    deep_config, env_snapshot, project_root=Path(__file__).resolve().parents[1])
+            from api.services.sraf_deep_runtime_composition import compose_deep_runtime
+            from api.services.sraf_deep_es_connection import DeepESConfigError
+            try:
+                with startup_phase("deep_report_runtime"):
+                    composition = compose_deep_runtime(
+                        deep_config, env_snapshot, project_root=Path(__file__).resolve().parents[1])
+            except DeepESConfigError:
+                if failure_policy != "ordinary_only":
+                    raise
+                app.state.deep_startup_status = "DEGRADED_ES_CONFIG"
+                logging.getLogger("uvicorn.error").warning("SRAF deep runtime disabled: ES setup invalid; ordinary-only startup")
         with startup_phase("report_job_store"):
             store = ReportJobStore(os.getenv("REPORT_JOBS_DB_PATH", ".api_jobs/jobs.sqlite3"), int(os.getenv("REPORT_JOBS_SQLITE_BUSY_TIMEOUT_MS", "5000")))
             reports_root = Path(os.getenv("REPORT_JOBS_REPORTS_ROOT", ".api_jobs/reports"))
@@ -114,7 +134,8 @@ async def lifespan(app: FastAPI):
             store.recover_running()
         with startup_phase("report_job_worker_start"):
             if composition is None:
-                worker = ReportJobWorker(store, reports_root)
+                worker = (ReportJobWorker(store, reports_root, hold_adaptive_queue=True)
+                          if failure_policy == "ordinary_only" else ReportJobWorker(store, reports_root))
             else:
                 def release_deep_runtime():
                     app.state.deep_scope_policy = None
@@ -129,6 +150,8 @@ async def lifespan(app: FastAPI):
             app.state.deep_scope_policy = composition.policy if composition is not None else None
             app.state.deep_chat_auto_base_url = deep_config.chat_auto_base_url if composition is not None else None
             worker.start()
+            if composition is not None:
+                app.state.deep_startup_status = "CONFIGURED"
         yield
     finally:
         app.state.deep_scope_policy = None

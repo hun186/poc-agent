@@ -12,7 +12,7 @@ API Key 當成個人身分。
 穩定的安裝識別，不是 IP、Host header、URL 或 OpenWebUI 登入金鑰。
 每個 issuer 只配置專用高熵隨機 key（至少 32 bytes；部署時以
 restricted secret file/secret manager 注入，不寫 Git 或 UserValves）。
-允許兩個 key ID 作輪替；移除舊 key 後拒絕舊 assertion。
+key ID 不可含 assertion 分隔字元「.」，允許兩個 key ID 作輪替；移除舊 key 後拒絕舊 assertion。
 持有 key 的 issuer 能代表其明確映射的帳號，故 issuer 是受信任
 安全邊界，不是普通 service key。這不是 OIDC 或完整 SSO。
 

@@ -103,5 +103,9 @@
 - Expand bounded complete Chinese sentences to explicit absolute year/month/day and same-precision ranges, optional comma/期間, topic-first 在/於 and exact 為何 interrogative. Preserve legacy date source text, original question and literal topic/aspects. No implicit time, relative date, unsupported aspect or compound scope. Synthetic regression pending CI and review; does not guarantee ordinary ES receipt alignment.
 
 
+## 2026-11-25 #413 — portable deep runtime / ordinary-only isolation candidate
+- Operator verified co-located ES strict TLS, authenticated read-only Event/Timeline/Evidence mapping/date/paging PASS_PARTIAL via a certificate-matching loopback; LAN SAN mismatch diagnosed. Installed OpenWebUI 0.13.4 has encryption off and a nonpersistent existing secret. Operator requests multi-host/subnet portability and no mandatory OpenWebUI key/TLS migration. #505 HOLD; #504 ownership isolation remains. Candidate adds independent SRAF_DEEP_ES_URL (strict TLS, no fallback on invalid override) and explicit ordinary_only startup policy preserving queued deep jobs/checkpoints and ordinary worker path on typed configuration/setup failure; strict default unchanged. Synthetic CI/review pending; no production config changes.
+
+
 ## 2026-11-25 #413 — backend handoff assertion candidate
 - Hold #505 personal token pilot; introduce private request-bound HMAC assertion primitive with logical issuer/audience, external subject/chat/message, exact POST body digest, short expiry, dedicated rotatable keys and no privilege claims. Unit tests only; no route, replay consumption, live mapping, browser exchange, production or external provider. No OpenWebUI secret change. Must complete persisted replay/authorization/transport/security gates before use.

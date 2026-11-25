@@ -84,7 +84,7 @@ class HandoffKey:
     secret: bytes = field(repr=False)
 
     def __post_init__(self):
-        if (not _id(self.key_id) or type(self.secret) is not bytes
+        if (not _id(self.key_id) or "." in self.key_id or type(self.secret) is not bytes
                 or not 32 <= len(self.secret) <= 128):
             _deny()
 
@@ -104,7 +104,7 @@ class HandoffTrust:
             _deny()
 
     def key(self, key_id: str) -> HandoffKey:
-        if not _id(key_id):
+        if not _id(key_id) or "." in key_id:
             _deny()
         key = next((k for k in self.keys if k.key_id == key_id), None)
         if key is None:

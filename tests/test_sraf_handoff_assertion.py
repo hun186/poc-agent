@@ -100,3 +100,10 @@ def test_even_valid_mac_cannot_add_role_or_duplicate_claim():
                        + kid.encode() + b"\x00" + altered.encode(), hashlib.sha256).digest()
         with pytest.raises(HandoffDenied):
             verify("srafh1." + kid + "." + altered + "." + b64(mac))
+
+
+def test_key_id_delimiter_not_accepted_at_configuration():
+    with pytest.raises(HandoffDenied):
+        HandoffKey("current.v2", b"C" * 32)
+    # The dot delimiter restriction is only for the key ID, not subjects.
+    assert verify(sign(external_subject="external.user")).external_subject == "external.user"

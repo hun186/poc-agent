@@ -382,11 +382,20 @@ class ReportJobStore:
                 (now, now, now, job_id, owner_kind, owner_id),
             ).rowcount == 1
 
-    def claim_next(self) -> ReportJob | None:
+    def claim_next(self, *, allow_adaptive: bool = True) -> ReportJob | None:
+        if type(allow_adaptive) is not bool:
+            raise ValueError("invalid_adaptive_claim_policy")
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as con:
             con.execute("BEGIN IMMEDIATE")
-            row = con.execute("SELECT job_id FROM report_jobs WHERE status='queued' ORDER BY created_at LIMIT 1").fetchone()
+            sql = "SELECT job_id FROM report_jobs WHERE status='queued'"
+            if not allow_adaptive:
+                # Leave durable deep jobs and malformed options untouched.
+                # Do not claim/fail/reinterpret deep jobs or block ordinary FIFO.
+                sql += (" AND CASE WHEN NOT json_valid(options_json) THEN 0 "
+                        "WHEN json_type(options_json) <> 'object' THEN 0 "
+                        "ELSE json_type(options_json, '$.sraf_adaptive_intent_v1') IS NULL END")
+            row = con.execute(sql + " ORDER BY created_at LIMIT 1").fetchone()
             if not row:
                 return None
             changed = con.execute("UPDATE report_jobs SET status='running',phase='agent_execution',phase_updated_at=?,started_at=?,updated_at=? WHERE job_id=? AND status='queued'", (now,now,now,row[0])).rowcount
