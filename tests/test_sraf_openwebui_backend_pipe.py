@@ -4,6 +4,7 @@ This is a compatibility fixture for inspected v0.13.4 APIs, not installed
 OpenWebUI/LLM/ES acceptance.
 """
 import asyncio
+import os
 import base64
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -156,3 +157,32 @@ def test_rejects_unverified_context_before_transport(bundle, backend, endpoint, 
     with pytest.raises(bundle.PipeError):
         asyncio.run(pipe.pipe(**args))
     assert endpoint == []
+
+
+def test_admin_file_path_works_without_container_env_change(bundle, backend, endpoint, monkeypatch):
+    _, args = backend
+    path = os.environ["SRAF_OPENWEBUI_HANDOFF_CONFIG_FILE"]
+    monkeypatch.delenv("SRAF_OPENWEBUI_HANDOFF_CONFIG_FILE")
+    pipe = bundle.Pipe()
+    pipe.valves.ENABLED = True
+    pipe.valves.CONFIG_FILE = path
+    assert not hasattr(pipe, "UserValves")
+    assert asyncio.run(pipe.pipe(**args)) == "fixture response"
+    assert len(endpoint) == 1
+
+
+def test_admin_file_conflict_and_relative_path_denied(bundle, backend, endpoint, tmp_path):
+    _, args = backend
+    pipe = bundle.Pipe()
+    pipe.valves.ENABLED = True
+    original = os.environ["SRAF_OPENWEBUI_HANDOFF_CONFIG_FILE"]
+    other = tmp_path / "other.json"
+    other.write_text("{}", encoding="utf-8")
+    for path in (str(other), "sender.json", " " + original):
+        pipe.valves.CONFIG_FILE = path
+        with pytest.raises(bundle.PipeError):
+            asyncio.run(pipe.pipe(**args))
+    assert endpoint == []
+    pipe.valves.CONFIG_FILE = original
+    assert asyncio.run(pipe.pipe(**args)) == "fixture response"
+    assert len(endpoint) == 1

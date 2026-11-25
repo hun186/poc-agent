@@ -3,6 +3,7 @@ import base64
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import os
 import shutil
 import ssl
 import subprocess
@@ -114,4 +115,17 @@ def test_tls_probe_must_verify_ca_and_san(bundle, tmp_path, monkeypatch, capsys)
         configure(tmp_path, monkeypatch, f"https://127.0.0.1:{port}", cert)
         result = output(bundle, capsys, ["--probe-transport"], 2)
         assert result["transport"] == "TLS_CA_HOST_VERIFIED"
+        assert len(seen) == 1
+
+
+def test_explicit_cli_file_without_env(bundle, tmp_path, monkeypatch, capsys):
+    with endpoint() as (port, seen):
+        configure(tmp_path, monkeypatch, f"http://127.0.0.1:{port}")
+        path = os.environ["SRAF_OPENWEBUI_HANDOFF_CONFIG_FILE"]
+        monkeypatch.delenv("SRAF_OPENWEBUI_HANDOFF_CONFIG_FILE")
+        result = output(bundle, capsys, ["--check-config", "--config-file", path], 2)
+        assert result["status"] == "PASS_PARTIAL"
+        assert not seen
+        result = output(bundle, capsys, ["--probe-transport", "--config-file", path], 2)
+        assert result["transport"] == "LITERAL_LOOPBACK_HTTP"
         assert len(seen) == 1

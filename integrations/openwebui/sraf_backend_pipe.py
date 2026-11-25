@@ -68,12 +68,24 @@ def _pipe_relative(root, value):
     return (path if path.is_absolute() else root / path).resolve(strict=True)
 
 
-def _pipe_config():
+def _pipe_config(explicit_file=None):
     try:
-        path = Path(os.environ["SRAF_OPENWEBUI_HANDOFF_CONFIG_FILE"])
-        if not path.is_absolute():
+        configured = os.environ.get("SRAF_OPENWEBUI_HANDOFF_CONFIG_FILE", "")
+        if explicit_file is not None and type(explicit_file) is not str:
             raise ValueError
-        path = path.resolve(strict=True)
+        candidates = [value for value in (configured, explicit_file) if value]
+        paths = []
+        for value in candidates:
+            if (value != value.strip() or len(value) > 4096
+                    or any(ord(ch) < 32 or ord(ch) == 127 for ch in value)):
+                raise ValueError
+            path = Path(value)
+            if not path.is_absolute():
+                raise ValueError
+            paths.append(path.resolve(strict=True))
+        if not paths or any(path != paths[0] for path in paths):
+            raise ValueError
+        path = paths[0]
         obj = json.loads(_pipe_read(path, 32768).decode("utf-8"), object_pairs_hook=_pipe_unique)
         if type(obj) is not dict or set(obj) != {
             "schema", "issuer", "audience", "key_id", "secret_file", "transport",
@@ -184,6 +196,8 @@ async def _pipe_verify_owner(user_id, chat_id, message_id, user_message_id, mode
 class Pipe:
     class Valves(BaseModel):
         ENABLED: bool = False
+        # Admin Valve only: non-secret local path; no user credentials.
+        CONFIG_FILE: str = ""
 
     def __init__(self):
         self.valves = self.Valves()
@@ -199,7 +213,7 @@ class Pipe:
                                       __tools__, __user__, __chat_id__, __message_id__)
             await _pipe_verify_owner(__user__["id"], __chat_id__, __message_id__,
                 __metadata__["user_message_id"], __metadata__["model_id"], text)
-            trust, key_id, transport = _pipe_config()
+            trust, key_id, transport = _pipe_config(self.valves.CONFIG_FILE)
             # No user-provided endpoint/key; exact canonical body and trusted
             # backend identity. A timed-out thread may still finish remotely.
             data = await asyncio.wait_for(asyncio.to_thread(
@@ -231,6 +245,7 @@ def sender_preflight(argv=None):
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--check-config", action="store_true")
     mode.add_argument("--probe-transport", action="store_true")
+    parser.add_argument("--config-file", help="operator-selected absolute manifest path")
     args = parser.parse_args(argv)
     result = {"schema": "sraf_openwebui_sender_preflight_v1",
               "scope": "LOCAL_CONFIG_AND_OPTIONAL_READONLY_GET",
@@ -241,7 +256,7 @@ def sender_preflight(argv=None):
         result.update(status="NOT_TESTED", reason="explicit_operation_required")
     else:
         try:
-            _, _, transport = _pipe_config()
+            _, _, transport = _pipe_config(args.config_file)
             result.update(config="PASS", status="PASS_PARTIAL", reason="local_config_only")
             if args.probe_transport:
                 probe_handoff_transport(transport)

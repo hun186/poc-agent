@@ -169,3 +169,8 @@
 - #519 merged 48cb32512b6f: both Python versions 401 regression + 2 integrated socket PASS, 4/4 CI, clean review. #522 initial OFF1 restart contender test timed out: old event wait can pass before replacement startup. Candidate synchronizes new launcher identity, second handoff event and both role records; adds actual existing supervisor subprocess fixture for opt-in preserving API PID/port and all three roles. No change to production restart policy; no claim of arbitrary mid-start shutdown safety.
 
 - #521 Codex P2: strict OFF-1S listener attestation denied the new supervised argv if optional setproctitle absent. Extend only exact Python executable/module/--public/--http/--port sequence, preserving live PID/start tick/effective UID/cwd/exclusive socket checks. Tests deny altered port, SSL, missing HTTP flag, extra workers and different module/executable. Exact-head review/CI pending.
+
+- #521 merged dbd7103bf727 after exact-head ccde8b6: 5/5 Hosted workflows, 7/7 jobs, both Python versions 408 ordinary + 2 mandatory socket cases PASS; prior P2 resolved after exact argv verification, no live acceptance.
+
+## 2026-11-25 #413 — staged pilot runbook/admin manifest path candidate
+- Admin-only CONFIG_FILE absolute path or existing sender env; conflicts fail, CLI --config-file, no secret Valve/individual token. Use suitable restricted existing persistent mount to avoid recreation solely for env changes. Integrated runbook separates ES, private TLS, browser, exact config, quiescence, rollback, no live/independent security acceptance. Tests synthetic; #519 and #521 merged; exact-head revalidation on main pending.
