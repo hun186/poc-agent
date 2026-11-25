@@ -33,8 +33,8 @@ def check_local(env, *, project_root: Path, require_auto: bool = False) -> dict:
         "live_account_grants": "NOT_TESTED",
         "live_openwebui_and_word": "NOT_TESTED",
     }
+    from api.services.sraf_deep_startup_config import load_deep_startup_config
     try:
-        from api.services.sraf_deep_startup_config import load_deep_startup_config
         config = load_deep_startup_config(env)
     except Exception:
         result.update(status="FAIL", configuration="FAIL", reason="deep_configuration_invalid")
@@ -59,8 +59,8 @@ def check_local(env, *, project_root: Path, require_auto: bool = False) -> dict:
         result.update(status="FAIL", reason="chat_auto_https_required_for_pilot")
         return result
 
+    from api.services.sraf_deep_es_connection import build_deep_es_connection
     try:
-        from api.services.sraf_deep_es_connection import build_deep_es_connection
         connection = build_deep_es_connection(env, project_root=project_root)
     except Exception:
         result.update(status="FAIL", es_sdk_ca_setup="FAIL", reason="deep_es_local_setup_invalid")
@@ -90,18 +90,19 @@ def main(argv=None) -> int:
         print(json.dumps({"schema": "sraf_deep_local_preflight_v1",
                           "status": "FAIL", "reason": "run_from_repository_root"}))
         return 1
-    try:
-        # Bootstrap only this process. Suppress profile/path/warning outputs
-        # and dependency messages: never print config roots, values or errors.
-        with open(os.devnull, "w", encoding="utf-8") as sink:
-            with redirect_stdout(sink), redirect_stderr(sink):
-                from config.bootstrap import bootstrap_env
+    # Bootstrap only this process. Suppress profile/path/warning outputs
+    # from configuration loading, but do not misclassify broken imports.
+    with open(os.devnull, "w", encoding="utf-8") as sink:
+        with redirect_stdout(sink), redirect_stderr(sink):
+            from config.bootstrap import bootstrap_env
+            try:
                 bootstrap_env(project_root=ROOT)
+            except Exception:
+                result = {"schema": "sraf_deep_local_preflight_v1", "status": "FAIL",
+                          "reason": "local_preflight_unavailable"}
+            else:
                 result = check_local(dict(os.environ), project_root=ROOT,
                                      require_auto=args.require_auto)
-    except Exception:
-        result = {"schema": "sraf_deep_local_preflight_v1", "status": "FAIL",
-                  "reason": "local_preflight_unavailable"}
     print(json.dumps(result, sort_keys=True))
     # A partial result is deliberately not a release acceptance exit zero.
     return 1 if result["status"] == "FAIL" else 2

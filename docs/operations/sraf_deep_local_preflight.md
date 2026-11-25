@@ -14,7 +14,7 @@ python -B tools/sraf_deep_local_preflight.py --check
 python -B tools/sraf_deep_local_preflight.py --check --require-auto
 ```
 
-沿用正式啟動的設定優先序 OS env > .env.local > .env.{APP_ENV} > .env。只輸出固定狀態，不輸出帳號、索引、模型、網址、憑證路徑或例外內容。執行程序結束後不改動其他程序的 env。
+執行前須依 AGENTS.md 安裝專案 requirements。套件缺漏或程式匯入錯誤會以非零程序退出，不會被誤列為配置錯誤；此時先修復 Python 環境。沿用正式啟動的設定優先序 OS env > .env.local > .env.{APP_ENV} > .env。只輸出固定狀態，不輸出帳號、索引、模型、網址、憑證路徑或例外內容。執行程序結束後不改動其他程序的 env。
 
 - `PASS_PARTIAL`（exit 2）：本地配置合法，ES SDK/CA setup 完成；不是已連線，更不是正式驗收。
 - `INCOMPLETE`（exit 2）：深度模式未開啟；維持現況，不會自動修改 flag。

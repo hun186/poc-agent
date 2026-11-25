@@ -63,3 +63,15 @@ def test_bad_es_setup_redacted(tmp_path, env):
 def test_default_cli_does_not_read_configuration(capsys):
     assert main([]) == 2
     assert json.loads(capsys.readouterr().out)["status"] == "NOT_TESTED"
+
+
+def test_import_defect_not_reported_as_invalid_configuration(tmp_path, env, monkeypatch):
+    import builtins
+    original = builtins.__import__
+    def broken(name, *args, **kwargs):
+        if name == "api.services.sraf_deep_startup_config":
+            raise ImportError("synthetic missing dependency")
+        return original(name, *args, **kwargs)
+    monkeypatch.setattr(builtins, "__import__", broken)
+    with pytest.raises(ImportError, match="synthetic missing dependency"):
+        check_local(env, project_root=tmp_path)
