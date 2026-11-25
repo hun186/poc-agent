@@ -7,6 +7,7 @@ an OpenWebUI Function directly: it reuses SRAF's canonical signing/transport.
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
 import base64
 import json
@@ -18,7 +19,7 @@ import stat
 from pydantic import BaseModel
 
 from api.security.sraf_handoff_assertion import HandoffKey, HandoffTrust
-from api.security.sraf_handoff_transport import HandoffTransport, send_signed_chat
+from api.security.sraf_handoff_transport import HandoffTransport, send_signed_chat, probe_handoff_transport
 
 
 _PIPE_ID = re.compile(r"[A-Za-z0-9._~-]{1,128}\Z")
@@ -221,3 +222,42 @@ class Pipe:
             raise PipeError("SRAF 請求逾時；後端可能仍在執行，請勿直接重複提交。") from None
         except Exception:
             raise PipeError("SRAF 後端轉接未完成，請確認服務狀態；不會自動重試。") from None
+
+
+
+def sender_preflight(argv=None):
+    """Run in the sender namespace; no login, Job, provider or OpenWebUI DB IO."""
+    parser = argparse.ArgumentParser(description="SRAF sender preflight (partial only)")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--check-config", action="store_true")
+    mode.add_argument("--probe-transport", action="store_true")
+    args = parser.parse_args(argv)
+    result = {"schema": "sraf_openwebui_sender_preflight_v1",
+              "scope": "LOCAL_CONFIG_AND_OPTIONAL_READONLY_GET",
+              "signed_request_sent": False, "job_created": False,
+              "account_mapping": "NOT_TESTED", "live_report": "NOT_TESTED",
+              "route_observation": "NOT_TESTED", "transport": "NOT_TESTED"}
+    if not args.check_config and not args.probe_transport:
+        result.update(status="NOT_TESTED", reason="explicit_operation_required")
+    else:
+        try:
+            _, _, transport = _pipe_config()
+            result.update(config="PASS", status="PASS_PARTIAL", reason="local_config_only")
+            if args.probe_transport:
+                probe_handoff_transport(transport)
+                result.update(
+                    reason="transport_and_method_observation_only",
+                    route_observation="GET_405_ALLOW_POST",
+                    transport=("TLS_CA_HOST_VERIFIED" if transport.mode == "verified_https"
+                               else "LITERAL_LOOPBACK_HTTP"),
+                )
+        except PipeError:
+            result.update(config="FAIL", status="FAIL", reason="sender_config_invalid")
+        except Exception:
+            result.update(status="FAIL", reason="sender_transport_or_route_unconfirmed")
+    print(json.dumps(result, sort_keys=True))
+    return 1 if result["status"] == "FAIL" else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(sender_preflight())
