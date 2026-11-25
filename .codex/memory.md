@@ -115,5 +115,11 @@
 - Private real SQLite single-use claim (one shared DB, bounded capacity, durable expiry watermark, no automatic DB recreation), plus explicit issuer/audience/subject->live SRAF generation/role via AuthStore. No token, raw identity trust, auth route, app mounting or providers. Real isolated SQLite and AuthStore tests. Transport/receiver, final authorization, browser login and independent Security Review remain separate; no deployment.
 
 
+## 2026-11-25 #413 — local deep deployment preflight candidate
+- Add explicit local-only CLI reusing startup configuration and real ES SDK construction/close; no provider traffic or auth/SQLite changes. Fixed redacted statuses, disabled/default distinctions, optional auto HTTPS pilot config check, PASS_PARTIAL exit 2 with all live gates NOT_TESTED. Synthetic no-network tests and deployment instructions. Actual operator execution not performed.
+
+- Revised preflight to remove coupling to HOLD #505: require-auto checks flag; separate opt-in require-https-browser checks configured browser origin scheme only. Real transport remains NOT_TESTED; dedicated deep ES override checked through actual SDK constructor, no fallback. No deployment.
+
+
 ## 2026-11-25 #413 — explicit handoff sender transport candidate
 - Private direct HTTP client, explicit literal-loopback HTTP or verified HTTPS operator origin, no proxy/redirect/retry/downgrade, bounded response, exact signed body bytes. Synthetic loopback HTTP/TLS with matching/mismatching SAN/CA tests. Not receiver, listener attestation, adapter total deadline, browser login, live acceptance or deployment; #505 remains HOLD. No change to existing OpenWebUI TLS/keys.
