@@ -19,6 +19,8 @@ from api.services.sessions import get_structured_history
 from api.services.turn_execution import execute_agent_turn
 from api.core.url_utils import abs_url
 from api.security.principal import require_scopes
+from api.security.models import AuthPrincipal
+from api.services.sraf_chat_deep_dispatch import prepare_auto_chat, append_deep_chat_status
 from api.security.scopes import MODEL_INVOKE, MODEL_READ
 from api.security.signed_urls import sign_resource
 
@@ -67,10 +69,11 @@ def list_models():
         ]
     }
 
-@router.post("/v1/chat/completions", dependencies=[Depends(require_scopes(MODEL_INVOKE))])
+@router.post("/v1/chat/completions")
 def chat_completions(
     payload: ChatPayload,
     request: Request,
+    principal: AuthPrincipal = Depends(require_scopes(MODEL_INVOKE)),
 ):
     sessions = get_sessions()
     last_structured = get_last_structured()
@@ -130,6 +133,12 @@ def chat_completions(
             save_trace(trace)
             return resp
 
+        # Auto mode is optional, after the meta route has returned.
+        fmt = (payload.format or "markdown").lower()
+        deep_identity = prepare_auto_chat(
+            request.app.state, principal,
+            turn_tokens=tuple(request.headers.getlist("idempotency-key")), fmt=fmt,
+        )
         # 3) 一般任務由共用 turn execution service 執行。
         #query_for_agent = _build_query_for_agent(
         #    session_key=session_key,
@@ -143,6 +152,7 @@ def chat_completions(
                 request=request,
                 request_id=request_id,
                 trace=trace,
+                **({"capture_ordinary_scope": True} if deep_identity is not None else {}),
             )
             session_key = turn.session_id
             user_msg = turn.user_message
@@ -231,6 +241,9 @@ def chat_completions(
         trace.setdefault("timing", {})["total_sec"] = time.time() - t_start
         save_trace(trace)
 
+        # Only after successful ordinary rendering and persistence. Never save
+        # the private scope or deep link as the ordinary report snapshot.
+        append_deep_chat_status(resp, request.app.state, deep_identity, turn)
         return resp
 
     except Exception as e:

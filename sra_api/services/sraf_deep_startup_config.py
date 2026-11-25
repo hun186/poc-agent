@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 import json
 import re
+from urllib.parse import urlsplit
 
 from api.services.sraf_deep_grant_config import DeepOwnerGrant, DeepGrantConfig
 from api.services.sraf_nround_local_models import LocalDeepModels
@@ -22,6 +23,22 @@ class DeepStartupConfigError(ValueError):
 class DeepStartupConfig:
     policy: DeepGrantConfig
     models: LocalDeepModels
+    chat_auto_base_url: str | None = None
+
+
+def validate_chat_public_base(value: str) -> str:
+    """Operator-owned origin/path only, never a request Host or credential."""
+    if (type(value) is not str or not 1 <= len(value) <= 512
+            or not re.fullmatch(
+                r"https?://(?:[A-Za-z0-9.-]+|\[[0-9A-Fa-f:]+\])(?::[0-9]{1,5})?(?:/[A-Za-z0-9_-]+)*/?",
+                value)):
+        raise ValueError("deep_chat_public_base_invalid")
+    parts = urlsplit(value)
+    if (not parts.hostname or parts.hostname.startswith(".")
+            or ".." in parts.hostname or parts.hostname.endswith(".")
+            or (parts.port is not None and not 1 <= parts.port <= 65535)):
+        raise ValueError("deep_chat_public_base_invalid")
+    return value.rstrip("/")
 
 
 def _required(env: Mapping[str, str], name: str, limit: int) -> str:
@@ -81,6 +98,11 @@ def load_deep_startup_config(env: Mapping[str, str]) -> DeepStartupConfig | None
             report_model=_required(env, "SRAF_DEEP_REPORT_MODEL", 128),
             num_ctx=_integer(env, "SRAF_DEEP_NUM_CTX"),
         )
-        return DeepStartupConfig(policy, models)
+        chat_flag = env.get("SRAF_DEEP_CHAT_AUTO_ENABLED", "0")
+        if chat_flag not in ("0", "1"):
+            raise ValueError
+        chat_base = (validate_chat_public_base(_required(env, "PUBLIC_API_BASE", 512))
+                     if chat_flag == "1" else None)
+        return DeepStartupConfig(policy, models, chat_base)
     except Exception:
         raise DeepStartupConfigError("deep_startup_config_invalid") from None

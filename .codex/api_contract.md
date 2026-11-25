@@ -107,3 +107,7 @@
 
 ## 2026-11-25 #413 — reserved internal chat key candidate
 - Ordinary POST /v1/report/jobs rejects the reserved sraf-auto-chat-v1: Idempotency-Key prefix with 400. Explicit deep POST retains its deep-v1 namespace, current request/response and exact composed admission gate. No public chat replay or automatic admission endpoint yet. Client adapter must provide a stable unique per-turn token (not a conversation ID); it is not an authentication credential.
+
+
+## 2026-11-25 #413 — candidate optional Chat dual-track admission
+- SRAF_DEEP_CHAT_AUTO_ENABLED=1 with existing SRAF_DEEP_REPORT_ENABLED=1 and validated explicit PUBLIC_API_BASE enables the candidate nonstream Markdown chat branch for authenticated authorized users and exactly one stable Idempotency-Key header. Default off; ordinary/service/META/JSON response unchanged. After ordinary persistence and exact scope match, use existing SQLite admission. Successful persisted Job adds content status link and context.deep_report {job_id,status,browser_status_url}; same-key same-prompt replay returns the same Job, not a new task. Failure adds a fixed non-secret note only for an eligible attempted report, ordinary Word unaffected. Browser URL requires same SRAF login; no direct token/link bypass.

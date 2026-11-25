@@ -44,6 +44,7 @@ async def lifespan(app: FastAPI):
     if previous_thread is not None and previous_thread.is_alive():
         raise RuntimeError("report_worker_previous_lifespan_active")
     app.state.deep_scope_policy = None
+    app.state.deep_chat_auto_base_url = None
     with startup_phase("deep_report_config"):
         env_snapshot = dict(os.environ)
         deep_config = load_deep_startup_config(env_snapshot)
@@ -117,6 +118,7 @@ async def lifespan(app: FastAPI):
             else:
                 def release_deep_runtime():
                     app.state.deep_scope_policy = None
+                    app.state.deep_chat_auto_base_url = None
                     composition.close()
                 worker = ReportJobWorker(store, reports_root,
                                          adaptive_runtime=composition.runtime,
@@ -125,10 +127,12 @@ async def lifespan(app: FastAPI):
             app.state.report_jobs_reports_root = reports_root
             app.state.report_job_worker = worker
             app.state.deep_scope_policy = composition.policy if composition is not None else None
+            app.state.deep_chat_auto_base_url = deep_config.chat_auto_base_url if composition is not None else None
             worker.start()
         yield
     finally:
         app.state.deep_scope_policy = None
+        app.state.deep_chat_auto_base_url = None
         try:
             if worker is not None:
                 worker.stop()
