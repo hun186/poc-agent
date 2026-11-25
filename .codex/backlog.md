@@ -229,3 +229,7 @@
 
 ## 2026-11-18 — terminal handoff fence follow-up
 - [ ] After PR #471 latest-head CI and Codex merge gate, integrate read-only terminal fence with trusted N-round executor (while revalidating owner-index/query branch); next implement independent Job-to-Word/Artifact commit CAS and owner-scoped download authorization. Never treat SUFFICIENT checkpoint or boolean preflight as report-generation authority; partial stops require separate fidelity and output policy.
+
+
+## 2026-11-25 #413 — portable deep runtime / ordinary-only isolation candidate
+- [ ] Design trusted OpenWebUI backend identity exchange with stable subject mapping, credential rotation, bounded replay/audience, revocation and browser status authentication; no persistent per-user token and no user-controlled header trust. [ ] Verify cross-host/subnet deployment and explicit transport policy with no automatic downgrade. [ ] Actual PIT/LLM/Word and OpenWebUI version-specific acceptance separate.

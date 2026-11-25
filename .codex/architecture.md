@@ -88,3 +88,7 @@
 
 ## 2026-11-25 #413 — candidate real Chat dispatch integration
 - Startup freezes explicit auto opt-in and trusted browser base. Non-meta authenticated Markdown Chat gets private identity before ordinary execution, enables request-local ES receipt only for eligible turns, then after ordinary response, snapshot/session persistence and trace, exact compile + receipt/owner/policy comparison → existing atomic adaptive Job insert or verified replay → append status link. No provider calls or separate queue in dispatch. Default off; no actual OpenWebUI deployment tested.
+
+
+## 2026-11-25 #413 — portable deep runtime / ordinary-only isolation candidate
+- Deployment topology is operator-owned config, not a hardcoded endpoint or an implicit trust policy. Dedicated deep ES URL override preserves ordinary and ingestion settings; actual TLS identity always required. Explicit ordinary-only startup isolation disables deep policy/auto dispatch on typed configuration/setup failure and holds queued deep jobs in the existing SQLite queue. Unexpected runtime/shared infrastructure faults still fail startup. A stable server-side identity handoff is future work; no raw user headers or automatic transport downgrade.

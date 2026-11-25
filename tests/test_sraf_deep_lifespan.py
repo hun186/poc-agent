@@ -160,3 +160,100 @@ def test_shutdown_does_not_close_es_under_running_worker(tmp_path, monkeypatch):
             worker.thread.join(5)
     assert not worker.thread.is_alive()
     assert len(closed) == 1
+
+
+@pytest.mark.parametrize("bad,expected", [
+    ("flag", "DEGRADED_CONFIG"),
+    ("es", "DEGRADED_ES_CONFIG"),
+])
+def test_opt_in_ordinary_only_holds_deep_queue_and_serves_ordinary(tmp_path, monkeypatch, bad, expected):
+    from api.services.report_job_store import ReportJobStore
+    from test_sraf_adaptive_job_runtime import _submit
+    app, headers = prepare(tmp_path, monkeypatch)
+    monkeypatch.setenv("SRAF_DEEP_STARTUP_FAILURE_POLICY", "ordinary_only")
+    store = ReportJobStore(tmp_path / "lifespan.sqlite")
+    store.initialize()
+    deep, _ = _submit(store)
+    ordinary, _ = store.create(
+        job_id="ordinary-fixture", prompt="ordinary", filename="ordinary.docx",
+        session_id="ordinary-session", model="ordinary-model", options={}, metadata={},
+        idempotency_key="ordinary-key", request_hash="ordinary-hash")
+    if bad == "flag":
+        monkeypatch.setenv("SRAF_DEEP_REPORT_ENABLED", "yes")
+    else:
+        monkeypatch.setenv("SRAF_DEEP_ES_URL", "")
+    executed = Event()
+    observed = []
+    def execute(worker, job):
+        observed.append(job.job_id)
+        worker.store.fail(job.job_id, "synthetic", "synthetic")
+        executed.set()
+    monkeypatch.setattr(ReportJobWorker, "execute", execute)
+    with TestClient(app) as c:
+        assert app.state.deep_startup_status == expected
+        assert app.state.deep_scope_policy is None
+        assert app.state.deep_chat_auto_base_url is None
+        assert app.state.report_job_worker.adaptive_runtime is None
+        assert c.post("/v1/report/jobs/deep", headers=headers,
+                      json={"prompt": QUESTION}).status_code == 503
+        assert executed.wait(5)
+        assert observed == [ordinary.job_id]
+        assert store.get(deep.job_id).status == "queued"
+        from agent.adaptive_retrieval.job_checkpoint import NroundCheckpointStore
+        assert NroundCheckpointStore(store.db_path).get_public(deep.job_id)["state"] == "QUEUED"
+    # Restoring configuration resumes only via the normal exact runtime.
+    monkeypatch.setenv("SRAF_DEEP_REPORT_ENABLED", "1")
+    monkeypatch.delenv("SRAF_DEEP_ES_URL", raising=False)
+    executed.clear()
+    with TestClient(app):
+        assert app.state.deep_startup_status == "CONFIGURED"
+        assert executed.wait(5)
+        assert observed == [ordinary.job_id, deep.job_id]
+
+
+def test_unknown_failure_policy_does_not_silently_degrade(tmp_path, monkeypatch):
+    app, _ = prepare(tmp_path, monkeypatch)
+    monkeypatch.setenv("SRAF_DEEP_STARTUP_FAILURE_POLICY", "typo")
+    with pytest.raises(RuntimeError, match="deep_startup_failure_policy_invalid"):
+        with TestClient(app):
+            pytest.fail("invalid policy started service")
+
+
+def test_unexpected_composition_bug_still_aborts_startup(tmp_path, monkeypatch):
+    app, _ = prepare(tmp_path, monkeypatch)
+    monkeypatch.setenv("SRAF_DEEP_STARTUP_FAILURE_POLICY", "ordinary_only")
+    from api.services import sraf_deep_runtime_composition
+    def broken(*a, **k):
+        raise RuntimeError("synthetic unexpected bug")
+    monkeypatch.setattr(sraf_deep_runtime_composition, "compose_deep_runtime", broken)
+    with pytest.raises(RuntimeError, match="synthetic unexpected bug"):
+        with TestClient(app):
+            pytest.fail("unexpected bug silently swallowed")
+
+
+def test_explicit_ordinary_only_disabled_deep_holds_existing_queue(tmp_path, monkeypatch):
+    from api.services.report_job_store import ReportJobStore
+    from test_sraf_adaptive_job_runtime import _submit
+    app, headers = prepare(tmp_path, monkeypatch)
+    monkeypatch.setenv("SRAF_DEEP_STARTUP_FAILURE_POLICY", "ordinary_only")
+    monkeypatch.setenv("SRAF_DEEP_REPORT_ENABLED", "0")
+    store = ReportJobStore(tmp_path / "lifespan.sqlite")
+    store.initialize()
+    deep, _ = _submit(store)
+    ordinary, _ = store.create(job_id="ordinary-disabled-fixture", prompt="ordinary",
+        filename="ordinary.docx", session_id="ordinary-session", model="ordinary-model",
+        options={}, metadata={}, idempotency_key="ordinary-key", request_hash="ordinary-hash")
+    executed = Event()
+    observed = []
+    def execute(worker, job):
+        observed.append(job.job_id)
+        worker.store.fail(job.job_id, "synthetic", "synthetic")
+        executed.set()
+    monkeypatch.setattr(ReportJobWorker, "execute", execute)
+    with TestClient(app) as c:
+        assert app.state.deep_startup_status == "DISABLED"
+        assert c.post("/v1/report/jobs/deep", headers=headers,
+                      json={"prompt": QUESTION}).status_code == 503
+        assert executed.wait(5)
+        assert observed == [ordinary.job_id]
+        assert store.get(deep.job_id).status == "queued"

@@ -42,11 +42,14 @@ def test_disabled_and_invalid_are_distinguished(tmp_path, env):
     assert result["configuration"] == "FAIL" and result["status"] == "FAIL"
 
 
-def test_auto_pilot_https_gate_is_local_only(tmp_path, env):
+def test_explicit_browser_policy_is_separate_from_auto_config(tmp_path, env):
     assert check_local(env, project_root=tmp_path, require_auto=True)["reason"] == "chat_auto_disabled"
     env.update(SRAF_DEEP_CHAT_AUTO_ENABLED="1", PUBLIC_API_BASE="http://127.0.0.1:9002")
     result = check_local(env, project_root=tmp_path, require_auto=True)
-    assert result["reason"] == "chat_auto_https_required_for_pilot"
+    assert result["status"] == "PASS_PARTIAL" and result["browser_origin"] == "HTTP_CONFIGURED"
+    assert result["live_openwebui_and_word"] == "NOT_TESTED"
+    strict = check_local(env, project_root=tmp_path, require_https_browser=True)
+    assert strict["reason"] == "chat_auto_https_browser_required"
     env["PUBLIC_API_BASE"] = "https://sraf.example.test"
     result = check_local(env, project_root=tmp_path, require_auto=True)
     assert result["status"] == "PASS_PARTIAL" and result["browser_origin"] == "HTTPS_CONFIGURED"
@@ -75,3 +78,12 @@ def test_import_defect_not_reported_as_invalid_configuration(tmp_path, env, monk
     monkeypatch.setattr(builtins, "__import__", broken)
     with pytest.raises(ImportError, match="synthetic missing dependency"):
         check_local(env, project_root=tmp_path)
+
+
+def test_dedicated_es_override_checked_without_legacy_fallback(tmp_path, env):
+    env["ES_URL"] = "http://legacy.example.test:9200"
+    env["SRAF_DEEP_ES_URL"] = "https://127.0.0.1:9001"
+    assert check_local(env, project_root=tmp_path)["status"] == "PASS_PARTIAL"
+    env["ES_URL"] = "https://127.0.0.1:9200"
+    env["SRAF_DEEP_ES_URL"] = ""
+    assert check_local(env, project_root=tmp_path)["reason"] == "deep_es_local_setup_invalid"

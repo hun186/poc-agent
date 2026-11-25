@@ -8,7 +8,7 @@
 python -B tools/sraf_deep_local_preflight.py --check
 ```
 
-若要另外驗證個人授權 OpenWebUI 試行模式所需的自動派送開關與 HTTPS 瀏覽器入口設定：
+若要另外驗證自動派送開關及瀏覽器入口配置格式（不代表傳輸安全）：
 
 ```bash
 python -B tools/sraf_deep_local_preflight.py --check --require-auto
@@ -18,7 +18,7 @@ python -B tools/sraf_deep_local_preflight.py --check --require-auto
 
 - `PASS_PARTIAL`（exit 2）：本地配置合法，ES SDK/CA setup 完成；不是已連線，更不是正式驗收。
 - `INCOMPLETE`（exit 2）：深度模式未開啟；維持現況，不會自動修改 flag。
-- `FAIL`（exit 1）：本地設定或 SDK 準備失敗；依固定 reason 定位。若 require-auto 啟用，還需 HTTPS configured origin。
+- `FAIL`（exit 1）：本地設定或 SDK 準備失敗；依固定 reason 定位。若 require-auto 啟用，還需配置 auto mode。需要明確檢查 HTTPS 字串設定時，另加 `--require-https-browser`；這也要求 auto mode。
 - `NOT_TESTED`（exit 2）：未指定 --check。
 
-即使本地 PASS_PARTIAL，真實 ES TLS 主機身分、映射、PIT 權限及資料讀取、本地模型可用性、帳號 grant、代理及 OpenWebUI 版本/加密、一般／深度 Word 都仍是 NOT_TESTED。HTTPS_CONFIGURED 只表示字串設定，不代表 TLS 或瀏覽器實測通過。後續真實驗收必須另行確認，不要把此工具的 exit 2 當成全驗收成功。
+即使本地 PASS_PARTIAL，真實 ES TLS 主機身分、映射、PIT 權限及資料讀取、本地模型可用性、帳號 grant、代理及 OpenWebUI 版本/加密、一般／深度 Word 都仍是 NOT_TESTED。HTTPS_CONFIGURED / HTTP_CONFIGURED 只表示字串設定，不代表 TLS、受保護通道、credential 傳輸或瀏覽器實測通過。不因本地快檢就允許跨主機 HTTP 敏感流量，也不要求修改既有 OpenWebUI 金鑰或對外 TLS。#505 pilot 暫緩。專用 SRAF_DEEP_ES_URL 由正式 SDK setup 檢查，明確空值不回退。後續真實驗收必須另行確認，不要把此工具的 exit 2 當成全驗收成功。

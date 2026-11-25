@@ -18,7 +18,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-def check_local(env, *, project_root: Path, require_auto: bool = False) -> dict:
+def check_local(env, *, project_root: Path, require_auto: bool = False,
+                require_https_browser: bool = False) -> dict:
     result = {
         "schema": "sraf_deep_local_preflight_v1",
         "scope": "LOCAL_CONFIGURATION_ONLY",
@@ -39,6 +40,7 @@ def check_local(env, *, project_root: Path, require_auto: bool = False) -> dict:
     except Exception:
         result.update(status="FAIL", configuration="FAIL", reason="deep_configuration_invalid")
         return result
+    require_auto = require_auto or require_https_browser
     if config is None:
         result.update(status="FAIL" if require_auto else "INCOMPLETE",
                       configuration="DISABLED", chat_auto="DISABLED",
@@ -53,10 +55,10 @@ def check_local(env, *, project_root: Path, require_auto: bool = False) -> dict:
     if require_auto and not auto:
         result.update(status="FAIL", reason="chat_auto_disabled")
         return result
-    if require_auto and not auto.startswith("https://"):
-        # Local policy allows HTTP for existing clients. The personal-token
-        # OpenWebUI pilot requires verified HTTPS; don't pass it as ready.
-        result.update(status="FAIL", reason="chat_auto_https_required_for_pilot")
+    if require_https_browser and not auto.startswith("https://"):
+        # Explicit local browser-origin policy only; this is not a transport
+        # test and must never silently authorize HTTP credential traffic.
+        result.update(status="FAIL", reason="chat_auto_https_browser_required")
         return result
 
     from api.services.sraf_deep_es_connection import build_deep_es_connection
@@ -80,7 +82,9 @@ def main(argv=None) -> int:
     parser.add_argument("--check", action="store_true",
                         help="read this checkout's dotenv/OS configuration and construct/close the local SDK")
     parser.add_argument("--require-auto", action="store_true",
-                        help="also require automatic Chat mode and an HTTPS configured browser origin")
+                        help="also require automatic Chat mode configuration")
+    parser.add_argument("--require-https-browser", action="store_true",
+                        help="also require auto mode and an HTTPS-configured browser origin")
     args = parser.parse_args(argv)
     if not args.check:
         print(json.dumps({"schema": "sraf_deep_local_preflight_v1",
@@ -102,7 +106,8 @@ def main(argv=None) -> int:
                           "reason": "local_preflight_unavailable"}
             else:
                 result = check_local(dict(os.environ), project_root=ROOT,
-                                     require_auto=args.require_auto)
+                                     require_auto=args.require_auto,
+                                     require_https_browser=args.require_https_browser)
     print(json.dumps(result, sort_keys=True))
     # A partial result is deliberately not a release acceptance exit zero.
     return 1 if result["status"] == "FAIL" else 2
