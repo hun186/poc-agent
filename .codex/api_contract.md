@@ -115,3 +115,7 @@
 
 ## 2026-11-25 #413 — scoped adapter header candidate
 - Optional X-SRAF-OpenWebUI-Chat-Id on Chat only: one bounded ID plus actual user authentication derives reserved server-side storage ID; service credentials denied. Same account generation/chat stable, other accounts distinct. Reserved IDs rejected as legacy Chat/Word or ordinary Job inputs. Scoped legacy Word signed capability unchanged; direct bearer requires matching account generation. Legacy unscoped contracts unchanged; this does not migrate old sessions or establish global tenant isolation.
+
+
+## 2026-11-25 #413 — absolute date grammar expansion candidate
+- Deep explicit/auto natural scope accepts additional complete forms such as 請分析2023年8月聯合國的外交回應 and 聯合國於2023年8月的外交回應為何？; closed explicit same-precision year/month/day ranges. Existing structured grammar and persisted intent unchanged. Other syntax remains fail-closed.

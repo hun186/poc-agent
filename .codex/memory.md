@@ -97,3 +97,7 @@
 
 ## 2026-11-25 #413 — scoped OpenWebUI session candidate (dependent on #503)
 - #503 P2 test helper now passes verified account binding for real job counts. OpenWebUI adapter prerequisite: server-owned reserved session ID from actual authenticated account generation and validated chat ID, not caller owner; reject legacy direct namespace selection in Chat/Word/ordinary Job, preserve exact signed Word capability, require same owner for direct bearer export of scoped sessions. Existing unscoped session semantics unchanged. CI/review pending; adapter and deployed identity/TLS still separate.
+
+
+## 2026-11-25 #413 — additional natural date forms candidate
+- Expand bounded complete Chinese sentences to explicit absolute year/month/day and same-precision ranges, optional comma/期間, topic-first 在/於 and exact 為何 interrogative. Preserve legacy date source text, original question and literal topic/aspects. No implicit time, relative date, unsupported aspect or compound scope. Synthetic regression pending CI and review; does not guarantee ordinary ES receipt alignment.
