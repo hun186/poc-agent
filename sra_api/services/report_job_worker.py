@@ -7,7 +7,7 @@ import requests
 from urllib3.exceptions import ReadTimeoutError as Urllib3ReadTimeoutError
 from pathlib import Path
 from types import SimpleNamespace
-from api.routers.chat_support import ChatMessage
+from api.services.sessions import ChatMessage
 from api.services.export_word_service import ExportWordService
 from api.services.turn_execution import execute_agent_turn
 from .report_job_store import ADAPTIVE_JOB_OPTION, ReportJobStore
