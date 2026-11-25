@@ -151,3 +151,11 @@
 
 ## 2026-11-25 #413 — sender deployment preflight candidate
 - Standalone bundle CLI check-config and optional unsigned read-only GET to configured chat path with shared strict TLS/loopback transport. No prompts/credentials/Job; 405 Allow POST is route observation only (ordinary API may match), fixed redacted partial status. Actual HTTP/TLS synthetic tests including wrong CA/SAN and redirects. No live deployment or authorization acceptance.
+
+
+## 2026-11-25 #413 — integrated socket regression candidate
+- #518 merged after exact-head 5/5 CI and clean review. Generated standalone Pipe -> real optional private Uvicorn loopback/TLS -> auth/replay SQLite -> scoped Chat/atomic deep admission -> real browser bearer owner API; quiescent directory/port relocation and revoked account tests. OpenWebUI rows and ordinary Agent/render/session persistence are synthetic; no live providers, actual completed Word, physical cross-host or independent security acceptance.
+
+- 2026-11-25 #519 exact head dcc77b679171: Python3.11 399 passed, Python3.10 stalled at 54% and cancelled at 25-minute workflow limit. Other 3 workflows passed and review clean, NOT mergeable under gate. Separate bounded verbose integration run with faulthandler to locate stall; no timeout increase or skip; new CI pending.
+
+- #519 diagnostic head 630bf634: Python3.10 other 397 tests PASS, integrated local_http PASS, verified_https hung in revoked-account invocation line 156, bounded timeout 124. Python3.11 PASS. Suspected response-owned detached socket on rejected status: explicitly close HTTPResponse on all send/probe paths, add deterministic resource-release tests; keep actual HTTPS revoked-account integration unchanged, new CI pending.
