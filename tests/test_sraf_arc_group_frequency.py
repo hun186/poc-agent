@@ -100,3 +100,51 @@ def test_arc_lower_observation_budget_does_not_change_evidence(monkeypatch, capl
     assert r["inspected_rows"] <= 2
     assert r["text_chars"] <= 10
     assert r["sample_limited"] is True
+
+
+def test_arc_budget_shares_request_limit_across_rounds_and_isolates_reports():
+    from agent.es.arc_request_budget import ArcUnits, ArcRequestBudget
+    budget = ArcRequestBudget(request_limit=ArcUnits(slices=3, chars=100),
+                              round_limit=ArcUnits(slices=2, chars=70))
+    assert budget.reserve(1, ArcUnits(slices=1, chars=60))
+    assert not budget.reserve(1, ArcUnits(slices=1, chars=11))
+    assert budget.reserve(2, ArcUnits(slices=1, chars=40))
+    assert not budget.reserve(3, ArcUnits(slices=1, chars=1))
+    assert budget.snapshot()[0] == ArcUnits(slices=2, chars=100)
+    another = ArcRequestBudget()
+    assert another.snapshot()[0] == ArcUnits()
+    budget.seal()
+    assert not budget.reserve(3, ArcUnits(slices=1))
+
+
+def test_arc_budget_concurrent_reservations_are_atomic():
+    from concurrent.futures import ThreadPoolExecutor
+    from agent.es.arc_request_budget import ArcUnits, ArcRequestBudget
+    budget = ArcRequestBudget(request_limit=ArcUnits(slices=4, hits=4),
+                              round_limit=ArcUnits(slices=4, hits=4))
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(lambda _: budget.reserve(1, ArcUnits(slices=1, hits=1)),
+                                range(32)))
+    assert sum(results) == 4
+    total, rounds = budget.snapshot()
+    assert total == ArcUnits(slices=4, hits=4)
+    assert rounds[1] == total
+    rounds.clear()
+    assert budget.snapshot()[1][1] == total
+
+
+def test_arc_budget_rejects_invalid_limits_units_and_rounds():
+    import pytest
+    from agent.es.arc_request_budget import ArcUnits, ArcRequestBudget, MAX_ROUNDS
+    for invalid in (-1, True, 1.5):
+        with pytest.raises(ValueError):
+            ArcUnits(chars=invalid)
+    with pytest.raises(ValueError):
+        ArcRequestBudget(request_limit=ArcUnits(slices=9))
+    with pytest.raises(ValueError):
+        ArcRequestBudget(request_limit=ArcUnits(slices=1))
+    budget = ArcRequestBudget()
+    for invalid in (0, True, MAX_ROUNDS + 1):
+        assert not budget.reserve(invalid, ArcUnits(slices=1))
+    assert not budget.reserve(1, ArcUnits())
+    assert budget.snapshot()[0] == ArcUnits()
