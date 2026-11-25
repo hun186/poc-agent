@@ -17,7 +17,7 @@ from api.services.sraf_chat_deep_turn import (
 from api.services.sraf_deep_scope_policy import compile_deep_question, DeepScopeDenied
 from api.services.sraf_adaptive_job_runtime import create_adaptive_job
 from api.services.sraf_deep_startup_config import validate_chat_public_base
-from api.routers.report_jobs import _browser_status_url
+from api.services.report_job_service import browser_status_url
 
 _STATUS = {
     "queued": "排隊中",
@@ -109,7 +109,7 @@ def append_deep_chat_status(response: dict, state, identity, ordinary) -> None:
         if type(message.get("content")) is not str or type(message.get("context")) is not dict:
             return
         job, created = admit_after_ordinary(state, identity, ordinary)
-        relative = _browser_status_url(job.job_id)
+        relative = browser_status_url(job.job_id)
         if relative is None or job.status not in _STATUS:
             raise ValueError("invalid_deep_status")
         url = base + relative

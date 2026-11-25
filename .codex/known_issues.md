@@ -144,3 +144,7 @@
 
 ## 2026-11-25 #413 — auto Chat candidate limitations
 - Only bounded natural/explicit grammar, exact index set/order, event dates and core terms, no prior context for new admission. OpenWebUI must actually forward an individual SRAF JWT and stable unique per-message Idempotency-Key; shared service keys and raw user/session headers never suffice. Actual private browser/proxy URLs, real ES/LLM, long job resource profile and Word/download verification remain separate. Synthetic CI/review pending.
+
+
+## 2026-11-25 #413 — import-order regression after #503
+- #504 N-round Python 3.10/3.11 failed at collection when importing Worker before routers. Candidate fix submitted independently against main; do not merge dependent scoped-chat and Pipe candidates until the fix passes and they are retargeted/revalidated. Prior #503 green UI suite did not cover this import order. No live acceptance inferred.

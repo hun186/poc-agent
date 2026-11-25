@@ -91,5 +91,9 @@
 - #500/#501 merged after exact-head 5/5 and 7/7 CI and clean Codex re-review, prior findings resolved. Candidate wires authenticated Chat to existing deep queue only after ordinary report response/snapshot/session/trace succeeds, exact original compile matches private observed ES scope, verified per-turn key and current owner grant. Verified durable replay works without a new receipt. Default disabled; separate explicit operator auto opt-in plus safe PUBLIC_API_BASE; missing user token/key, META/JSON, ambiguous or contextual scope do not create Jobs. Markdown status link only after verified persisted Job, no token, no private scope, no direct Word before completion. CI/review pending; real OpenWebUI adapter and private live acceptance separate.
 
 
+## 2026-11-25 #413 — Chat/Worker import boundary regression
+- #503 merged c8305ef26b68 with 5/5 workflows and clean latest-head review; #504's separate N-round workflow subsequently exposed an import-order cycle already present in #503. Candidate removes Worker dependency on HTTP router package for ChatMessage and defers exact Worker type import until admission resolution; tests fresh processes in Worker-first, Chat-first, dispatch-first order and extends N-round path filters so future Chat/dispatch changes trigger it. No authorization relaxation, provider traffic or deployment. Latest-head CI/review pending.
+
+
 ## 2026-11-25 #413 — scoped OpenWebUI session candidate (dependent on #503)
 - #503 P2 test helper now passes verified account binding for real job counts. OpenWebUI adapter prerequisite: server-owned reserved session ID from actual authenticated account generation and validated chat ID, not caller owner; reject legacy direct namespace selection in Chat/Word/ordinary Job, preserve exact signed Word capability, require same owner for direct bearer export of scoped sessions. Existing unscoped session semantics unchanged. CI/review pending; adapter and deployed identity/TLS still separate.

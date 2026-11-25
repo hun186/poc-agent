@@ -8,7 +8,7 @@ import zipfile
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, Field
-from api.services.report_job_service import DEFAULT_REPORT_MODEL, create_job
+from api.services.report_job_service import DEFAULT_REPORT_MODEL, create_job, browser_status_url as _browser_status_url
 from api.services.report_job_store import ADAPTIVE_JOB_OPTION, CHAT_DEEP_KEY_PREFIX, IdempotencyConflict, ReportJobAdmissionFull
 from api.security.models import AuthPrincipal
 from api.security.principal import require_scopes
@@ -31,14 +31,7 @@ class ReportJobCreate(BaseModel):
     options: dict = Field(default_factory=dict, max_length=0)
     metadata: dict = Field(default_factory=dict)
 
-_SAFE_BROWSER_JOB_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
 
-
-def _browser_status_url(job_id: str) -> str | None:
-    """Browser prefill only: never contains a token or bypasses Job ownership."""
-    if not isinstance(job_id, str) or not _SAFE_BROWSER_JOB_ID.fullmatch(job_id):
-        return None
-    return f"/report-jobs#job={job_id}"
 
 
 def _store(request: Request): return request.app.state.report_job_store
