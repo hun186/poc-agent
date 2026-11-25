@@ -93,3 +93,7 @@
 
 ## 2026-11-25 #413 — Chat/Worker import boundary regression
 - #503 merged c8305ef26b68 with 5/5 workflows and clean latest-head review; #504's separate N-round workflow subsequently exposed an import-order cycle already present in #503. Candidate removes Worker dependency on HTTP router package for ChatMessage and defers exact Worker type import until admission resolution; tests fresh processes in Worker-first, Chat-first, dispatch-first order and extends N-round path filters so future Chat/dispatch changes trigger it. No authorization relaxation, provider traffic or deployment. Latest-head CI/review pending.
+
+
+## 2026-11-25 #413 — local deep deployment preflight candidate
+- Add explicit local-only CLI reusing startup configuration and real ES SDK construction/close; no provider traffic or auth/SQLite changes. Fixed redacted statuses, disabled/default distinctions, optional auto HTTPS pilot config check, PASS_PARTIAL exit 2 with all live gates NOT_TESTED. Synthetic no-network tests and deployment instructions. Actual operator execution not performed.
