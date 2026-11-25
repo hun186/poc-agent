@@ -159,3 +159,13 @@
 - 2026-11-25 #519 exact head dcc77b679171: Python3.11 399 passed, Python3.10 stalled at 54% and cancelled at 25-minute workflow limit. Other 3 workflows passed and review clean, NOT mergeable under gate. Separate bounded verbose integration run with faulthandler to locate stall; no timeout increase or skip; new CI pending.
 
 - #519 diagnostic head 630bf634: Python3.10 other 397 tests PASS, integrated local_http PASS, verified_https hung in revoked-account invocation line 156, bounded timeout 124. Python3.11 PASS. Suspected response-owned detached socket on rejected status: explicitly close HTTPResponse on all send/probe paths, add deterministic resource-release tests; keep actual HTTPS revoked-account integration unchanged, new CI pending.
+
+
+## 2026-11-25 #413 — existing Linux supervisor compatibility candidate
+- #519 Python3.10 stalled and cancelled (25m), Python3.11 399 passed; separate bounded verbose diagnostic pending. #520 merged 4/4 + clean review. Existing run_sra_api.sh directly uses Uvicorn and thus cannot start optional private listener. Candidate explicit shell-only opt-in preserves public HTTP via api.run_api --public --http --port actual port, same child PID/supervisor/workers, default old path; invalid flag rejects before mutation. Existing shutdown timeout requires quiescence. Synthetic shell/launcher parameter tests, no real supervisor/host or independent security acceptance.
+
+- #521 first CI: both Python versions 402 PASS/2 fail in shell test due to asynchronous process-substitution logger read before EOF. Explicit completion marker and bounded wait in test only; production launcher unchanged, rerun exact head.
+
+- #519 merged 48cb32512b6f: both Python versions 401 regression + 2 integrated socket PASS, 4/4 CI, clean review. #522 initial OFF1 restart contender test timed out: old event wait can pass before replacement startup. Candidate synchronizes new launcher identity, second handoff event and both role records; adds actual existing supervisor subprocess fixture for opt-in preserving API PID/port and all three roles. No change to production restart policy; no claim of arbitrary mid-start shutdown safety.
+
+- #521 Codex P2: strict OFF-1S listener attestation denied the new supervised argv if optional setproctitle absent. Extend only exact Python executable/module/--public/--http/--port sequence, preserving live PID/start tick/effective UID/cwd/exclusive socket checks. Tests deny altered port, SSL, missing HTTP flag, extra workers and different module/executable. Exact-head review/CI pending.

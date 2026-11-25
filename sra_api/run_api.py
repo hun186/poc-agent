@@ -13,7 +13,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--public", action="store_true", help="host=0.0.0.0")
     parser.add_argument("--port", type=int, default=9002)
-    parser.add_argument("--ssl", action="store_true", help="強制啟用 https（adhoc 自簽）")
+    transport = parser.add_mutually_exclusive_group()
+    transport.add_argument("--ssl", action="store_true", help="強制啟用 https（adhoc 自簽）")
+    transport.add_argument("--http", action="store_true", help="保留既有 HTTP 監聽（不改私有 listener TLS）")
     args = parser.parse_args()
 
     if not 1 <= args.port <= 65535:
@@ -22,7 +24,7 @@ def main():
     # handoff startup refuses to bind this port before public Uvicorn starts.
     app.state.handoff_public_listener_port = args.port
     host_ip = "0.0.0.0" if args.public else "127.0.0.1"
-    use_https = should_use_https(force_ssl=args.ssl)
+    use_https = not args.http and should_use_https(force_ssl=args.ssl)
 
     if use_https:
         hosts = ["192.168.0.228", "192.168.0.133", "localhost", "127.0.0.1"]

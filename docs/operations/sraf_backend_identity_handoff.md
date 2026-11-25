@@ -258,3 +258,27 @@ FAIL / exit 1 時先核對配置、DNS/SAN/CA、容器網路與 port，不放寬
 ## 整合回歸候選
 - Generated Pipe → 實際 private Uvicorn socket（loopback / temporary TLS）→ 簽章、replay SQLite、真 AuthStore、scoped Chat、真持久 Job/Checkpoint → 真 browser bearer owner authorization。驗證錯誤 TLS 名稱不會送出問題、queued Word 拒絕、他人 status/download 拒絕、停機移動配置目錄與 port 後沿用同一 Job、撤銷帳號後拒絕。
 - OpenWebUI 資料列及一般 Agent、渲染與 session persistence 邊界為合成 fixture；沒有實際 OpenWebUI、ES、LLM、已完成 Word 或跨物理主機的證據。不能替代現場驗收。
+
+
+## 既有 Linux supervisor 相容性（候選）
+
+既有 run_sra_api.sh 預設直接執行 Uvicorn HTTP，不會啟動可選私有 listener。
+新增明確 shell-only opt-in，不改原本預設或 .env.local 解析：
+
+```bash
+# 只在已核准的維護窗口，所有執行中工作已排空，並完成部署前檢查後。
+SRAF_HANDOFF_SUPERVISED_LAUNCH=1 bash run_sra_api.sh
+```
+
+使用同一 supervisor、Port、PID 身分、Schedule/Handoff Worker 與 log，
+只把 API child 改成 `python -m api.run_api --public --http --port "$PORT"`。
+--http 保留原本公開 HTTP listener；不改獨立私有 listener TLS。
+SRAF_HANDOFF_ENABLED=1 仍由實際 Python runtime config 控制；
+shell flag 本身不開啟 listener。非 0/1 在 bootstrap/lock 前拒絕。
+不要將 supervisor 與另一個手動 api.run_api 程序一起啟動。
+既有公開 HTTP 不自動升級也不代表可以在不受保護的跨主機通道傳送登入資訊。
+注意 supervisor 原本具有有限 SIGTERM 後 SIGKILL 時限（預設 10 秒）；
+停機前須先停止新提交、排空所有 in-flight 呼叫與 running jobs。
+不要在仍執行工作時為遷移強制 restart。無法排空先停止本次遷移。
+正式環境未變更；本 PR 的測試為實際 shell spawn 片段及 Python launcher
+參數契約（stub child/uvicorn），不是完整私有 Linux supervisor 實測。

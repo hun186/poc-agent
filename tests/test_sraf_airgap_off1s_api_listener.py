@@ -232,6 +232,23 @@ def test_launcher_python_console_script_and_runtime_title(monkeypatch, tmp_path)
                           b"api.main:app\x00--host\x000.0.0.0\x00--port\x009002\x00")
     assert not listener._same_process(PID, TICK, root_stat, PORT)
 
+    # Exact supervisor opt-in when setproctitle is unavailable.
+    for executable in (b"python", b"/usr/local/bin/python3.10"):
+        argv = [executable, b"-m", b"api.run_api", b"--public", b"--http",
+                b"--port", str(PORT).encode()]
+        payload["command"] = b"\x00".join(argv) + b"\x00"
+        assert listener._same_process(PID, TICK, root_stat, PORT)
+        for altered in (
+            argv[:-1] + [b"9003"],
+            argv[:4] + [b"--ssl"] + argv[5:],
+            argv[:4] + argv[5:],
+            argv + [b"--workers", b"2"],
+            argv[:2] + [b"other.run_api"] + argv[3:],
+            [b"bash"] + argv[1:],
+        ):
+            payload["command"] = b"\x00".join(altered) + b"\x00"
+            assert not listener._same_process(PID, TICK, root_stat, PORT)
+
     hostname = listener.socket.gethostname()
     title = f"SRA-API | port={PORT} | gpt-oss | pid={PID} | {hostname}"
     payload["command"] = title.encode() + b"\x00\x00\x00"

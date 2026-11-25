@@ -165,6 +165,13 @@ def _same_process(pid: int, start_tick: str, root_stat: os.stat_result,
                    and Path(argv[0]).name == "uvicorn"
                    and argv[1:] == ["api.main:app", "--host", "0.0.0.0",
                                     "--port", str(port)])
+        # The opt-in supervisor path has this exact argv when optional
+        # setproctitle is absent. Do not accept other module/transport/args.
+        argv_ok = argv_ok or (
+            len(argv) == 7
+            and re.fullmatch(r"python(?:[0-9]+(?:\.[0-9]+)?)?", Path(argv[0]).name) is not None
+            and argv[1:] == ["-m", "api.run_api", "--public", "--http",
+                             "--port", str(port)])
     return argv_ok and _start_tick(pid) == start_tick
 
 
