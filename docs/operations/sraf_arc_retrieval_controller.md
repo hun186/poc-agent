@@ -62,3 +62,7 @@ CHARS 是 Python len() 計算的原始片段字元數，含日期驗證前掃描
 - A9：普通及深度報告在共同規則及各自資源預算上整合。任何 on/預設改變前須在同一私有 news_test 快照，以人工標記相關性、精確率/召回率、p50/p95、ES 查詢數/CPU/傳輸量、LLM calls/token、來源多樣性、事件日期與必要主題保持作驗收。
  
 此文件不是實機效能、已完成自適應重查或上線核准。
+
+## 深度報告統計計畫補充
+### A3b 深度報告統計 scope plan（離線，不發送）
+由 active FrozenSingleQueryPlan 與原始 coordinator 語意群組建構，保留日期及必要實體 root candidate filter，不納入 planner 新增詞或相關性 should。無界日期、analysis date、固定欄位未支援時拒絕。計畫本身不包含 PIT ID、不消耗 ES 額度、不宣稱 owner 授權或分支證明。未來 transport 必須保留同一授權 PIT 最新 ID、原本 ES/時間及 ARC 雙重預算、當前 owner 複查、PIT 更新與 cleanup、完整 shard/count 回應；不得污染 Evidence 分頁證明。尚無 live mapping/analyzer/負載驗收。
