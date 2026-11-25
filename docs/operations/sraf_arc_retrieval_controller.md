@@ -10,6 +10,23 @@
 這是有排序偏差、可能截斷的已回傳解析樣本，不是全索引 DF、全部初篩命中數、真正文章去重總數、或相關性/純度。多頁不可直接相加當唯一文件。
 不新增 ES/LLM 呼叫、不更改檢索或 Evidence 結果、不啟用自動複篩。
  
+### A3 解析切片統計預算（operator-only，預設不變）
+下列環境變數只影響 shadow 統計，不影響原始 Evidence、ES 搜尋或 LLM context。正整數可降低預算；超過既有硬上限則夾限，無效值使用原預設，不輸出原始設定值。日志 effective_budget 顯示實際生效上限。
+
+| 環境變數（共同前綴 SRAF_ARC_GROUP_FREQUENCY_MAX_） | 預設與硬上限 |
+| --- | ---: |
+| HITS | 128 |
+| ROWS | 256 |
+| ROWS_PER_HIT | 8 |
+| CHARS | 131072 |
+| ROW_CHARS | 4096 |
+| GROUPS | 16 |
+| TERMS | 64 |
+| TERM_CHARS | 160 |
+
+CHARS 是 Python len() 計算的原始片段字元數，含日期驗證前掃描過的文字，不是 bytes/token，也不是 ES 回傳或報告字數。現階段不允許增加硬上限，待實機測量後再調整。
+各切片上限不是全報告累計上限；跨工具、分頁與深度輪次共用的 request-local budget 尚需驗證執行緒傳遞、生命週期與併發隔離後實作。
+
 ## 後續 gate
 - A1：Word/Markdown 分開未測與實測零值，再以真正 term_groups 顯示群組；歷史扁平清單不得推測歸屬。
 - A2：中英文雙向查漏及兩岸異譯；原始必要詞優先、同群組 OR、總/每組預算、跨組正規化碰撞與英文單詞邊界、短語 precision、人工指定/排除控制；獨立 opt-in 與 A/B。
