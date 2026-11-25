@@ -124,7 +124,7 @@ def _parse_payload(body: bytes):
 
 def build_private_ingress(main_app: FastAPI, listener: HandoffListener,
                           trust: HandoffTrust, mapping: HandoffSubjectMap,
-                          replay: HandoffReplayStore) -> uvicorn.Config:
+                          replay: HandoffReplayStore, *, admission_open=None) -> uvicorn.Config:
     """Return a dedicated server config; do not call run/start or mount it.
 
     Uses the same process-owned state and the actual existing Chat execution,
@@ -150,6 +150,8 @@ def build_private_ingress(main_app: FastAPI, listener: HandoffListener,
 
     @ingress.post(_PATH)
     async def receive(request: Request):
+        if admission_open is not None and not admission_open():
+            raise HTTPException(503, "Backend listener unavailable")
         if not _channel_allowed(request, listener):
             raise HTTPException(403, "Backend channel denied")
         if (url_utils.PUBLIC_API_BASE.rstrip("/") != public_base
@@ -173,10 +175,14 @@ def build_private_ingress(main_app: FastAPI, listener: HandoffListener,
         except Exception:
             raise HTTPException(400, "Backend payload denied") from None
         try:
+            if admission_open is not None and not admission_open():
+                raise HTTPException(503, "Backend listener unavailable")
             context = await run_in_threadpool(prepare_handoff_chat, trust, mapping, replay,
                 headers=tuple(request.scope.get("headers", ())), body=raw,
                 method=request.method, path=request.scope["path"],
                 query_string=request.scope.get("query_string", b""))
+        except HTTPException:
+            raise
         except Exception:
             raise HTTPException(401, "Backend assertion denied") from None
         try:
@@ -194,6 +200,7 @@ def build_private_ingress(main_app: FastAPI, listener: HandoffListener,
     return uvicorn.Config(
         ingress, host=listener.bind_host, port=listener.port,
         proxy_headers=False, forwarded_allow_ips="", lifespan="off", access_log=False,
+        log_config=None, timeout_keep_alive=5, limit_concurrency=16,
         ssl_certfile=str(listener.cert_file) if listener.cert_file else None,
         ssl_keyfile=str(listener.key_file) if listener.key_file else None,
     )

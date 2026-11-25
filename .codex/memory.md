@@ -135,3 +135,7 @@
 
 ## 2026-11-25 #413 — portable handoff receiver manifest and local preflight candidate
 - Explicit disabled-by-default receiver config; manifest-relative paths, separate restricted key files, duplicate/unknown schema rejection, actual listener cert/key local validation and replay schema read-only readiness. Explicit initialize-new only never overwrites replay DB. Quiescent relocation synthetic test; no AuthStore/provider/production startup, listener or live acceptance. Actual lifecycle and adapter separate; no OpenWebUI changes.
+
+
+## 2026-11-25 #413 — supervised optional listener candidate
+- #515 merged after 4/4 CI and clean exact-head review. Candidate same-event-loop dedicated Uvicorn listener started only with explicit enabled config and actual single-process launcher public port, prebind/collision rejection, no signal/proxy trust, fixed startup/runtime status, graceful drain before shared Worker shutdown. Real synthetic socket/lifespan tests; no live deployment/security acceptance.

@@ -92,3 +92,7 @@
 
 ## 2026-11-25 #413 — portable deep runtime / ordinary-only isolation candidate
 - Deployment topology is operator-owned config, not a hardcoded endpoint or an implicit trust policy. Dedicated deep ES URL override preserves ordinary and ingestion settings; actual TLS identity always required. Explicit ordinary-only startup isolation disables deep policy/auto dispatch on typed configuration/setup failure and holds queued deep jobs in the existing SQLite queue. Unexpected runtime/shared infrastructure faults still fail startup. A stable server-side identity handoff is future work; no raw user headers or automatic transport downgrade.
+
+
+## #413 — optional private listener candidate
+- Main API owns state and Worker; one explicit private Uvicorn server task shares event loop without lifespan/signal ownership. Launcher actual public port fences collision. Default disabled, expected config/bind faults isolated, stop admission/drain before shared resource shutdown. No public route/auth downgrade.

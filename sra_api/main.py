@@ -46,6 +46,8 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("report_worker_previous_lifespan_active")
     app.state.deep_scope_policy = None
     app.state.deep_chat_auto_base_url = None
+    app.state.handoff_listener_status = "DISABLED"
+    app.state.handoff_listener_runtime = None
     env_snapshot = dict(os.environ)
     # Explicit operator choice only; never silently downgrade security.
     failure_policy = env_snapshot.get("SRAF_DEEP_STARTUP_FAILURE_POLICY", "fail_startup")
@@ -114,6 +116,7 @@ async def lifespan(app: FastAPI):
                 )
     composition = None
     worker = None
+    handoff = None
     try:
         if deep_config is not None:
             from api.services.sraf_deep_runtime_composition import compose_deep_runtime
@@ -152,8 +155,14 @@ async def lifespan(app: FastAPI):
             worker.start()
             if composition is not None:
                 app.state.deep_startup_status = "CONFIGURED"
+        if env_snapshot.get("SRAF_HANDOFF_ENABLED", "0") != "0":
+            from api.security.sraf_handoff_lifecycle import start_optional_handoff
+            handoff = await start_optional_handoff(
+                app, env_snapshot, project_root=Path(__file__).resolve().parents[1])
         yield
     finally:
+        if handoff is not None:
+            await handoff.stop()
         app.state.deep_scope_policy = None
         app.state.deep_chat_auto_base_url = None
         try:
