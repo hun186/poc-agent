@@ -98,3 +98,20 @@ session/turn token 由 logical issuer/audience/external subject/chat/message
 衍生，重試與輪替保持穩定，跨 chat/subject 不混用。已准入 context 仍需在
 實際執行前和後續深度派送前重驗，不能放入 public dependency 或跨 request 使用。
 本模組不信任 HTTP header 作為 transport 證明、不安裝 API、不簽發使用者 Token。
+
+
+## 獨立私有 Chat ingress 候選（未啟動）
+
+提供 build_private_ingress，回傳專用 Uvicorn Config；沒有啟動任何 listener，
+也不掛入原本公開 SRAF app。loopback HTTP 綁 literal loopback，跨主機
+使用另設的直接 TLS listener（需合法 cert/key），關閉 proxy header 信任、
+拒絕 forwarded headers、禁止 query/路由變形及混用一般 credential。
+TLS listener 與 OpenWebUI 既有對外 HTTPS 是不同設定。只接單一 POST Chat、
+單一文字 user message、非串流 Markdown，不靜默捨棄 system/history/附件；
+其他請求拒絕。原公開 Chat bearer 路徑不接受 assertion。
+使用相同 SRAF app.state、相同 Agent/普通報告/深度派送，沒有第二組 Worker、
+沒有另一份 AuthStore。要求明確 PUBLIC_API_BASE 以免 private Host 污染 Word URL。
+執行及回傳前重驗 mapping/generation/role，深度任務保持原 policy。
+合成 ASGI + 真 SQLite 驗證，不是實機通道認證。後續須做 operator config、
+single-process listener supervision/start/stop、OpenWebUI 實際 adapter、browser
+登入銜接、完整跨主機 acceptance 與獨立 Security Review 才可開啟。

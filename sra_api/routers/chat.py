@@ -78,6 +78,23 @@ def chat_completions(
     request: Request,
     principal: AuthPrincipal = Depends(require_scopes(MODEL_INVOKE)),
 ):
+    # An assertion must never become a public-route credential or fall
+    # through to ordinary bearer authentication on the existing listener.
+    if request.headers.getlist("x-sraf-backend-assertion"):
+        raise HTTPException(400, "Backend handoff requires the private ingress")
+    return _execute_chat(payload, request, principal)
+
+
+def execute_handoff_chat(payload, request, context, mapping):
+    """Private ingress only; never install as a public router/dependency."""
+    from api.security.sraf_handoff_chat_context import revalidate_handoff_chat
+    revalidate_handoff_chat(context, mapping)
+    return _execute_chat(payload, request, context.principal,
+                         handoff=(context, mapping))
+
+
+def _execute_chat(payload, request, principal, *, handoff=None):
+    from api.security.sraf_handoff_chat_context import revalidate_handoff_chat
     sessions = get_sessions()
     last_structured = get_last_structured()
     
@@ -89,8 +106,15 @@ def chat_completions(
 
     try:
         # Adapter-provided chat IDs are context hints, not ownership.
-        values = tuple(request.headers.getlist(SCOPED_CHAT_HEADER))
-        scoped = bind_openwebui_session(principal, values) if values else None
+        if handoff is not None:
+            context, mapping = handoff
+            revalidate_handoff_chat(context, mapping)
+            scoped = context.session
+            turn_tokens = (context.turn_token,)
+        else:
+            values = tuple(request.headers.getlist(SCOPED_CHAT_HEADER))
+            scoped = bind_openwebui_session(principal, values) if values else None
+            turn_tokens = tuple(request.headers.getlist("idempotency-key"))
         session_key = scoped.key if scoped is not None else require_legacy_session(
             resolve_session_key(payload, request))
 
@@ -128,6 +152,8 @@ def chat_completions(
         # 2) 先檢查是不是 WebUI 的 META 任務
         kind = detect_meta_kind(query)
         if kind:
+            if handoff is not None:
+                raise HTTPException(400, "Backend handoff accepts only user chat")
             resp = handle_meta_task(
                 kind=kind,
                 session_key=session_key,
@@ -143,7 +169,7 @@ def chat_completions(
         fmt = (payload.format or "markdown").lower()
         deep_identity = prepare_auto_chat(
             request.app.state, principal,
-            turn_tokens=tuple(request.headers.getlist("idempotency-key")), fmt=fmt,
+            turn_tokens=turn_tokens, fmt=fmt,
         )
         # 3) 一般任務由共用 turn execution service 執行。
         #query_for_agent = _build_query_for_agent(
@@ -167,6 +193,10 @@ def chat_completions(
         except Exception as e:
             print("answer_with_routing 發生錯誤：", e)
             raise HTTPException(status_code=500, detail="後端分析發生錯誤，請稍後再試")
+        if handoff is not None:
+            revalidate_handoff_chat(context, mapping)
+            if session_key != context.session.key:
+                raise HTTPException(503, "Backend handoff session unavailable")
         # 6) 產主文
         fmt = (payload.format or "markdown").lower()
         if fmt == "json":
@@ -250,7 +280,11 @@ def chat_completions(
 
         # Only after successful ordinary rendering and persistence. Never save
         # the private scope or deep link as the ordinary report snapshot.
+        if handoff is not None:
+            revalidate_handoff_chat(context, mapping)
         append_deep_chat_status(resp, request.app.state, deep_identity, turn)
+        if handoff is not None:
+            revalidate_handoff_chat(context, mapping)
         return resp
 
     except HTTPException:

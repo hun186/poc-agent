@@ -127,3 +127,7 @@
 
 ## 2026-11-25 #413 — private handoff Chat context candidate
 - Combine unique raw assertion and reject conflicting browser/auth/session/turn headers, durable nonce and live mapping into restricted Chat-only principal with generation fence, stable logical scoped session/turn ID independent of IP/key/nonce, revalidate current mapping/role/generation. No new public auth dependency or token/route; actual trusted ingress and execution wiring remain separate. Synthetic tests only; no production.
+
+
+## 2026-11-25 #413 — dedicated private Chat ingress candidate
+- Private no-proxy-header Uvicorn Config factory, no listener start/mount; strict channel and payload, assertion-only identity, explicit browser base, shares existing app state and actual ordinary Chat/deep dispatch, revalidate generation before use/return, public bearer route rejects assertion. Synthetic ASGI+real SQLite; operator lifecycle/config, adapter, browser auth, live TLS/LLM/Word and independent security gates remain.
