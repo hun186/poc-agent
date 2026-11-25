@@ -151,3 +151,7 @@
 
 ## 2026-11-25 #413 — sender deployment preflight candidate
 - Standalone bundle CLI check-config and optional unsigned read-only GET to configured chat path with shared strict TLS/loopback transport. No prompts/credentials/Job; 405 Allow POST is route observation only (ordinary API may match), fixed redacted partial status. Actual HTTP/TLS synthetic tests including wrong CA/SAN and redirects. No live deployment or authorization acceptance.
+
+
+## 2026-11-25 #413 — existing Linux supervisor compatibility candidate
+- #519 Python3.10 stalled and cancelled (25m), Python3.11 399 passed; separate bounded verbose diagnostic pending. #520 merged 4/4 + clean review. Existing run_sra_api.sh directly uses Uvicorn and thus cannot start optional private listener. Candidate explicit shell-only opt-in preserves public HTTP via api.run_api --public --http --port actual port, same child PID/supervisor/workers, default old path; invalid flag rejects before mutation. Existing shutdown timeout requires quiescence. Synthetic shell/launcher parameter tests, no real supervisor/host or independent security acceptance.

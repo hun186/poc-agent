@@ -5,6 +5,13 @@ set -euo pipefail
 # the port-kill audit is permanent and is never truncated here.
 BASE_DIR="${BASE_DIR:-/mntCZJ/TopicClassification/poc-agent}"
 PORT="${PORT:-9002}"
+# Explicit shell-only opt-in: preserve the existing Uvicorn HTTP launcher
+# unless the operator selects the single-process handoff-capable launcher.
+SRAF_HANDOFF_SUPERVISED_LAUNCH="${SRAF_HANDOFF_SUPERVISED_LAUNCH:-0}"
+case "$SRAF_HANDOFF_SUPERVISED_LAUNCH" in
+  0|1) ;;
+  *) echo "[run_sra_api] Invalid SRAF_HANDOFF_SUPERVISED_LAUNCH (expected 0 or 1)." >&2; exit 2 ;;
+esac
 MAX_SIZE_KB=$((10 * 1024))
 MAX_SIZE=$((MAX_SIZE_KB * 1024))
 API_LOG="${API_LOG:-SRA-API_output.txt}"
@@ -495,7 +502,11 @@ audit "STARTUP_TIMING phase=old_runtime_checked elapsed_ms=$(startup_elapsed_ms 
 echo "[run_sra_api] Starting API + Requirement Schedule Worker + Requirement Handoff Worker"
 echo "[run_sra_api] Base directory: $BASE_DIR; port: $PORT; runtime log cap: 10 MB"
 
-uvicorn api.main:app --host 0.0.0.0 --port "$PORT" 9>&- > >(cap_log "$API_LOG" 9>&- >/dev/null 2>&1) 2>&1 &
+if [ "$SRAF_HANDOFF_SUPERVISED_LAUNCH" = 1 ]; then
+  python -m api.run_api --public --http --port "$PORT" 9>&- > >(cap_log "$API_LOG" 9>&- >/dev/null 2>&1) 2>&1 &
+else
+  uvicorn api.main:app --host 0.0.0.0 --port "$PORT" 9>&- > >(cap_log "$API_LOG" 9>&- >/dev/null 2>&1) 2>&1 &
+fi
 CHILD_PIDS+=("$!"); CHILD_NAMES+=("SRA API")
 OWNED_API_PID="$!"
 write_api_identity "$OWNED_API_PID"
