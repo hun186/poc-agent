@@ -1,4 +1,4 @@
-"""ARC request-local atomic reservation groundwork; no runtime wiring yet.
+"""ARC request-local atomic reservations and tool-worker scope.
 
 One instance must be owned by one report and explicitly propagated to its
 workers. Never create a process-global budget or treat reservations as
@@ -6,6 +6,8 @@ observed consumption. No automatic refunds or reset on new rounds.
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, fields
 from threading import Lock
 
@@ -88,3 +90,38 @@ class ArcRequestBudget:
         """Prevent optional work after the report coordinator ends the scope."""
         with self._lock:
             self._sealed = True
+
+
+# Private caller-side scope; never exposed as a model tool argument.
+_SCOPE: ContextVar[tuple[ArcRequestBudget, int] | None] = ContextVar(
+    "sraf_arc_budget_scope", default=None,
+)
+
+
+def current_arc_budget():
+    return _SCOPE.get()
+
+
+@contextmanager
+def bind_arc_budget(scope):
+    token = _SCOPE.set(scope)
+    try:
+        yield
+    finally:
+        _SCOPE.reset(token)
+
+
+@contextmanager
+def data_agent_arc_budget(*, enabled: bool):
+    """Own one Data Agent invocation, not the complete deep report.
+
+    The future report coordinator must own a shared budget across invocations.
+    For now each invocation is one round, always using caller ordinal 1.
+    """
+    budget = ArcRequestBudget() if enabled else None
+    with bind_arc_budget((budget, 1) if budget is not None else None):
+        try:
+            yield
+        finally:
+            if budget is not None:
+                budget.seal()
