@@ -435,3 +435,59 @@ def test_arc_bilingual_shadow_failure_is_count_only_and_not_refunded(monkeypatch
     assert records[0]["status"] == expected
     assert records[1]["status"] == "shared_budget_exhausted"
     assert "PRIVATE_" not in caplog.text
+
+
+def test_arc_native_rank_receipt_from_verified_transport_only(monkeypatch, caplog):
+    from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
+    client, es_client = _native_setup(monkeypatch)
+    sink = []
+    with bind_arc_budget((ArcRequestBudget(), 1)):
+        assert es_client.safe_search(_native_body(), index="news_test",
+                    arc_frequency={**_native_args(), "receipt_sink": sink}) is client.primary
+    assert len(sink) == 1
+    receipt = sink[0]
+    assert receipt.eligible_documents == 100 and receipt.document_frequencies == (12,)
+    assert "PRIVATE_TERM" not in repr(receipt)
+    sink.clear()
+    client.frequency["timed_out"] = True
+    with bind_arc_budget((ArcRequestBudget(), 1)):
+        es_client.safe_search(_native_body(), index="news_test",
+                    arc_frequency={**_native_args(), "receipt_sink": sink})
+    assert sink == []
+
+
+def test_arc_native_rank_receipt_consumed_only_on_first_refill_build(monkeypatch):
+    from agent.es.arc_native_rank_receipt import NativeRankFrequency
+    monkeypatch.setenv("SRAF_ARC_ES_FREQUENCY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_RANK_NATIVE", "shadow")
+    monkeypatch.delenv("SRAF_ARC_BILINGUAL", raising=False)
+    receipt = NativeRankFrequency((frozenset({"SECRET_CORE", "SECRET_SYN"}),),
+                                  "2020-01-01", "2020-12-31", 100, (12,))
+    primary = _native_primary("SECRET_INDEX")
+    calls = []
+
+    def search(body, *, index, arc_frequency=None):
+        assert arc_frequency is not None
+        arc_frequency["receipt_sink"].append(receipt)
+        return primary
+
+    _prepare(monkeypatch, responder=search)
+
+    def build(hits, **kw):
+        calls.append(kw.get("native_rank_frequency"))
+        return [], [], 0
+
+    def refill(**kw):
+        builder = kw["build_evidence"]
+        hits = primary["hits"]["hits"]
+        builder(hits[:])
+        builder(hits[:] + hits[:])
+        return [], [], 0, {"incomplete_due_to_scan_limit": False}
+
+    monkeypatch.setattr(search_module, "build_hits_and_evidence", build)
+    monkeypatch.setattr(search_module, "refill_date_filtered_evidence", refill)
+    result = search_module.ESSearchNews.forward.__wrapped__(
+        object(), query="SECRET_QUERY", size=5,
+        date_from="2020-01-01", date_to="2020-12-31")
+    assert calls == [receipt, None]
+    assert "native_rank_frequency" not in repr(result)
