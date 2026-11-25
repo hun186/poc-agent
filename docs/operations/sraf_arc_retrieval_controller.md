@@ -27,6 +27,13 @@
 CHARS 是 Python len() 計算的原始片段字元數，含日期驗證前掃描過的文字，不是 bytes/token，也不是 ES 回傳或報告字數。現階段不允許增加硬上限，待實機測量後再調整。
 各切片上限不是全報告累計上限；跨工具、分頁與深度輪次共用的 request-local budget 尚需驗證執行緒傳遞、生命週期與併發隔離後實作。
 
+### A3b 離線 ES 原生文件頻率計畫（未接入 transport）
+- 使用 size:0、_source:false、track_total_hits:true 與 root filters aggregation。每群組在雙層 nested Evidence 文字欄位做 match_phrase OR，根文件只計一次；不回傳原文、ID、inner_hits 或 highlight。
+- 明確雙端日期、最大跨度 3660 日、最多 8 群組/32 詞、每詞 160 字元；保留呼叫者 high-value/selected 必要篩選；ES timeout 2s 是協作式查詢 timeout，並非 CPU/牆鐘硬上限。
+- 分母是指定日期候選條件及必要篩選內的根文件，分子是該範圍內含指定群組的根文件；可能由不同事件或區塊符合日期與片段條件，不代表同一事件，也不代表 Python Evidence 日期驗證或語意相關性。
+- 回應必須有精確 total、所有 shards 成功、無 timeout/提前終止、完整合法 buckets；不完整一律回傳 incomplete 而非零。精確只指該 ES DSL 的完整計數，非語意精確率或真實文章去重。
+- 尚未發出 ES 請求。正式接入前驗證授權 index/scope、mapping/analyzer、查詢負載、跨輪次共享預算、timeout/transport 取消及私有快照 A/B。不得以模擬 DSL 測試宣稱實機 count 驗收。
+
 ## 後續 gate
 - A1：Word/Markdown 分開未測與實測零值，再以真正 term_groups 顯示群組；歷史扁平清單不得推測歸屬。
 - A2：中英文雙向查漏及兩岸異譯；原始必要詞優先、同群組 OR、總/每組預算、跨組正規化碰撞與英文單詞邊界、短語 precision、人工指定/排除控制；獨立 opt-in 與 A/B。
