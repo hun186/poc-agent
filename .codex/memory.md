@@ -147,3 +147,7 @@
 
 ## 2026-11-25 #413 — auto Chat scoped-turn fence candidate
 - Require verified owner-scoped Chat session before auto admission; hash domain includes session key, preserve no-prompt/no-token identity semantics; ordinary receipt session must equal context before replay or creation. Legacy ordinary Chat continues without auto dispatch; old auto Job remains accessible but old hashes are not guessed or migrated. Real synthetic Chat/SQLite regressions. No live acceptance.
+
+
+## 2026-11-25 #413 — integrated socket regression candidate
+- #518 merged after exact-head 5/5 CI and clean review. Generated standalone Pipe -> real optional private Uvicorn loopback/TLS -> auth/replay SQLite -> scoped Chat/atomic deep admission -> real browser bearer owner API; quiescent directory/port relocation and revoked account tests. OpenWebUI rows and ordinary Agent/render/session persistence are synthetic; no live providers, actual completed Word, physical cross-host or independent security acceptance.

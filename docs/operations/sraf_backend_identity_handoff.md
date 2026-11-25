@@ -233,3 +233,8 @@ ordinary receipt 的 session_id 必須與 admission context 完全一致。
 既有舊 hash 的 Job 保留並可由本人歷史清單及進度頁存取，
 不會嘗試用不明 legacy session 自動認領或重新遷移舊 Job；
 若以新版重送舊訊息，需先核對是否已有歷史任務。深度顯式 API 不變。
+
+
+## 整合回歸候選
+- Generated Pipe → 實際 private Uvicorn socket（loopback / temporary TLS）→ 簽章、replay SQLite、真 AuthStore、scoped Chat、真持久 Job/Checkpoint → 真 browser bearer owner authorization。驗證錯誤 TLS 名稱不會送出問題、queued Word 拒絕、他人 status/download 拒絕、停機移動配置目錄與 port 後沿用同一 Job、撤銷帳號後拒絕。
+- OpenWebUI 資料列及一般 Agent、渲染與 session persistence 邊界為合成 fixture；沒有實際 OpenWebUI、ES、LLM、已完成 Word 或跨物理主機的證據。不能替代現場驗收。
