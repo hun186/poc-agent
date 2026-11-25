@@ -58,13 +58,19 @@ def test_actual_shell_spawn_branch_keeps_child_pid_and_port(tmp_path, flag, expe
     code = '''
 set -euo pipefail
 exec 9>/dev/null
-cap_log() { cat > "$1"; }
+cap_log() { cat > "$1"; printf done > "$1.done"; }
 python() { printf 'python %s\\n' "$*"; }
 uvicorn() { printf 'uvicorn %s\\n' "$*"; }
 ''' + block + '''
 child="$!"
 [[ "$child" =~ ^[0-9]+$ ]]
 wait "$child"
+# Bash process substitution is a separate child; wait for logger EOF.
+for ((i=0; i<100; i++)); do
+  [ -s "$API_LOG.done" ] && break
+  sleep 0.01
+done
+[ -s "$API_LOG.done" ]
 '''
     out = tmp_path / "api.log"
     result = subprocess.run(["bash", "-c", code],
