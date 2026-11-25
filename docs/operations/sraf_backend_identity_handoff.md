@@ -255,6 +255,11 @@ FAIL / exit 1 時先核對配置、DNS/SAN/CA、容器網路與 port，不放寬
 未指定 operation 不執行，回 NOT_TESTED/exit 2。
 
 
+## 整合回歸候選
+- Generated Pipe → 實際 private Uvicorn socket（loopback / temporary TLS）→ 簽章、replay SQLite、真 AuthStore、scoped Chat、真持久 Job/Checkpoint → 真 browser bearer owner authorization。驗證錯誤 TLS 名稱不會送出問題、queued Word 拒絕、他人 status/download 拒絕、停機移動配置目錄與 port 後沿用同一 Job、撤銷帳號後拒絕。
+- OpenWebUI 資料列及一般 Agent、渲染與 session persistence 邊界為合成 fixture；沒有實際 OpenWebUI、ES、LLM、已完成 Word 或跨物理主機的證據。不能替代現場驗收。
+
+
 ## 既有 Linux supervisor 相容性（候選）
 
 既有 run_sra_api.sh 預設直接執行 Uvicorn HTTP，不會啟動可選私有 listener。
