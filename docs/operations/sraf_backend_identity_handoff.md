@@ -233,3 +233,23 @@ ordinary receipt 的 session_id 必須與 admission context 完全一致。
 既有舊 hash 的 Job 保留並可由本人歷史清單及進度頁存取，
 不會嘗試用不明 legacy session 自動認領或重新遷移舊 Job；
 若以新版重送舊訊息，需先核對是否已有歷史任務。深度顯式 API 不變。
+
+
+## Sender 部署前／遷移後唯讀診斷（候選）
+
+在實際 OpenWebUI 容器／sender namespace 內執行新生成的單檔 bundle：
+```bash
+python sraf_backend_pipe_bundle.py --check-config
+python sraf_backend_pipe_bundle.py --probe-transport
+```
+第一條只讀 sender manifest、受限 key 與 CA 路徑，不連線。
+第二條對同一 operator origin 執行 GET /v1/chat/completions，無 body、
+assertion、Token、帳號或問題，不提交 Chat 或 Job；只觀察 405 Allow: POST。
+HTTPS 使用與正式 sender 同一直接 CA/hostname 驗證實作，不使用 proxy、
+redirect 或降級。socket timeout 5 秒（不是 DNS / 全程硬 deadline）。
+只輸出固定分類、不顯示網址、路徑、key 或 upstream response。
+PASS_PARTIAL / exit 2 不代表實際私有 listener 身分、帳號映射、金鑰配對、
+OpenWebUI API 版本或報告成功。普通 Chat port 亦可能回 405；務必對照
+receiver manifest 的私有 port 與 topology，不能只憑此判定上線。
+FAIL / exit 1 時先核對配置、DNS/SAN/CA、容器網路與 port，不放寬驗證。
+未指定 operation 不執行，回 NOT_TESTED/exit 2。
