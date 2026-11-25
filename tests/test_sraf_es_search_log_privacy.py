@@ -325,3 +325,113 @@ def test_native_frequency_all_supported_filter_combinations(monkeypatch, high, s
     query["filter"].pop()
     query["must_not"] = [{"term": {"owner": "PRIVATE_OWNER"}}]
     assert not _primary_scope_verified("news_test", body, _native_primary(), plan)
+
+
+def _bilingual_logs(caplog):
+    import json
+    prefix = "SRAF_ARC_BILINGUAL="
+    return [json.loads(r.getMessage().split(prefix, 1)[1])
+            for r in caplog.records if r.getMessage().startswith(prefix)]
+
+
+def test_arc_bilingual_shadow_does_not_change_search_or_evidence(monkeypatch, caplog):
+    from agent.es import arc_bilingual_shadow as shadow
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    from agent.tools_es.question_scope import bind_original_report_question
+    import json
+
+    _prepare(monkeypatch, responder=lambda body, *, index: _response(with_hits=True))
+    monkeypatch.delenv("SRAF_ARC_ES_FREQUENCY", raising=False)
+    monkeypatch.delenv("SRAF_ARC_BILINGUAL", raising=False)
+    monkeypatch.setenv("TOPIC_LLM_URL", "http://unused.invalid")
+    calls = []
+
+    def proposal(payload, **kwargs):
+        calls.append((json.loads(payload), kwargs))
+        return '[["PRIVATE_ALIAS"]]'
+
+    monkeypatch.setattr(shadow, "call_llm", proposal)
+    tool = search_module.ESSearchNews.forward.__wrapped__
+    with bind_original_report_question("PRIVATE_ORIGINAL"):
+        baseline = tool(object(), query="SECRET_QUERY", size=5)
+        assert calls == []
+        monkeypatch.setenv("SRAF_ARC_BILINGUAL", "shadow")
+        budget = ArcRequestBudget()
+        with bind_arc_budget((budget, 1)):
+            for _ in range(2):
+                assert tool(object(), query="SECRET_QUERY", size=5) == baseline
+    assert len(calls) == 1
+    assert calls[0][0] == {"query": "PRIVATE_ORIGINAL",
+                           "groups": [["SECRET_CORE", "SECRET_SYN"]]}
+    assert calls[0][1]["timeout"] == 15
+    assert calls[0][1]["extra_params"]["options"]["num_predict"] == 1536
+    assert budget.snapshot()[0] == ArcUnits(llm_calls=1)
+    records = _bilingual_logs(caplog)
+    assert records[0]["groups"] == [{"group_ordinal": 1, "original_count": 2,
+                                     "candidate_added_count": 1}]
+    assert records[1]["status"] == "shared_budget_exhausted"
+    assert all(s not in caplog.text for s in ("PRIVATE_ORIGINAL", "PRIVATE_ALIAS",
+                                               "SECRET_CORE", "SECRET_SYN"))
+
+
+@pytest.mark.parametrize("case", ["off", "no_budget", "no_original", "manual",
+                                  "capture", "acceptance", "no_provider"])
+def test_arc_bilingual_shadow_denies_unsupported_scope(monkeypatch, caplog, case):
+    from contextlib import nullcontext
+    from agent.es import arc_bilingual_shadow as shadow
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    from agent.es.ordinary_scope_receipt import OrdinaryScopeCapture, bind_ordinary_scope_capture
+    import agent.external_capabilities as capabilities
+
+    monkeypatch.setenv("SRAF_ARC_BILINGUAL", "shadow")
+    monkeypatch.setenv("TOPIC_LLM_URL", "http://unused.invalid")
+    monkeypatch.setattr(capabilities, "requirement_acceptance_active", lambda: case == "acceptance")
+    if case == "off":
+        monkeypatch.delenv("SRAF_ARC_BILINGUAL")
+    elif case == "no_provider":
+        monkeypatch.delenv("TOPIC_LLM_URL")
+    calls = []
+    monkeypatch.setattr(shadow, "call_llm", lambda *a, **kw: calls.append(1))
+    budget = ArcRequestBudget()
+    capture = bind_ordinary_scope_capture(OrdinaryScopeCapture()) if case == "capture" else nullcontext()
+    with capture, bind_arc_budget(None if case == "no_budget" else (budget, 1)):
+        shadow.observe_bilingual_proposal(
+            original_question=None if case == "no_original" else "PRIVATE_QUERY",
+            groups=[{"PRIVATE_TERM"}], manual=case == "manual")
+    assert calls == []
+    assert budget.snapshot()[0] == ArcUnits()
+    assert len(_bilingual_logs(caplog)) == (0 if case == "off" else 1)
+    assert "PRIVATE_" not in caplog.text
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("PRIVATE_INVALID", "invalid_proposal"),
+    (RuntimeError("PRIVATE_BACKEND"), "unavailable"),
+    ("[[]]", "observed_candidates"),
+])
+def test_arc_bilingual_shadow_failure_is_count_only_and_not_refunded(monkeypatch, caplog, raw, expected):
+    from agent.es import arc_bilingual_shadow as shadow
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    monkeypatch.setenv("SRAF_ARC_BILINGUAL", "shadow")
+    monkeypatch.setenv("TOPIC_LLM_URL", "http://unused.invalid")
+    calls = []
+
+    def provider(*args, **kwargs):
+        calls.append(1)
+        if isinstance(raw, Exception):
+            raise raw
+        return raw
+
+    monkeypatch.setattr(shadow, "call_llm", provider)
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)):
+        for _ in range(2):
+            assert shadow.observe_bilingual_proposal(
+                original_question="PRIVATE_QUERY", groups=[{"PRIVATE_TERM"}],
+                manual=False) is None
+    assert calls == [1]
+    assert budget.snapshot()[0] == ArcUnits(llm_calls=1)
+    records = _bilingual_logs(caplog)
+    assert records[0]["status"] == expected
+    assert records[1]["status"] == "shared_budget_exhausted"
+    assert "PRIVATE_" not in caplog.text
