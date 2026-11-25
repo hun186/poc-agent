@@ -226,3 +226,21 @@ def test_arc_a2_optional_budget_never_evicts_originals():
     assert admit_aliases(original, [["alias"] * (MAX_PROPOSALS + 1)]) == original
     assert admit_aliases(original, []) == original
     assert admit_aliases(original, [["", "123", "!!!"]]) == original
+
+
+def test_arc_a2_casefold_collisions_are_rejected():
+    from agent.es.evidence_core.cross_language_alias import admit_aliases, alias_matches
+    original = [{"Straße"}, {"道路"}]
+    assert alias_matches("Straße", "STRASSE")
+    assert admit_aliases(original, [[], ["STRASSE"]]) == original
+    assert admit_aliases([{"甲"}, {"乙"}], [["Straße"], ["STRASSE"]]) == [{"甲"}, {"乙"}]
+
+
+def test_arc_a2_unicode_latin_boundaries():
+    from agent.es.evidence_core.cross_language_alias import alias_matches
+    assert not alias_matches("US", "Réus")
+    assert not alias_matches("Å", "Åland")
+    assert not alias_matches("US", "USé")
+    assert alias_matches("Å", "瑞典 Å 政策")
+    assert alias_matches("US", "美國US政策")
+    assert not alias_matches("US", "US２")
