@@ -139,3 +139,7 @@
 
 ## 2026-11-25 #413 — supervised optional listener candidate
 - #515 merged after 4/4 CI and clean exact-head review. Candidate same-event-loop dedicated Uvicorn listener started only with explicit enabled config and actual single-process launcher public port, prebind/collision rejection, no signal/proxy trust, fixed startup/runtime status, graceful drain before shared Worker shutdown. Real synthetic socket/lifespan tests; no live deployment/security acceptance.
+
+
+## 2026-11-25 #413 — backend Pipe candidate
+- #516 merged after 5/5 CI and clean review. Inspect exact OpenWebUI v0.13.4 source APIs; standalone generated Pipe reuses canonical assertion/transport; default OFF admin-only config and separate file key, no personal token or existing secret changes. Verify live user/chat and normalized root user/pending assistant row ownership/content/parent/model; reject tasks/history/system/tools/files and unknown version. Synthetic backend rows + real signed socket only; actual OpenWebUI installation, browser auth and independent Security Review remain pending.
