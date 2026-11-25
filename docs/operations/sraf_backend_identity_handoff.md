@@ -176,3 +176,47 @@ HTTP 或 shared key。無自動重啟。未知核心錯誤仍由原 startup 規�
 仍執行時搬動 replay DB 或啟動第二個程序。RUNNING 只證明本機 socket
 server 已啟動，不是 TLS/遠端/實機 ES 或完整報告驗收。
 此候選有實際 loopback socket 測試；尚未實機部署或獨立 Security Review。
+
+
+## OpenWebUI 0.13.4 backend Pipe 候選
+
+依 upstream tag v0.13.4 的 functions.py、main.py、models/users.py、
+models/chats.py、models/chat_messages.py、utils/plugin.py 核對 async
+API 與保留參數。版本不符直接拒絕，不宣稱已在安裝的容器驗證。
+管理員在 SRAF checkout 執行：
+```bash
+python tools/build_sraf_openwebui_backend_pipe.py --output sraf_backend_pipe_bundle.py
+```
+輸出單一可匯入 Function 的檔案，簽章/transport 取自同一份 canonical
+SRAF 程式碼，不複製整套 SRAF 安裝進 OpenWebUI。預設 ENABLED=False。
+不需要 UserValves、個人 Token、WEBUI_SECRET_KEY 修改或 Valve 加密。
+OpenWebUI 管理員需掛載受限 sender manifest 與獨立 issuer key，設定
+SRAF_OPENWEBUI_HANDOFF_CONFIG_FILE 為容器內絕對路徑。
+sender manifest 示例（非正式部署值）：
+```json
+{
+  "schema": "sraf_openwebui_sender_v1",
+  "issuer": "webui-installation",
+  "audience": "sraf-installation",
+  "key_id": "current",
+  "secret_file": "issuer.key",
+  "transport": {
+    "mode": "verified_https",
+    "origin": "https://sraf-backend.example.test:19002",
+    "ca_file": "receiver-ca.pem",
+    "timeout_seconds": 300
+  }
+}
+```
+相對檔案以 manifest 目錄解析。issuer/audience/key ID 與 receiver 一致，
+key 為受限檔案，跨主機用 verified_https；同 network namespace 可顯式
+local_http。絕不接受 user valve/body/metadata 選擇目的地或憑證。
+只接受真正已儲存、owner-private、root user 文字與尚未完成的
+assistant row：查 live Users、Chats、ChatMessages normalized rows，
+檢查 account、chat、parent、model、完整原文、角色；不信任 raw metadata。
+拒絕未儲存／臨時聊天、背景任務、history/system、工具／附件及不明版本；
+不將歷史與系統提示剝除後假裝相容。實際新 chat 是否有額外 system/features
+需用 0.13.4 安裝版驗收，現有普通模型不受影響。
+逾時不是保證取消，可能仍在後端執行；不自動重試、不退回 shared key。
+候選合成 upstream row fixtures + 真 socket/HMAC 測試，未安裝 Function、
+未配置正式 key 或容器、未完成瀏覽器登入銜接或實機 Security Review。
