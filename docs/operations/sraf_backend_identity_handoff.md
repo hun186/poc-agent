@@ -50,3 +50,20 @@ key ID 不可含 assertion 分隔字元「.」，允許兩個 key ID 作輪替�
    Security Review 完成前，不安裝接收端或開啟 pilot。
 
 本契約是具體候選，不宣稱已取代正式登入或完成部署。
+
+
+## 第二步候選：持久防重放及帳號映射（尚未接入 API）
+
+HandoffReplayStore 必須由操作者明確 initialize；一般驗證使用 SQLite mode=rw，
+不可因 DB 不存在而自動建立。單交易內使用 issuer/audience 雜湊、
+nonce 雜湊、到期時間、非遞減時鐘 watermark，保證共用同一 DB 的程序
+只能消耗一次。容量有限，滿載或 DB 錯誤拒絕，不記錄問題、Token 或帳號。
+不同節點不能各用獨立 replay DB；跨主機遷移須停止接受舊 assertion、
+等待有效期結束或保留同一 DB，不能在可接受舊簽章時復原舊 DB。
+
+顯式不可變 subject map 以 issuer/audience/subject 指向真實 SRAF 帳號
+及 account_created_at，禁止同一安裝對應重複 subject 或共用帳號。
+讀取目前 AuthStore active/role，不授予同名者權限、不自動建立使用者。
+映射結果只是內部 observation；未建立 AuthPrincipal、JWT、路由、正式
+replay DB 配置或瀏覽器登入。最終接收端仍須重新驗證 scope、grant、
+帳號 generation、適用 transport 及 OpenWebUI 已登入 context。
