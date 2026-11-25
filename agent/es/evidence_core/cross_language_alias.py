@@ -22,22 +22,41 @@ def _fold(text: str) -> str:
     return unicodedata.normalize("NFKC", text).casefold()
 
 
-def alias_matches(alias: str, text: str) -> bool:
-    """Latin-containing aliases require token boundaries, retaining spaces.
+def _collision_key(text: str) -> str:
+    return normalize_for_match(_fold(text))
 
-    This deliberately does not change the existing Chinese/core matcher.
-    ASCII word boundaries allow English names adjacent to Chinese characters.
+
+def _latin_letter(ch: str) -> bool:
+    return ch.isalpha() and "LATIN" in unicodedata.name(ch, "")
+
+
+def _latin_token_char(ch: str) -> bool:
+    return _latin_letter(ch) or ch.isdecimal() or ch == "_" or unicodedata.category(ch).startswith("M")
+
+
+def alias_matches(alias: str, text: str) -> bool:
+    """Latin-containing aliases require Unicode-aware token boundaries.
+
+    Chinese adjacency is allowed. This does not change the existing matcher.
     """
     if not isinstance(alias, str) or not isinstance(text, str):
         return False
     alias = _fold(alias).strip()
     if not alias or len(alias) > MAX_TERM_CHARS:
         return False
-    if re.search(r"[a-z]", alias):
+    if any(_latin_letter(ch) for ch in alias):
         phrase = r"\s+".join(re.escape(part) for part in alias.split())
-        return bool(re.search(r"(?<![a-z0-9_])" + phrase + r"(?![a-z0-9_])", _fold(text)))
-    needle = normalize_for_match(alias)
-    return bool(needle and needle in normalize_for_match(text))
+        body = _fold(text)
+        for match in re.finditer(phrase, body):
+            left, right = match.span()
+            if left and _latin_token_char(body[left - 1]):
+                continue
+            if right < len(body) and _latin_token_char(body[right]):
+                continue
+            return True
+        return False
+    needle = _collision_key(alias)
+    return bool(needle and needle in _collision_key(text))
 
 
 def admit_aliases(
@@ -60,7 +79,7 @@ def admit_aliases(
         for term in group:
             if not isinstance(term, str) or not 0 < len(term) <= MAX_TERM_CHARS:
                 return out
-            key = normalize_for_match(term)
+            key = _collision_key(term)
             if key:
                 owners[key].add(idx)
     candidates: list[list[tuple[str, str]]] = []
@@ -70,14 +89,14 @@ def admit_aliases(
             if not isinstance(term, str) or not 0 < len(term) <= MAX_TERM_CHARS:
                 continue
             term = term.strip()
-            key = normalize_for_match(term)
+            key = _collision_key(term)
             if not key or not any(ch.isalpha() for ch in key):
                 continue
             owners[key].add(idx)
             accepted.append((key, term))
         candidates.append(accepted)
     for idx, group in enumerate(candidates):
-        existing = {normalize_for_match(term) for term in out[idx]}
+        existing = {_collision_key(term) for term in out[idx]}
         added = 0
         for key, term in group:
             if added >= MAX_PER_GROUP:
