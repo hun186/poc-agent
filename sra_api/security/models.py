@@ -11,6 +11,8 @@ class AuthPrincipal:
     role: str | None
     scopes: frozenset[str]
     credential_id: str | None = None
+    # Only a trusted internal handoff can set this generation fence.
+    account_created_at: str | None = None
 
     @property
     def principal_id(self) -> str:

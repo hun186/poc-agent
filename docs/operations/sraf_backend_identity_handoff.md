@@ -67,3 +67,16 @@ nonce 雜湊、到期時間、非遞減時鐘 watermark，保證共用同一 DB 
 映射結果只是內部 observation；未建立 AuthPrincipal、JWT、路由、正式
 replay DB 配置或瀏覽器登入。最終接收端仍須重新驗證 scope、grant、
 帳號 generation、適用 transport 及 OpenWebUI 已登入 context。
+
+
+## Chat-only request context 候選（未安裝 HTTP 接收端）
+
+驗證 raw header 的唯一 assertion，拒絕 Authorization/Cookie/其他
+session 或 idempotency headers 並禁止 query string；不能回退成一般登入。
+經簽章、防重放、顯式 mapping 後，只在可信內部產生限縮 Chat scopes 的
+AuthPrincipal（不含 admin 或一般登入 token）。携帶確切 account generation，
+在 deep policy 與 scoped session 綁定重新核對；同名重建帳號不繼承舊 context。
+session/turn token 由 logical issuer/audience/external subject/chat/message
+衍生，重試與輪替保持穩定，跨 chat/subject 不混用。已准入 context 仍需在
+實際執行前和後續深度派送前重驗，不能放入 public dependency 或跨 request 使用。
+本模組不信任 HTTP header 作為 transport 證明、不安裝 API、不簽發使用者 Token。

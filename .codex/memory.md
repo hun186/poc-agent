@@ -119,3 +119,7 @@
 - Add explicit local-only CLI reusing startup configuration and real ES SDK construction/close; no provider traffic or auth/SQLite changes. Fixed redacted statuses, disabled/default distinctions, optional auto HTTPS pilot config check, PASS_PARTIAL exit 2 with all live gates NOT_TESTED. Synthetic no-network tests and deployment instructions. Actual operator execution not performed.
 
 - Revised preflight to remove coupling to HOLD #505: require-auto checks flag; separate opt-in require-https-browser checks configured browser origin scheme only. Real transport remains NOT_TESTED; dedicated deep ES override checked through actual SDK constructor, no fallback. No deployment.
+
+
+## 2026-11-25 #413 — private handoff Chat context candidate
+- Combine unique raw assertion and reject conflicting browser/auth/session/turn headers, durable nonce and live mapping into restricted Chat-only principal with generation fence, stable logical scoped session/turn ID independent of IP/key/nonce, revalidate current mapping/role/generation. No new public auth dependency or token/route; actual trusted ingress and execution wiring remain separate. Synthetic tests only; no production.

@@ -6,6 +6,8 @@ create an AuthPrincipal, infer authorization from a name, or grant access.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 import re
 
 from api.security.sraf_handoff_assertion import HandoffDenied, HandoffTrust
@@ -59,6 +61,8 @@ class MappedChatIdentity:
     audience: str
     chat_id: str
     message_id: str
+    external_subject: str
+    assertion_id: str
 
 
 def map_verified_chat_once(trust: HandoffTrust, mapping: HandoffSubjectMap,
@@ -94,8 +98,12 @@ def map_verified_chat_once(trust: HandoffTrust, mapping: HandoffSubjectMap,
         role = normalize_role(row["role"])
         if MODEL_INVOKE not in scopes_for_user_role(role):
             raise HandoffDenied("handoff_account_denied")
+        assertion_id = hashlib.sha256(json.dumps(
+            [assertion.issuer, assertion.audience, assertion.nonce],
+            separators=(",", ":")).encode("ascii")).hexdigest()
         return MappedChatIdentity(binding.owner_id, binding.account_created_at, role,
                                   assertion.issuer, assertion.audience,
-                                  assertion.chat_id, assertion.message_id)
+                                  assertion.chat_id, assertion.message_id,
+                                  assertion.external_subject, assertion_id)
     except Exception:
         raise HandoffDenied("handoff_account_denied") from None
