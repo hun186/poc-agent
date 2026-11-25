@@ -28,11 +28,33 @@ _ASPECTS = frozenset((
     "政策變化", "政策措施", "政策進展", "經濟影響", "經濟情勢", "經濟表現",
     "市場變化", "產業發展", "影響", "原因", "後續發展", "國際反應",
 ))
-_SENTENCE = re.compile(
-    r"(?:請)?分析(?P<time>不限事件時間|[0-9]{4}年(?:[0-9]{1,2}月)?期間|"
-    r"[0-9]{4}-[0-9]{2}-[0-9]{2}至[0-9]{4}-[0-9]{2}-[0-9]{2}期間)，"
-    r"(?P<topic>[\u3400-\u9fffA-Za-z]+(?: [\u3400-\u9fffA-Za-z]+)*)"
-    r"的(?P<aspects>[^。\n\r]+)。?\Z"
+# Preserve the original grammar and date provenance for already queued jobs.
+# New forms are full matches, with no implicit clock or inferred year.
+_TOPIC = r"[\u3400-\u9fffA-Za-z]+(?: [\u3400-\u9fffA-Za-z]+)*"
+_Y = r"[0-9]{4}年"
+_M = _Y + r"[0-9]{1,2}月"
+_D = _M + r"[0-9]{1,2}日"
+_ISO = r"[0-9]{4}-[0-9]{2}-[0-9]{2}"
+# Longest shapes first. Year/month ranges need both explicit endpoints.
+_ABSOLUTE = (
+    r"(?:" + _ISO + r"至" + _ISO + "|" + _D + "至" + _D
+    + "|" + _M + "至" + _M + "|" + _Y + "至" + _Y
+    + "|" + _D + "|" + _M + "|" + _Y + ")"
+)
+_TIME = r"(?:不限事件時間|" + _ABSOLUTE + r"(?:期間)?)"
+_TAIL = r"(?P<aspects>[^。?!？！\n\r]+)[。?？]?\Z"
+_SENTENCES = (
+    # Original comma form + ASCII comma / common no-comma absolute date.
+    re.compile(r"(?:請)?分析(?P<time>" + _TIME + r")[，,] ?(?P<topic>"
+               + _TOPIC + r")的" + _TAIL),
+    re.compile(r"(?:請)?分析(?P<time>" + _ABSOLUTE + r"(?:期間)?)(?P<topic>"
+               + _TOPIC + r")的" + _TAIL),
+    # Explicit topic first: 聯合國在2023年8月的外交回應.
+    re.compile(r"(?:請)?分析(?P<topic>" + _TOPIC + r")(?:在|於)(?P<time>"
+               + _ABSOLUTE + r"(?:期間)?)的" + _TAIL),
+    # Topic first with a natural interrogative, not a second instruction.
+    re.compile(r"(?P<topic>" + _TOPIC + r")(?:在|於)(?P<time>"
+               + _ABSOLUTE + r"(?:期間)?)的(?P<aspects>[^。?!？！\n\r]+?)為何[？?]\Z"),
 )
 # Exact, bounded exceptions for known literal names containing ambiguous
 # operator characters. Do not strip these characters from arbitrary topics:
@@ -57,19 +79,31 @@ def _window(value: str) -> DateWindow:
     if value == "不限事件時間":
         return DateWindow()
     raw = value.removesuffix("期間")
-    match = re.fullmatch(r"([0-9]{4})年(?:([0-9]{1,2})月)?", raw)
-    if match:
+
+    def bounds(label: str):
+        if re.fullmatch(_ISO, label):
+            d = date.fromisoformat(label)
+            return d, d, "day"
+        match = re.fullmatch(
+            r"([0-9]{4})年(?:([0-9]{1,2})月(?:([0-9]{1,2})日)?)?", label)
+        if match is None:
+            raise ValueError
         y = int(match[1])
         if match[2] is None:
-            first, last, precision = date(y, 1, 1), date(y, 12, 31), "year"
-        else:
-            m = int(match[2])
-            first, last = date(y, m, 1), date(y, m, monthrange(y, m)[1])
-            precision = "month"
-        return DateWindow(first.isoformat(), last.isoformat(), precision,
-                          "explicit_user", value)
-    first, last = raw.split("至")
-    return DateWindow(first, last, "day", "explicit_user", value)
+            return date(y, 1, 1), date(y, 12, 31), "year"
+        m = int(match[2])
+        if match[3] is None:
+            return date(y, m, 1), date(y, m, monthrange(y, m)[1]), "month"
+        d = date(y, m, int(match[3]))
+        return d, d, "day"
+
+    labels = raw.split("至")
+    first, _, precision = bounds(labels[0])
+    last_first, last, end_precision = bounds(labels[-1])
+    if precision != end_precision or first > last_first:
+        raise ValueError
+    return DateWindow(first.isoformat(), last.isoformat(), precision,
+                      "explicit_user", value)
 
 
 def parse_natural_deep_scope(prompt: str) -> NaturalDeepScope:
@@ -82,10 +116,27 @@ def parse_natural_deep_scope(prompt: str) -> NaturalDeepScope:
     """
     try:
         _original_question(prompt)
-        match = _SENTENCE.fullmatch(prompt.strip())
-        if match is None:
+        matches = [(i, m) for i, grammar in enumerate(_SENTENCES)
+                   if (m := grammar.fullmatch(prompt.strip())) is not None]
+        if len(matches) != 1:
             raise ValueError
+        grammar_id, match = matches[0]
         topic = match["topic"]
+        # Without a delimiter, do not swallow a narrower date qualifier
+        # into the topic (e.g. 八月初 / 八月下旬 / 八月中).
+        # Ambiguous names may use the original comma-delimited form.
+        # Reject the entire ambiguous leading 上/下/中 family (not a
+        # finite list of 旬 combinations), except clear literal name starts.
+        if (grammar_id == 1
+                and re.match(r"初|末|底|起|迄|上(?!海)|下|中(?!國|華)|"
+                             r"第[一二三四五六七八九十]|內|間|整月|整年|"
+                             r"半月|半日|全月|全年|全日|當月|當年|當日",
+                             topic)):
+            raise ValueError
+        # A second location/time connector inside a topic-first label is
+        # not a verified single literal topic.
+        if grammar_id in (2, 3) and re.search(r"在|於", topic):
+            raise ValueError
         aspects = tuple(match["aspects"].split("、"))
         if (not 1 <= len(topic) <= 100 or (topic not in _LITERAL_OPERATOR_NAMES
                 and _TOPIC_UNSUPPORTED.search(topic))

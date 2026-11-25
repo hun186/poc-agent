@@ -15,6 +15,7 @@ SRAF_DEEP_STARTUP_FAILURE_POLICY=ordinary_only
 - fail_startup 是現有預設。ordinary_only 是顯式選擇：深度配置或專用 ES
   SDK 配置失敗時不啟用深度授權及自動派送，深度提交回 503；一般 Worker
   跳過深度 queued 工作，保留 Job/checkpoint，修正設定後正常重啟方可繼續。
+  操作者以 ordinary_only 且顯式停用深度功能做遷移時，也保留 queued 深度工作。
   原有 running restart recovery、共享 DB/簽章錯誤、未知程式錯誤政策不變。
   全域 queue ceiling 仍可能計入保留的工作。
 - CONFIGURED 是本地 SDK composition，不證明 TLS、PIT、LLM 或報告成功。

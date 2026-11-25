@@ -53,14 +53,12 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("deep_startup_failure_policy_invalid")
     app.state.deep_startup_status = "DISABLED"
     deep_config = None
-    degraded = False
     try:
         with startup_phase("deep_report_config"):
             deep_config = load_deep_startup_config(env_snapshot)
     except DeepStartupConfigError:
         if failure_policy != "ordinary_only":
             raise
-        degraded = True
         app.state.deep_startup_status = "DEGRADED_CONFIG"
         logging.getLogger("uvicorn.error").warning("SRAF deep runtime disabled: configuration invalid; ordinary-only startup")
     with startup_phase("signing_config"):
@@ -127,7 +125,6 @@ async def lifespan(app: FastAPI):
             except DeepESConfigError:
                 if failure_policy != "ordinary_only":
                     raise
-                degraded = True
                 app.state.deep_startup_status = "DEGRADED_ES_CONFIG"
                 logging.getLogger("uvicorn.error").warning("SRAF deep runtime disabled: ES setup invalid; ordinary-only startup")
         with startup_phase("report_job_store"):
@@ -138,7 +135,7 @@ async def lifespan(app: FastAPI):
         with startup_phase("report_job_worker_start"):
             if composition is None:
                 worker = (ReportJobWorker(store, reports_root, hold_adaptive_queue=True)
-                          if degraded else ReportJobWorker(store, reports_root))
+                          if failure_policy == "ordinary_only" else ReportJobWorker(store, reports_root))
             else:
                 def release_deep_runtime():
                     app.state.deep_scope_policy = None
