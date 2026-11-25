@@ -37,4 +37,4 @@ else:
     env = dict(os.environ, PYTHONPATH=str(root), PYTHONDONTWRITEBYTECODE="1",
                SRA_AUTH_USERS_FILE=str(tmp_path / "users.json"))
     subprocess.run([sys.executable, "-c", script, first], cwd=tmp_path,
-                   env=env, check=True, timeout=60, capture_output=True)
+                   env=env, check=True, timeout=60)
