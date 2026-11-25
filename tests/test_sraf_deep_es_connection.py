@@ -90,3 +90,30 @@ def test_relative_default_ca_path_reuses_existing_project_location(tmp_path):
         assert connection.get_client().transport.node_pool.all()[0].config.ca_certs == str(ca)
     finally:
         connection.close()
+
+
+@pytest.mark.parametrize("url,host,port", [
+    ("https://127.0.0.1:9001", "127.0.0.1", 9001),
+    ("https://es.example.test:9443", "es.example.test", 9443),
+    ("https://192.168.20.12:9200", "192.168.20.12", 9200),
+])
+def test_deep_endpoint_override_is_independent_of_legacy_settings(tmp_path, url, host, port):
+    env = settings()
+    env["ES_URL"] = "http://legacy.example.test:9200"
+    env["SRAF_DEEP_ES_URL"] = url
+    connection = build_deep_es_connection(env, project_root=tmp_path)
+    try:
+        node = connection.get_client().transport.node_pool.all()[0].config
+        assert (node.host, node.port, node.scheme) == (host, port, "https")
+        assert node.verify_certs is True and node.ssl_assert_hostname is not False
+        assert env["ES_URL"] == "http://legacy.example.test:9200"
+    finally:
+        connection.close()
+
+
+@pytest.mark.parametrize("override", ["", "http://127.0.0.1:9001", "not-a-url"])
+def test_invalid_explicit_override_never_falls_back(tmp_path, override):
+    env = settings()
+    env["SRAF_DEEP_ES_URL"] = override
+    with pytest.raises(DeepESConfigError, match="^deep_es_config_unverified$"):
+        build_deep_es_connection(env, project_root=tmp_path)

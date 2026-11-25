@@ -119,3 +119,7 @@
 
 ## 2026-11-25 #413 — absolute date grammar expansion candidate
 - Deep explicit/auto natural scope accepts additional complete forms such as 請分析2023年8月聯合國的外交回應 and 聯合國於2023年8月的外交回應為何？; closed explicit same-precision year/month/day ranges. Existing structured grammar and persisted intent unchanged. Other syntax remains fail-closed.
+
+
+## 2026-11-25 #413 — portable deep runtime / ordinary-only isolation candidate
+- Optional SRAF_DEEP_ES_URL overrides ES_URL only in deep SDK setup. Empty/invalid override rejects without fallback. SRAF_DEEP_STARTUP_FAILURE_POLICY accepts fail_startup (default) or ordinary_only. In ordinary_only on typed deep config/ES setup failure, deep POST returns 503, auto admission disabled, existing ordinary Worker still starts and queued deep jobs are held, not reinterpreted or deleted. Startup logs fixed reason, no secrets. CONFIGURED is local composition, not live readiness. Other failures unchanged.

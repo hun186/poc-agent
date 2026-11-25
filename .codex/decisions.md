@@ -87,3 +87,7 @@
 
 ## 2026-11-15 #406 conservative question-subject semantics
 - Distinguish request-local *original question* (#425) from LLM-refined/Data Agent core search terms. For first-stage offline subject-anchor policy use one explicit first-line user-written subject marker and exact unique semantic-axis membership; no generic NER heuristics or LLM-generated aliases are allowed to become mandatory without independent verification. This introduces a fail-closed optional candidate for subsequent shadow diagnostics only; it does not infer that ordinary unlabeled questions have no needed topic, nor does it authorize 3→2 Evidence admission. Real original-question disambiguation and precision/recall validation are separate gated work.
+
+
+## 2026-11-25 #413 — portable deep runtime / ordinary-only isolation candidate
+- Prefer portable explicit endpoints, DNS/loopback where identity matches and strict HTTPS, not blanket trust of private addresses. Keep ordinary-only opt-in isolation independent of authorization. Hold personal-token Pipe #505 pending service-side identity exchange design. No mandatory secret rotation or forced HTTPS change to existing OpenWebUI, no unreviewed bypass for credential-bearing transport.

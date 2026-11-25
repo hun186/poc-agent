@@ -48,9 +48,12 @@ def _failure_category(exc: Exception) -> str:
 
 
 class ReportJobWorker:
-    def __init__(self, store: ReportJobStore, reports_root: str | Path, poll_seconds: float = .2, *, adaptive_runtime=None, on_exit=None):
+    def __init__(self, store: ReportJobStore, reports_root: str | Path, poll_seconds: float = .2, *, adaptive_runtime=None, on_exit=None, hold_adaptive_queue: bool = False):
         # No production default or implicit provider policy. Explicit trusted
         # runtime composition is required before a deep job can execute.
+        if type(hold_adaptive_queue) is not bool or (hold_adaptive_queue and adaptive_runtime is not None):
+            raise ValueError("invalid_adaptive_claim_policy")
+        self._hold_adaptive_queue = hold_adaptive_queue
         self.adaptive_runtime = adaptive_runtime
         self._on_exit = on_exit
         self.store, self.root, self.poll_seconds = store, Path(reports_root), poll_seconds
@@ -66,7 +69,8 @@ class ReportJobWorker:
     def run(self):
         try:
             while not self.stop_event.is_set():
-                job = self.store.claim_next()
+                job = (self.store.claim_next(allow_adaptive=False)
+                       if self._hold_adaptive_queue else self.store.claim_next())
                 if not job: self.stop_event.wait(self.poll_seconds); continue
                 self.execute(job)
         finally:
