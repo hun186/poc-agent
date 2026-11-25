@@ -115,3 +115,45 @@ TLS listener 與 OpenWebUI 既有對外 HTTPS 是不同設定。只接單一 POS
 合成 ASGI + 真 SQLite 驗證，不是實機通道認證。後續須做 operator config、
 single-process listener supervision/start/stop、OpenWebUI 實際 adapter、browser
 登入銜接、完整跨主機 acceptance 與獨立 Security Review 才可開啟。
+
+
+## 可移植 receiver operator manifest（候選）
+
+SRAF_HANDOFF_ENABLED 未設定或 0：不讀 manifest、key 或 replay DB。
+1 時必須提供 SRAF_HANDOFF_CONFIG_FILE 與明確 PUBLIC_API_BASE；
+目前只有 local preflight 讀取，**尚未掛入正式 lifespan 或啟動 listener**。
+範例（全部為合成示例，不能當成實機帳號/金鑰）：
+
+```json
+{
+  "schema": "sraf_handoff_receiver_v1",
+  "issuer": "webui-installation",
+  "audience": "sraf-installation",
+  "keys": [{"id": "current", "secret_file": "issuer.key"}],
+  "bindings": [{"external_subject": "external-id", "owner_id": "sraf-user",
+                "account_created_at": "actual-account-generation"}],
+  "replay_db": "replay.sqlite",
+  "replay_max_active": 10000,
+  "listener": {"mode": "local_http", "bind_host": "127.0.0.1", "port": 19002}
+}
+```
+
+相對路徑以 manifest 所在資料夾為準（可在不同主機以同樣資料夾結構部署）。
+signing key 檔是 32–128 bytes 隨機資料的 unpadded base64url，POSIX 需
+service-only 0600/0400；其他 OS 使用受限 ACL。金鑰不寫 JSON、環境值、
+Git、UserValves 或 URL。verified_https listener 額外提供 cert_file/key_file，
+本地檢查 cert/key 配對，不代表 CA/SAN 或現場通訊驗證。
+replay DB 需既存且 schema/primary-key/index 正確，不能自動重建。
+
+```bash
+# 僅首次明確初始化新 DB（已存在即拒絕；不可用作修復/重置）
+python -B tools/sraf_handoff_preflight.py --initialize-replay
+# 本地唯讀 configuration/schema 檢查
+python -B tools/sraf_handoff_preflight.py --check
+```
+
+INITIALIZED/exit 0 僅指新 DB 建立成功。PASS_PARTIAL/exit 2 只指本地設定
+與 replay schema，尚未驗證帳號映射、TLS、listener、OpenWebUI、ES/LLM 或 Word。
+遷移需先停止接受舊 assertion、保存一致且最新的 replay DB/identity mapping，
+或停用舊 key 並等待所有舊 assertion 過期；不得用舊 backup 重置防重放。
+本 PR 不讀取現場設定、不啟動任何服務、不產生正式金鑰。
