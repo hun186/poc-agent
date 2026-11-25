@@ -19,6 +19,12 @@ from api.services.sraf_chat_deep_turn import (
     prepare_chat_deep_turn, replay_chat_deep_turn, DeepRuntimeUnavailable,
 )
 from test_sraf_deep_scope_policy import setup, QUESTION
+from api.services.sraf_session_namespace import bind_openwebui_session, ScopedChatSession
+
+
+def scoped_turn(state, principal, *, turn_tokens, chat="fixture-chat"):
+    return prepare_chat_deep_turn(state, principal, turn_tokens=turn_tokens,
+        scoped_session=bind_openwebui_session(principal, (chat,)))
 
 
 def configured(tmp_path, monkeypatch):
@@ -41,7 +47,7 @@ def persist(state, turn):
 
 def test_exact_chat_retry_returns_same_durable_job(tmp_path, monkeypatch):
     auth, state, owner, other = configured(tmp_path, monkeypatch)
-    turn = prepare_chat_deep_turn(state, owner, turn_tokens=("message-1",))
+    turn = scoped_turn(state, owner, turn_tokens=("message-1",))
     assert replay_chat_deep_turn(state, turn, prompt=QUESTION) is None
     assert turn.key.startswith(CHAT_DEEP_KEY_PREFIX)
     job, created = persist(state, turn)
@@ -51,7 +57,7 @@ def test_exact_chat_retry_returns_same_durable_job(tmp_path, monkeypatch):
     assert not persist(state, turn)[1]
     with pytest.raises(IdempotencyConflict):
         replay_chat_deep_turn(state, turn, prompt=QUESTION + " ")
-    second = prepare_chat_deep_turn(state, owner, turn_tokens=("message-2",))
+    second = scoped_turn(state, owner, turn_tokens=("message-2",))
     assert second.key != turn.key
     assert replay_chat_deep_turn(state, second, prompt=QUESTION) is None
     assert persist(state, second)[0].job_id != job.job_id
@@ -67,7 +73,7 @@ def test_exact_chat_retry_returns_same_durable_job(tmp_path, monkeypatch):
 def test_invalid_turn_keys_do_not_admit(tmp_path, monkeypatch, tokens):
     _, state, owner, _ = configured(tmp_path, monkeypatch)
     with pytest.raises(DeepScopeDenied):
-        prepare_chat_deep_turn(state, owner, turn_tokens=tokens)
+        scoped_turn(state, owner, turn_tokens=tokens)
     assert state.report_job_store.list_owned_summaries(owner_kind="user", owner_id="owner") == []
 
 
@@ -76,8 +82,9 @@ def test_service_ungranted_and_recomposed_runtime_denied(tmp_path, monkeypatch):
     service = AuthPrincipal("service", "owner", None, REGISTERED_SCOPES, "synthetic-key")
     for p in (service, other):
         with pytest.raises(DeepScopeDenied):
-            prepare_chat_deep_turn(state, p, turn_tokens=("message-1",))
-    turn = prepare_chat_deep_turn(state, owner, turn_tokens=("message-1",))
+            prepare_chat_deep_turn(state, p, turn_tokens=("message-1",),
+                scoped_session=bind_openwebui_session(owner, ("fixture-chat",)))
+    turn = scoped_turn(state, owner, turn_tokens=("message-1",))
     persist(state, turn)
     state.deep_scope_policy = replace(state.deep_scope_policy, max_active_jobs=1)
     with pytest.raises(DeepRuntimeUnavailable):
@@ -86,7 +93,7 @@ def test_service_ungranted_and_recomposed_runtime_denied(tmp_path, monkeypatch):
 
 def test_corrupt_hash_or_missing_checkpoint_never_replayed(tmp_path, monkeypatch):
     _, state, owner, _ = configured(tmp_path, monkeypatch)
-    turn = prepare_chat_deep_turn(state, owner, turn_tokens=("message-1",))
+    turn = scoped_turn(state, owner, turn_tokens=("message-1",))
     job, _ = persist(state, turn)
     db = state.report_job_store.db_path
     with sqlite3.connect(db) as con:
@@ -102,7 +109,7 @@ def test_corrupt_hash_or_missing_checkpoint_never_replayed(tmp_path, monkeypatch
 
 def test_ordinary_public_api_cannot_reserve_chat_key(tmp_path, monkeypatch):
     _, state, owner, _ = configured(tmp_path, monkeypatch)
-    turn = prepare_chat_deep_turn(state, owner, turn_tokens=("message-1",))
+    turn = scoped_turn(state, owner, turn_tokens=("message-1",))
     app = FastAPI()
     app.include_router(report_jobs.router)
     app.state.report_job_store = state.report_job_store
@@ -115,3 +122,17 @@ def test_ordinary_public_api_cannot_reserve_chat_key(tmp_path, monkeypatch):
     assert client.post("/v1/report/jobs", json={"prompt":"ordinary"},
                        headers={"Idempotency-Key":"ordinary-1"}).status_code == 202
     assert persist(state, turn)[1]
+
+
+def test_same_message_token_different_scoped_chat_is_not_replay(tmp_path, monkeypatch):
+    _, state, owner, other = configured(tmp_path, monkeypatch)
+    first = scoped_turn(state, owner, turn_tokens=("same",), chat="chat-a")
+    second = scoped_turn(state, owner, turn_tokens=("same",), chat="chat-b")
+    job, _ = persist(state, first)
+    assert first.key != second.key
+    assert replay_chat_deep_turn(state, second, prompt=QUESTION) is None
+    assert replay_chat_deep_turn(state, first, prompt=QUESTION).job_id == job.job_id
+    for scope in (None, ScopedChatSession("legacy-session"),
+                  bind_openwebui_session(other, ("chat-a",))):
+        with pytest.raises(DeepScopeDenied):
+            prepare_chat_deep_turn(state, owner, turn_tokens=("same",), scoped_session=scope)

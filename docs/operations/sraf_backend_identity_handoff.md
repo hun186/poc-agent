@@ -220,3 +220,16 @@ assistant row：查 live Users、Chats、ChatMessages normalized rows，
 逾時不是保證取消，可能仍在後端執行；不自動重試、不退回 shared key。
 候選合成 upstream row fixtures + 真 socket/HMAC 測試，未安裝 Function、
 未配置正式 key 或容器、未完成瀏覽器登入銜接或實機 Security Review。
+
+
+## 自動深度派送的 scoped-turn fence（候選）
+
+自動深度派送只接受已驗證 account-generation-scoped session（私有
+handoff 或已登入的 scoped Chat header），不接受舊 raw session。
+一般 Chat/Word 行為不變；legacy Chat 不自動建立深度 Job。
+Idempotency key 的 hash 增加 scoped session 與 domain version；
+同帳號不同 chat 即使 message token 相同也不能讀取/沿用彼此的 Job。
+ordinary receipt 的 session_id 必須與 admission context 完全一致。
+既有舊 hash 的 Job 保留並可由本人歷史清單及進度頁存取，
+不會嘗試用不明 legacy session 自動認領或重新遷移舊 Job；
+若以新版重送舊訊息，需先核對是否已有歷史任務。深度顯式 API 不變。

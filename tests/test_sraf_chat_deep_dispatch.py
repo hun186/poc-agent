@@ -56,7 +56,8 @@ def http(tmp_path, monkeypatch):
     def execute(**kw):
         events.append("ordinary")
         prompt = kw["payload"].messages[-1].content
-        return AgentTurnResult("synthetic-session", "synthetic-turn", "synthetic-request",
+        scoped = kw.get("scoped_chat_session")
+        return AgentTurnResult(scoped.key if scoped else "synthetic-session", "synthetic-turn", "synthetic-request",
             prompt, {"mode":identity["mode"],"answer":"ordinary"}, {},
             identity["receipt"] if kw.get("capture_ordinary_scope") else None)
     monkeypatch.setattr(chat, "execute_agent_turn", execute)
@@ -64,8 +65,10 @@ def http(tmp_path, monkeypatch):
     return TestClient(app), app, identity, events, auth
 
 
-def post(client, key="turn-a", prompt=PROMPT, fmt="markdown"):
+def post(client, key="turn-a", prompt=PROMPT, fmt="markdown", chat_id="chat-fixture"):
     headers = {} if key is None else {"Idempotency-Key":key}
+    if chat_id is not None:
+        headers["X-SRAF-OpenWebUI-Chat-Id"] = chat_id
     return client.post(URL, json={"messages":[{"role":"user","content":prompt}],"format":fmt},headers=headers)
 
 
@@ -134,7 +137,8 @@ def test_ordinary_unchanged_when_deep_not_admitted(http, bad):
         prompt = "任意未核對問句"
     elif bad == "untrusted_base":
         app.state.deep_chat_auto_base_url = "https://example.test@evil.test"
-    m = message(post(client,key=key,prompt=prompt,fmt=fmt))
+    m = message(post(client,key=key,prompt=prompt,fmt=fmt,
+                     chat_id=None if bad == "service" else "chat-fixture"))
     assert "deep_report" not in m["context"]
     assert "word_export" in m["context"] and not jobs(app)
     assert "report-jobs#job=" not in m["content"]
@@ -170,3 +174,25 @@ def test_auto_disabled_by_default_and_safe_base_frozen():
     assert load_deep_startup_config(env).chat_auto_base_url == "http://127.0.0.1:9002/sraf"
     env["PUBLIC_API_BASE"] = "http://[::1]:9002/"
     assert load_deep_startup_config(env).chat_auto_base_url == "http://[::1]:9002"
+
+
+def test_legacy_session_never_auto_admits_and_scoped_turn_is_independent(http):
+    client, app, identity, events, _ = http
+    legacy = message(post(client, chat_id=None))
+    assert "word_export" in legacy["context"] and "deep_report" not in legacy["context"]
+    assert not jobs(app)
+    first = message(post(client, chat_id="chat-a"))["context"]["deep_report"]
+    second = message(post(client, chat_id="chat-b"))["context"]["deep_report"]
+    assert first["job_id"] != second["job_id"]
+    assert len(jobs(app)) == 2
+    assert message(post(client, chat_id="chat-a"))["context"]["deep_report"]["job_id"] == first["job_id"]
+
+
+def test_scope_receipt_from_different_session_cannot_admit(http, monkeypatch):
+    client, app, identity, events, _ = http
+    original = chat.execute_agent_turn
+    monkeypatch.setattr(chat, "execute_agent_turn", lambda **kw:
+        replace(original(**kw), session_id="wrong-session"))
+    result = message(post(client))
+    assert "word_export" in result["context"] and "deep_report" not in result["context"]
+    assert not jobs(app)
