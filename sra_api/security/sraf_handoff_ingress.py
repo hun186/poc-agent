@@ -21,7 +21,6 @@ import uvicorn
 from api.security.sraf_handoff_assertion import HandoffDenied, HandoffTrust
 from api.security.sraf_handoff_mapping import HandoffSubjectMap
 from api.security.sraf_handoff_replay import HandoffReplayStore
-from api.security.sraf_handoff_chat_context import prepare_handoff_chat
 
 _PATH = "/v1/chat/completions"
 _LIMIT = 2 * 1024 * 1024
@@ -135,6 +134,7 @@ def build_private_ingress(main_app: FastAPI, listener: HandoffListener,
     from api.core import url_utils
     from api.services.sraf_deep_startup_config import validate_chat_public_base
     from api.routers.chat import execute_handoff_chat
+    from api.security.sraf_handoff_chat_context import prepare_handoff_chat
 
     if (type(listener) is not HandoffListener or type(trust) is not HandoffTrust
             or type(mapping) is not HandoffSubjectMap or type(replay) is not HandoffReplayStore

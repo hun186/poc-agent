@@ -10,6 +10,7 @@ from contextlib import closing
 from dataclasses import dataclass
 import hashlib
 import json
+import os
 from pathlib import Path
 import sqlite3
 import time
@@ -46,6 +47,41 @@ class HandoffReplayStore:
                             "ON sraf_handoff_nonce_v1(namespace,expires_at)")
         except sqlite3.Error:
             raise HandoffDenied("handoff_replay_unavailable") from None
+
+    def require_ready(self) -> None:
+        """Read-only schema check; never creates a missing replay database."""
+        expected = {
+            "sraf_handoff_clock_v1": [
+                ("namespace", "TEXT", 1), ("watermark", "INTEGER", 0)],
+            "sraf_handoff_nonce_v1": [
+                ("namespace", "TEXT", 1), ("nonce_hash", "TEXT", 2),
+                ("expires_at", "INTEGER", 0)],
+        }
+        try:
+            with closing(sqlite3.connect(self._path.as_uri() + "?mode=ro",
+                                         uri=True, timeout=5)) as con:
+                for table, columns in expected.items():
+                    rows = con.execute("PRAGMA table_info(" + table + ")").fetchall()
+                    if [(row[1], row[2].upper(), row[5]) for row in rows] != columns:
+                        raise HandoffDenied("handoff_replay_unavailable")
+                if not con.execute("SELECT 1 FROM sqlite_master WHERE "
+                                   "type='index' AND name='sraf_handoff_nonce_exp_v1' "
+                                   "AND tbl_name='sraf_handoff_nonce_v1'").fetchone():
+                    raise HandoffDenied("handoff_replay_unavailable")
+        except sqlite3.Error:
+            raise HandoffDenied("handoff_replay_unavailable") from None
+
+    def initialize_new(self) -> None:
+        """Explicit first-time operator action only; never reset an existing DB."""
+        try:
+            fd = os.open(self._path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            os.close(fd)
+        except OSError:
+            raise HandoffDenied("handoff_replay_create_denied") from None
+        # A partial initialization remains visible as a failure, not a silent
+        # recreation of a database which might contain consumed assertions.
+        self.initialize()
+        self.require_ready()
 
     def verify_once(self, trust: HandoffTrust, token: str, *, body: bytes,
                     method: str, path: str, now: int | None = None) -> ConsumedChatAssertion:

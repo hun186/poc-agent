@@ -131,3 +131,7 @@
 
 ## 2026-11-25 #413 — dedicated private Chat ingress candidate
 - Private no-proxy-header Uvicorn Config factory, no listener start/mount; strict channel and payload, assertion-only identity, explicit browser base, shares existing app state and actual ordinary Chat/deep dispatch, revalidate generation before use/return, public bearer route rejects assertion. Synthetic ASGI+real SQLite; operator lifecycle/config, adapter, browser auth, live TLS/LLM/Word and independent security gates remain.
+
+
+## 2026-11-25 #413 — portable handoff receiver manifest and local preflight candidate
+- Explicit disabled-by-default receiver config; manifest-relative paths, separate restricted key files, duplicate/unknown schema rejection, actual listener cert/key local validation and replay schema read-only readiness. Explicit initialize-new only never overwrites replay DB. Quiescent relocation synthetic test; no AuthStore/provider/production startup, listener or live acceptance. Actual lifecycle and adapter separate; no OpenWebUI changes.
