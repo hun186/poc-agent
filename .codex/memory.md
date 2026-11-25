@@ -174,3 +174,6 @@
 
 ## 2026-11-25 #413 — staged pilot runbook/admin manifest path candidate
 - Admin-only CONFIG_FILE absolute path or existing sender env; conflicts fail, CLI --config-file, no secret Valve/individual token. Use suitable restricted existing persistent mount to avoid recreation solely for env changes. Integrated runbook separates ES, private TLS, browser, exact config, quiescence, rollback, no live/independent security acceptance. Tests synthetic; #519 and #521 merged; exact-head revalidation on main pending.
+
+- #522 merged f7650f16585c1 after exact-head 4/4 Hosted workflows and clean code review; independent security/live acceptance pending.
+- 2026-11-25 ARC A1 candidate: common Word/Markdown topic adaptive diagnostics distinguish disabled, missing, not attempted, measured zero. Explain 3/2 semantic groups in plain language. No retrieval behavior changes; actual renderer regression tests submitted; Hosted CI/review pending.

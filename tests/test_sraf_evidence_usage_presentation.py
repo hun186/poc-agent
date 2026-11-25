@@ -344,3 +344,31 @@ def test_unhashable_optional_integrity_status_preserves_base_usage_and_renderers
         assert "PRIVATE-STATUS" not in combined
         assert "來源編號一致性" not in combined
         assert "Evidence 資訊量提醒" not in combined
+
+
+def test_disabled_topic_adaptive_does_not_report_false_zero_counts():
+    from agent.es.evidence_core.topic_audit import summary
+    usage = {**_usage(), "topic_adaptive": summary([], mode="off")}
+    md, doc = _render_both(_output(usage))
+    for rendered in (md, "\n".join(doc)):
+        assert "最低命中門檻由 3 個關鍵詞群組降至 2 個群組" in rendered
+        assert "本功能未執行統計" in rendered
+        assert "片段累計 0 段" not in rendered
+        assert "增補候選 0 段" not in rendered
+        assert "3→2 候選" not in rendered
+
+
+def test_topic_adaptive_distinguishes_no_record_no_attempt_and_measured_zero():
+    from api.core.presenters.evidence_usage import topic_adaptive_rows
+    from agent.es.evidence_core.topic_audit import summary
+    for mode in ("shadow", "on"):
+        missing = dict(topic_adaptive_rows(summary([], mode=mode)))
+        assert "未取得可用計數" in missing["嚴格篩選與增補紀錄"]
+        not_attempted = {**_topic_summary(mode), "strict": 29, "attempted": 0,
+                         "proposed": 0, "not_low": 1}
+        rows = dict(topic_adaptive_rows(not_attempted))
+        assert "29 段" in rows["嚴格篩選紀錄"]
+        assert "未進行候選評估" in rows["降低最低群組命中門檻的增補紀錄"]
+        measured = {**_topic_summary(mode), "proposed": 0}
+        rows = dict(topic_adaptive_rows(measured))
+        assert "增補候選 0 段" in rows["降低最低群組命中門檻的增補紀錄"]

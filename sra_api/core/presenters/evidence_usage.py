@@ -71,7 +71,8 @@ def review_rows(raw: Any) -> list[tuple[str, str]]:
                          f"輸入約 {r['input_chars']} 字元（非 Token）；"
                          f"耗時 {r['elapsed_ms']} ms"),
         ("LLM 覆核異常", (REVIEW_REASONS[r["reason"]] if r["anomaly"]
-                         else "未發現（僅代表規則檢查，不保證語意判斷正確）")),
+                         else ("未執行，無法判斷" if r["status"] == "disabled"
+                               else "未發現（僅代表規則檢查，不保證語意判斷正確）"))),
     ]
     if r["status"] == "fallback":
         rows.append(("LLM 覆核降級處置", "原證據全部保留，不採用未完成或異常模型判斷"))
@@ -121,27 +122,34 @@ def topic_adaptive_rows(raw: Any) -> list[tuple[str, str]]:
     if not r:
         return []
     if r["mode"] == "off":
-        status = "未啟用：沿用原本嚴格篩選，沒有計算 3→2 候選"
-    elif r["mode"] == "shadow":
-        status = "觀察模式：有計算較寬鬆候選，但正式報告仍使用原本篩選結果"
-    else:
-        status = "受控啟用：僅有符合必要主題及日期限制的弱證據才可能加入"
-    if r["slices"] == 0 and r["mode"] != "off":
+        return [
+            ("主題檢索智慧放寬", "未啟用：未評估將最低命中門檻由 3 個關鍵詞群組降至 2 個群組的增補候選"),
+            ("嚴格篩選與增補紀錄", "本功能未執行統計；不代表原規則合格片段或可增補候選為零"),
+        ]
+    status = (
+        "觀察模式：僅評估增補候選，不因本功能改變正式檢索結果"
+        if r["mode"] == "shadow" else
+        "受控啟用：僅有符合必要主題及日期限制的弱證據才可能加入"
+    )
+    if not r["slices"]:
         status += "；本次未取得可用的工具階段紀錄"
-    rows = [
-        ("主題檢索智慧放寬", status),
-        ("嚴格篩選與預估增補",
-         f"工具檢查批次 {r['slices']} 次；原規則合格計數合計 {r['strict']} 段；"
-         f"2 組命中且通過必要主題限制的候選 {r['proposed']} 段；"
-         f"在初步檢索階段實際加入 {r['selected']} 段"),
-    ]
-    if r["mode"] != "off":
-        rows.append((
-            "未放寬的原因",
-            f"因原問題未明確指定必要主題：{r['no_anchor']} 批；"
-            f"原本證據並非低量：{r['not_low']} 批；"
-            f"實際進行候選評估：{r['attempted']} 批",
-        ))
+    rows = [("主題檢索智慧放寬", status)]
+    if r["slices"]:
+        rows.append(("嚴格篩選紀錄",
+                     f"工具檢查批次 {r['slices']} 次；符合原始嚴格篩選條件的片段累計 {r['strict']} 段"))
+        if r["attempted"]:
+            rows.append(("降低最低群組命中門檻的增補紀錄",
+                         f"實際進行候選評估 {r['attempted']} 批；"
+                         f"命中 2 個關鍵詞群組且符合必要主題條件的增補候選 {r['proposed']} 段；"
+                         f"在初步檢索階段實際加入 {r['selected']} 段"))
+        else:
+            rows.append(("降低最低群組命中門檻的增補紀錄",
+                         "未進行候選評估；不代表增補候選為零"))
+        rows.append(("未放寬的原因",
+                     f"未取得經驗證的必要主題：{r['no_anchor']} 批；"
+                     f"原本證據並非低量：{r['not_low']} 批"))
+    else:
+        rows.append(("嚴格篩選與增補紀錄", "未取得可用計數；不代表合格片段或增補候選為零"))
     if r["prose_shadow_slices"]:
         rows.append((
             "自然語句主題推估（僅觀察）",
