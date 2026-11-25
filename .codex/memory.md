@@ -111,6 +111,10 @@
 - Hold #505 personal token pilot; introduce private request-bound HMAC assertion primitive with logical issuer/audience, external subject/chat/message, exact POST body digest, short expiry, dedicated rotatable keys and no privilege claims. Unit tests only; no route, replay consumption, live mapping, browser exchange, production or external provider. No OpenWebUI secret change. Must complete persisted replay/authorization/transport/security gates before use.
 
 
+## 2026-11-25 #413 — durable handoff replay and explicit account mapping candidate
+- Private real SQLite single-use claim (one shared DB, bounded capacity, durable expiry watermark, no automatic DB recreation), plus explicit issuer/audience/subject->live SRAF generation/role via AuthStore. No token, raw identity trust, auth route, app mounting or providers. Real isolated SQLite and AuthStore tests. Transport/receiver, final authorization, browser login and independent Security Review remain separate; no deployment.
+
+
 ## 2026-11-25 #413 — local deep deployment preflight candidate
 - Add explicit local-only CLI reusing startup configuration and real ES SDK construction/close; no provider traffic or auth/SQLite changes. Fixed redacted statuses, disabled/default distinctions, optional auto HTTPS pilot config check, PASS_PARTIAL exit 2 with all live gates NOT_TESTED. Synthetic no-network tests and deployment instructions. Actual operator execution not performed.
 
