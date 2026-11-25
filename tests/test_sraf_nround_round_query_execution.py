@@ -251,3 +251,68 @@ def test_token_cannot_be_used_when_no_frozen_plan_was_claimed():
     c, scope, _ = _coordinator()
     assert not c.admit_es_call(execution_token=object())
     assert c.safe_progress()["termination"] == "UNTRACKED_QUERY_ADMISSION"
+
+
+def test_arc_deep_frequency_plan_preserves_required_entity_and_date_scope():
+    from agent.adaptive_retrieval.arc_deep_frequency_plan import build_deep_frequency_plan
+    from agent.adaptive_retrieval.es_pit_adapter import _query
+    from test_sraf_nround_trusted_execution_loop import _setup
+    c, scope, _, budget, _, _ = _setup()
+    assert c.start()
+    p = _plan(c, scope)
+    before = budget.snapshot()
+    body = build_deep_frequency_plan(p)
+    assert body is not None
+    assert body["size"] == 0 and body["_source"] is False
+    assert "pit" not in body and "search_after" not in body
+    main = _query(scope, optional_terms=(), page_size=50)
+    assert body["query"]["bool"]["filter"] == main["query"]["function_score"]["query"]["bool"]["filter"]
+    assert len(body["query"]["bool"]["filter"]) == 2
+    assert set(body["aggs"]["group_frequency"]["filters"]["filters"]) == {"1", "2", "3"}
+    assert budget.snapshot() == before
+    c.cancel()
+    assert build_deep_frequency_plan(p) is None
+
+
+def test_arc_deep_frequency_round_two_keeps_original_groups():
+    from agent.adaptive_retrieval.arc_deep_frequency_plan import build_deep_frequency_plan
+    from test_sraf_shared_evidence_budget import _hit as verified_hit
+    c, scope, _ = _coordinator()
+    first = _plan(c, scope)
+    initial = build_deep_frequency_plan(first)
+    assert initial is not None
+    assert c.admit_es_call()
+    c.complete_round(
+        [verified_hit(1, "PRIVATE_DOC_A", inner=False)],
+        query_for_snippet="甲軸乙軸丙軸", complete=True,
+        request_wide_attested=True, missing_aspects=("外交回應",),
+        coverage_sufficient=False,
+    )
+    admission = c.plan_next_round()
+    assert admission.approved and admission.plan is not None
+    assert build_deep_frequency_plan(first) is None
+    second = _plan(c, scope, plan=admission.plan)
+    assert build_deep_frequency_plan(second) == initial
+    assert "聯合國聲明" not in json.dumps(initial, ensure_ascii=False)
+
+
+@pytest.mark.parametrize("unsupported", ["no_date", "analysis_date", "fixed_fields"])
+def test_arc_deep_frequency_rejects_unsupported_hard_scope(unsupported):
+    from agent.adaptive_retrieval.arc_deep_frequency_plan import build_deep_frequency_plan
+    from agent.adaptive_retrieval.contracts import DateWindow
+    from agent.adaptive_retrieval.coordinator import AdaptiveRequestCoordinator
+    from agent.adaptive_retrieval.request_budget import RequestAdmissionBudget
+    prior, scope, _ = _coordinator()
+    changes = {
+        "no_date": {"event_date": DateWindow()},
+        "analysis_date": {"analysis_date": scope.event_date},
+        "fixed_fields": {"fixed_fields": (("communication.subject", "甲軸"),)},
+    }
+    scope = replace(scope, **changes[unsupported])
+    c = AdaptiveRequestCoordinator(
+        constraints=scope, term_groups=(("甲軸",), ("乙軸",), ("丙軸",)),
+        effective_terms=("甲軸", "乙軸", "丙軸"),
+        budget=RequestAdmissionBudget(), planner=prior._planner,
+    )
+    assert c.start()
+    assert build_deep_frequency_plan(_plan(c, scope)) is None
