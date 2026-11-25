@@ -17,7 +17,6 @@ from api.services.report_job_store import (
     ReportJobStore, IdempotencyConflict,
 )
 from api.services.report_job_service import normalized_hash, DEFAULT_REPORT_MODEL
-from api.services.report_job_worker import ReportJobWorker
 from api.services.sraf_adaptive_job_runtime import AdaptiveJobRuntime, AdaptiveJobIntent
 from api.services.sraf_deep_scope_policy import DeepScopePolicy, DeepScopeDenied
 from agent.adaptive_retrieval.job_checkpoint import NroundCheckpointStore
@@ -29,6 +28,7 @@ class DeepRuntimeUnavailable(ValueError):
 
 def resolve_deep_admission(state):
     """One exact composition check for explicit and future chat admission."""
+    from api.services.report_job_worker import ReportJobWorker
     policy = getattr(state, "deep_scope_policy", None)
     worker = getattr(state, "report_job_worker", None)
     store = getattr(state, "report_job_store", None)

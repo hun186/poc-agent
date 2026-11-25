@@ -31,3 +31,13 @@ def create_job(store: ReportJobStore, *, prompt: str, filename: str | None, sess
                         prompt=normalized["prompt"], filename=logical, session_id=session, model=model,
                         options=options, metadata=metadata, owner_kind=owner_kind, owner_id=owner_id,
                          max_active_jobs=max_active_jobs, register_adaptive=register_adaptive)
+
+
+_SAFE_BROWSER_JOB_ID = re.compile(r"[A-Za-z0-9_-]{1,128}\Z")
+
+
+def browser_status_url(job_id: str) -> str | None:
+    """Browser prefill only: never contains a token or bypasses Job ownership."""
+    if not isinstance(job_id, str) or not _SAFE_BROWSER_JOB_ID.fullmatch(job_id):
+        return None
+    return f"/report-jobs#job={job_id}"
