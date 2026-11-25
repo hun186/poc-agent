@@ -19,6 +19,7 @@ from .fair_budget import MAX_SCAN_CITATIONS, MAX_VALID_EVIDENCE, select_valid_fa
 from .topic_shadow import observe_topic_shadow
 from .question_anchor import derive_explicit_question_anchor
 from .topic_adaptive import consider_low_count, log_adaptive
+from .group_frequency import log_group_frequency, observe_group_frequency
 from .prose_anchor import propose_prose_shadow_anchor
 from .topic_audit import record as record_topic_audit
 
@@ -138,6 +139,13 @@ def build_hits_and_evidence(
         trace=evidence_trace, stage="strict",
     )
     strict_evidence_count = len(evidence)
+    # ARC A3: observation only, no ES/LLM calls or Evidence changes.
+    if os.getenv("SRAF_ARC_GROUP_FREQUENCY") == "shadow":
+        observation = observe_group_frequency(
+            out_hits, term_groups, date_from=date_from, date_to=date_to,
+            allowed_years=allowed_years,
+        )
+        log_group_frequency(observation)
     # #406: diagnostic only. The existing strict (or legacy zero-only
     # fallback) Evidence output remains authoritative. Neither two-group
     # matches nor meta-only matches can enter the report from this shadow.
