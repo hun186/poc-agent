@@ -141,3 +141,69 @@ def test_concurrent_agents_bind_distinct_original_questions(monkeypatch):
     assert actual == [f"主題：原始事項{n}" for n in range(30)]
     assert set(observed) == set(actual)
     assert get_original_report_question() is None
+
+
+def test_arc_budget_is_shared_across_worker_tools_and_sealed(monkeypatch):
+    from agent.es.arc_request_budget import ArcUnits, current_arc_budget
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY", "shadow")
+    captured = []
+    results = []
+
+    class BudgetTool:
+        @propagate_requirement_acceptance
+        def forward(self):
+            budget, ordinal = current_arc_budget()
+            return budget.reserve(ordinal, ArcUnits(slices=1))
+
+    def make_agent(mode):
+        captured.append(current_arc_budget())
+        tools = [bind_requirement_acceptance(BudgetTool()) for _ in range(6)]
+
+        class Agent:
+            def run(self, rewritten):
+                with ThreadPoolExecutor(max_workers=3) as pool:
+                    results.extend(pool.map(lambda tool: tool.forward(), tools))
+                    assert pool.submit(current_arc_budget).result() is None
+                return {"payload": {}}
+
+        return Agent()
+
+    monkeypatch.setattr(runtime, "build_agent", make_agent)
+    runtime.run_data_agent("測試", mode="report")
+    assert sum(results) == 4
+    budget, ordinal = captured[0]
+    assert ordinal == 1
+    assert budget.snapshot()[0] == ArcUnits(slices=4)
+    assert not budget.reserve(ordinal, ArcUnits(hits=1))
+    assert current_arc_budget() is None
+
+
+def test_arc_budget_isolated_and_restored_after_runtime_exception(monkeypatch):
+    from agent.es.arc_request_budget import (
+        ArcRequestBudget, ArcUnits, bind_arc_budget, current_arc_budget,
+    )
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY", "shadow")
+    parent = ArcRequestBudget()
+    captured = []
+
+    def make_agent(mode):
+        captured.append(current_arc_budget())
+
+        class Agent:
+            def run(self, rewritten):
+                raise RuntimeError("synthetic run failure")
+
+        return Agent()
+
+    monkeypatch.setattr(runtime, "build_agent", make_agent)
+    with bind_arc_budget((parent, 2)):
+        for mode in ("report", "style", "report"):
+            with pytest.raises(RuntimeError, match="synthetic run failure"):
+                runtime.run_data_agent("測試", mode=mode)
+            assert current_arc_budget() == (parent, 2)
+    assert captured[1] is None
+    assert captured[0][0] is not captured[2][0]
+    for scope in (captured[0], captured[2]):
+        assert not scope[0].reserve(1, ArcUnits(slices=1))
+    assert parent.snapshot()[0] == ArcUnits()
+    assert current_arc_budget() is None
