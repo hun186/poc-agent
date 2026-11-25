@@ -74,3 +74,7 @@ CHARS 是 Python len() 計算的原始片段字元數，含日期驗證前掃描
 ## A4 嚴格 Evidence 局部排序觀察
 僅在 SRAF_ARC_GROUP_FREQUENCY=shadow 且 SRAF_ARC_RANK=shadow 同時開啟時，使用同一 parser slice 的局部樣本，至少 16 個 date-valid source hits、strict Evidence 超過 20 才嘗試。不是 ES corpus DF，不混用不同輪次/索引統計。僅比較原始 strict 前 128 rows，額外保留共用預算一切片、128 rows、131072 chars；每 row 最多 4096 chars，任何超限則略過排序而非靜默丟棄該 row。
 排序優先序：strong > weak、原有命中群組數、正文命中群組數、截頂 IDF 加總、原始順序。零觀測頻率權重為零而非最大罕見度；每群組最多 2000 milli IDF。只記 top20 替換數、相對不含 IDF 的 coverage-only 排序替換數、來源 hit 數與 strong 數。保留 prefix/sample 限制標記；不得推論整個資料庫的精確率、召回率或語意必要性。所有正式 Evidence、排序、篩選與來源維持原樣，無新增 ES/LLM 呼叫。尚未實作全域 DF 加權、必要實體獨立強制 gate、來源公平配置或自適應收緊；須待人工標記 A/B 驗收。
+
+### A4 普通報告原生 DF 排序觀察
+SRAF_ARC_ES_FREQUENCY=shadow 與 SRAF_ARC_RANK_NATIVE=shadow 同時啟用才走正式 transport 的 private receipt 路徑；仍需 operator 核准索引、mapping/analyzer 與原生查詢所有既有安全 gate。完整 native counts 透過單次工具呼叫的私有 sink 傳給首次 Evidence builder，核對原始群組內容及順序、日期雙端、不接受額外 allowed_years。每份 receipt 僅消費一次，不帶入後續 refill、其他 tool、其他報告、LLM 或公開輸出。
+沿用 A4 strong/coverage/正文優先順序與有界 IDF；使用原生 root document frequency 而非局部樣本，仍需最少 16 個 eligible documents，零頻率不獎勵，額外排序使用同一 ARC budget。原生與局部排序各自記錄，不能混合分母或頻率；原生 scope 標明 not_pit，因普通報告主查詢與統計並非同一 PIT 快照，即使查詢條件一致也不保證資料版本相同。ES analyzer 與 Python 正規化匹配仍可能不同。沒有新增 ES/LLM 呼叫，無正式排序或結果變更，尚待實機及人工標記驗收。
