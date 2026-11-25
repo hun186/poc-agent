@@ -16,6 +16,11 @@ def main():
     parser.add_argument("--ssl", action="store_true", help="強制啟用 https（adhoc 自簽）")
     args = parser.parse_args()
 
+    if not 1 <= args.port <= 65535:
+        parser.error("--port must be between 1 and 65535")
+    # Actual single-process public port, not an environment hint. Optional
+    # handoff startup refuses to bind this port before public Uvicorn starts.
+    app.state.handoff_public_listener_port = args.port
     host_ip = "0.0.0.0" if args.public else "127.0.0.1"
     use_https = should_use_https(force_ssl=args.ssl)
 
@@ -29,12 +34,14 @@ def main():
             port=args.port,
             ssl_certfile=certfile,
             ssl_keyfile=keyfile,
+            workers=1,
         )
     else:
         uvicorn.run(
             app,
             host=host_ip,
             port=args.port,
+            workers=1,
         )
 
 

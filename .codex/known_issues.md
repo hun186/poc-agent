@@ -152,3 +152,7 @@
 
 ## 2026-11-25 #413 — portable deep runtime / ordinary-only isolation candidate
 - Co-located loopback validation is bounded and does not attest remote ES host identity. Deep startup SDK construction does not probe TLS/ES or model availability; later provider failure remains isolated to that Job. Explicit ordinary_only startup does not guarantee ordinary queue capacity when global ceiling counts held deep rows; running jobs retain existing restart interruption behavior. No production change.
+
+
+## #413 — listener candidate limitations
+- Private integration only under single-process api.run_api launcher; direct uvicorn/serverless does not start it. Graceful drain waits for synchronous Agent work; no guaranteed bounded cancellation. RUNNING is socket readiness only; actual cross-host TLS, OpenWebUI version, LLM/Word and independent security acceptance remain unverified.
