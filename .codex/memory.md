@@ -155,3 +155,5 @@
 
 ## 2026-11-25 #413 — existing Linux supervisor compatibility candidate
 - #519 Python3.10 stalled and cancelled (25m), Python3.11 399 passed; separate bounded verbose diagnostic pending. #520 merged 4/4 + clean review. Existing run_sra_api.sh directly uses Uvicorn and thus cannot start optional private listener. Candidate explicit shell-only opt-in preserves public HTTP via api.run_api --public --http --port actual port, same child PID/supervisor/workers, default old path; invalid flag rejects before mutation. Existing shutdown timeout requires quiescence. Synthetic shell/launcher parameter tests, no real supervisor/host or independent security acceptance.
+
+- #521 first CI: both Python versions 402 PASS/2 fail in shell test due to asynchronous process-substitution logger read before EOF. Explicit completion marker and bounded wait in test only; production launcher unchanged, rerun exact head.
