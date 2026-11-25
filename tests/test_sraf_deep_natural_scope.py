@@ -123,6 +123,11 @@ def test_additional_absolute_date_sentence_forms(prompt, phrase, first, last, pr
     "請分析2023年8月期間聯合國週末的外交回應。",
     "請分析2023年8月初聯合國的外交回應。",
     "請分析2023年8月下旬聯合國的外交回應。",
+    "請分析2023年8月上中旬聯合國的外交回應。",
+    "請分析2023年8月中下旬聯合國的外交回應。",
+    "請分析2023年8月期間上中旬聯合國的外交回應。",
+    "請分析2023年8月上半聯合國的外交回應。",
+    "請分析2023年8月當月聯合國的外交回應。",
     "請分析2023年8月中聯合國的外交回應。",
     "請分析2023年8月下半月聯合國的外交回應。",
     "請分析聯合國在日本在2023年8月的外交回應。",
@@ -137,3 +142,10 @@ def test_legacy_date_provenance_unchanged():
     assert intent.constraints.event_date.source_text == "2023年8月期間"
     assert intent.constraints.event_date.precision == "month"
     assert intent.target_aspects == ("外交回應", "合作進展")
+
+
+@pytest.mark.parametrize("topic", ["上海經濟", "中國經濟", "中華文化"])
+def test_adjacent_clear_literal_names_remain_supported(topic):
+    intent = compile_deep_question("請分析2023年8月" + topic + "的發展趨勢。", ("news_test",))
+    assert intent.constraints.original_core_terms == (topic,)
+    assert intent.constraints.event_date.start == "2023-08-01"

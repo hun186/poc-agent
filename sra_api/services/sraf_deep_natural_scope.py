@@ -125,9 +125,12 @@ def parse_natural_deep_scope(prompt: str) -> NaturalDeepScope:
         # Without a delimiter, do not swallow a narrower date qualifier
         # into the topic (e.g. 八月初 / 八月下旬 / 八月中).
         # Ambiguous names may use the original comma-delimited form.
-        if (grammar_id == 1 and not match["time"].endswith("期間")
-                and re.match(r"初|末|底|起|迄|中(?!國|華)|上旬|下旬|"
-                             r"上半|下半|第[一二三四五六七八九十]|內|間|整月|整年",
+        # Reject the entire ambiguous leading 上/下/中 family (not a
+        # finite list of 旬 combinations), except clear literal name starts.
+        if (grammar_id == 1
+                and re.match(r"初|末|底|起|迄|上(?!海)|下|中(?!國|華)|"
+                             r"第[一二三四五六七八九十]|內|間|整月|整年|"
+                             r"半月|半日|全月|全年|全日|當月|當年|當日",
                              topic)):
             raise ValueError
         # A second location/time connector inside a topic-first label is
