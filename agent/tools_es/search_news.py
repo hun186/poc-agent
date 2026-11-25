@@ -10,6 +10,7 @@ from smolagents import Tool
 
 from agent.es.es_client import safe_search as _safe_es_search
 from agent.es.arc_frequency_shadow import native_frequency_enabled
+from agent.es.arc_bilingual_shadow import observe_bilingual_proposal
 from agent.es.ordinary_scope_receipt import current_ordinary_scope_capture
 from agent.es.query_terms import compute_effective_terms
 from agent.es.evidence import build_hits_and_evidence
@@ -193,6 +194,11 @@ class ESSearchNews(Tool):
             print("[es_search_news] ES BadRequestError (details suppressed)")
             raise
 
+        # Optional count-only observation; original query and groups remain authoritative.
+        observe_bilingual_proposal(
+            original_question=get_original_report_question(),
+            groups=term_groups, manual=is_manual_entity_query,
+        )
         hits = ((res.get("hits") or {}).get("hits") or []) if isinstance(res, dict) else []
         # Query-body years also constrain time: align Evidence-stage refill.
         allowed_years = (
