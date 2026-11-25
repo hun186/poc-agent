@@ -97,3 +97,7 @@
 
 ## 2026-11-25 #413 — scoped OpenWebUI session candidate (dependent on #503)
 - #503 P2 test helper now passes verified account binding for real job counts. OpenWebUI adapter prerequisite: server-owned reserved session ID from actual authenticated account generation and validated chat ID, not caller owner; reject legacy direct namespace selection in Chat/Word/ordinary Job, preserve exact signed Word capability, require same owner for direct bearer export of scoped sessions. Existing unscoped session semantics unchanged. CI/review pending; adapter and deployed identity/TLS still separate.
+
+
+## 2026-11-25 #413 — backend handoff assertion candidate
+- Hold #505 personal token pilot; introduce private request-bound HMAC assertion primitive with logical issuer/audience, external subject/chat/message, exact POST body digest, short expiry, dedicated rotatable keys and no privilege claims. Unit tests only; no route, replay consumption, live mapping, browser exchange, production or external provider. No OpenWebUI secret change. Must complete persisted replay/authorization/transport/security gates before use.
