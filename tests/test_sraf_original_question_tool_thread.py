@@ -207,3 +207,28 @@ def test_arc_budget_isolated_and_restored_after_runtime_exception(monkeypatch):
         assert not scope[0].reserve(1, ArcUnits(slices=1))
     assert parent.snapshot()[0] == ArcUnits()
     assert current_arc_budget() is None
+
+
+def test_arc_bilingual_mode_alone_allocates_report_budget(monkeypatch):
+    from agent.es.arc_request_budget import ArcUnits, current_arc_budget
+    monkeypatch.delenv("SRAF_ARC_GROUP_FREQUENCY", raising=False)
+    monkeypatch.delenv("SRAF_ARC_ES_FREQUENCY", raising=False)
+    monkeypatch.setenv("SRAF_ARC_BILINGUAL", "shadow")
+    scopes = []
+
+    def make_agent(mode):
+        scopes.append(current_arc_budget())
+
+        class Agent:
+            def run(self, rewritten):
+                return {"payload": {}}
+
+        return Agent()
+
+    monkeypatch.setattr(runtime, "build_agent", make_agent)
+    runtime.run_data_agent("測試", mode="report")
+    runtime.run_data_agent("測試", mode="style")
+    assert scopes[0] is not None and scopes[0][1] == 1
+    assert scopes[1] is None
+    assert not scopes[0][0].reserve(1, ArcUnits(llm_calls=1))
+    assert current_arc_budget() is None
