@@ -95,5 +95,13 @@
 - #503 merged c8305ef26b68 with 5/5 workflows and clean latest-head review; #504's separate N-round workflow subsequently exposed an import-order cycle already present in #503. Candidate removes Worker dependency on HTTP router package for ChatMessage and defers exact Worker type import until admission resolution; tests fresh processes in Worker-first, Chat-first, dispatch-first order and extends N-round path filters so future Chat/dispatch changes trigger it. No authorization relaxation, provider traffic or deployment. Latest-head CI/review pending.
 
 
+## 2026-11-25 #413 — scoped OpenWebUI session candidate (dependent on #503)
+- #503 P2 test helper now passes verified account binding for real job counts. OpenWebUI adapter prerequisite: server-owned reserved session ID from actual authenticated account generation and validated chat ID, not caller owner; reject legacy direct namespace selection in Chat/Word/ordinary Job, preserve exact signed Word capability, require same owner for direct bearer export of scoped sessions. Existing unscoped session semantics unchanged. CI/review pending; adapter and deployed identity/TLS still separate.
+
+
+## 2026-11-25 #413 — additional natural date forms candidate
+- Expand bounded complete Chinese sentences to explicit absolute year/month/day and same-precision ranges, optional comma/期間, topic-first 在/於 and exact 為何 interrogative. Preserve legacy date source text, original question and literal topic/aspects. No implicit time, relative date, unsupported aspect or compound scope. Synthetic regression pending CI and review; does not guarantee ordinary ES receipt alignment.
+
+
 ## 2026-11-25 #413 — local deep deployment preflight candidate
 - Add explicit local-only CLI reusing startup configuration and real ES SDK construction/close; no provider traffic or auth/SQLite changes. Fixed redacted statuses, disabled/default distinctions, optional auto HTTPS pilot config check, PASS_PARTIAL exit 2 with all live gates NOT_TESTED. Synthetic no-network tests and deployment instructions. Actual operator execution not performed.
