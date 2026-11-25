@@ -11,6 +11,7 @@ import math
 import os
 from dataclasses import asdict, dataclass
 
+from ..arc_request_budget import ArcUnits, current_arc_budget
 from .models import HitDoc
 from .snippet import build_evidence_snippet
 from .text_norm import normalize_for_match
@@ -84,6 +85,17 @@ def observe_group_frequency(
             return result
         normalized.append(terms)
 
+    scope = current_arc_budget()
+    if scope is not None:
+        shared, round_ordinal = scope
+        # Reserve the worst-case work before scanning; never refund on failure.
+        # Keep direct standalone shadow callers compatible (per-slice only).
+        if not shared.reserve(round_ordinal, ArcUnits(
+            slices=1, hits=budget.hits, rows=budget.rows, chars=budget.chars,
+        )):
+            result["status"] = "shared_budget_exhausted"
+            result["sample_limited"] = True
+            return result
     counts = [0] * len(normalized)
     limited = len(hits) > budget.hits
     for hit in hits[:budget.hits]:

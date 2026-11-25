@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 from typing import Iterable
 
 from agent.es.es_client import resolve_index as _resolve_es_index
+from agent.es.arc_request_budget import current_arc_budget, bind_arc_budget
 from agent.es.evidence_core.topic_audit import current_sink, bind_sink
 from agent.es.ordinary_scope_receipt import current_ordinary_scope_capture, bind_ordinary_scope_capture
 from .question_scope import (
@@ -22,6 +23,7 @@ _REQUIREMENT_E2E_TOOL_PLAN_ATTR = "_requirement_e2e_admitted_plan"
 # threads can restore provenance without passing it as an LLM tool argument.
 _REPORT_QUESTION_TOOL_ATTR = "_sraf_original_report_question_for_tool"
 _REPORT_AUDIT_TOOL_ATTR = "_sraf_topic_audit_sink_for_tool"
+_ARC_BUDGET_TOOL_ATTR = "_sraf_arc_budget_for_tool"
 _ORDINARY_SCOPE_TOOL_ATTR = "_sraf_ordinary_scope_capture_for_tool"
 
 
@@ -40,6 +42,7 @@ def bind_requirement_acceptance(tool: Any) -> Any:
     active = bool(requirement_acceptance_active())
     setattr(tool, _REPORT_QUESTION_TOOL_ATTR, get_original_report_question())
     setattr(tool, _REPORT_AUDIT_TOOL_ATTR, current_sink())
+    setattr(tool, _ARC_BUDGET_TOOL_ATTR, current_arc_budget())
     setattr(tool, _ORDINARY_SCOPE_TOOL_ATTR, current_ordinary_scope_capture())
     setattr(tool, _REQUIREMENT_E2E_TOOL_SCOPE_ATTR, active)
     # smolagents worker threads do not automatically inherit ContextVars.
@@ -69,7 +72,7 @@ def propagate_requirement_acceptance(func):
             with bind_original_report_question(
                 getattr(self, _REPORT_QUESTION_TOOL_ATTR, None)
             ):
-                with bind_sink(getattr(self, _REPORT_AUDIT_TOOL_ATTR, None)):
+                with bind_arc_budget(getattr(self, _ARC_BUDGET_TOOL_ATTR, None)), bind_sink(getattr(self, _REPORT_AUDIT_TOOL_ATTR, None)):
                     capture = getattr(self, _ORDINARY_SCOPE_TOOL_ATTR, None)
                     with bind_ordinary_scope_capture(capture):
                         if capture is None:

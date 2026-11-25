@@ -39,6 +39,10 @@ CHARS 是 Python len() 計算的原始片段字元數，含日期驗證前掃描
 暫定硬上限（全報告／單輪）：切片 8／4、來源文件 1024／512、片段 2048／1024、原文字元 1048576／524288、額外 ES calls 2／1、額外 LLM calls 2／1；可由可信呼叫者降低限額。這些不是實測最佳值。輪次 ordinal 必須由 coordinator 提供；不准模型指定，不使用 process-global singleton。
 目前僅有離線物件與競爭測試，尚未接入 report、tool worker、ES transport 或 LLM client；仍需驗證普通／深度流程的生命週期、跨執行緒傳遞、重試及取消、時間/token/bytes 的獨立限制，才能啟用真實查詢。
 
+### ARC Data Agent 單次執行共用預算
+當 SRAF_ARC_GROUP_FREQUENCY=shadow 且 Data Agent mode=report/sra_report 時，在建構工具前建立一份私有 ArcRequestBudget，透過既有工具實例與 worker decorator 傳遞；執行結束或例外後 seal，重設 ContextVar。每個切片掃描前保留完整設定預算（最壞成本而非實際使用量），同一次 Data Agent invocation 最多 4 個預設大小切片；不足時紀錄 shared_budget_exhausted、無統計值，原始 Evidence 不變。單獨呼叫 builder 仍依單切片限制，尚無全報告共用範圍。
+此整合不是深度報告全部輪次共用預算；目前每次 Data Agent invocation 各自建立，尚待上層 coordinator 擁有並跨輪次傳遞同一物件。未增加 ES/LLM 呼叫，也未啟用跨語言檢索與加權篩選。測試為 synthetic runtime/worker 與真實 parser 路徑，不是實機驗收。
+
 ## 後續 gate
 - A1：Word/Markdown 分開未測與實測零值，再以真正 term_groups 顯示群組；歷史扁平清單不得推測歸屬。
 - A2：中英文雙向查漏及兩岸異譯；原始必要詞優先、同群組 OR、總/每組預算、跨組正規化碰撞與英文單詞邊界、短語 precision、人工指定/排除控制；獨立 opt-in 與 A/B。
