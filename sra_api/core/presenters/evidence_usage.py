@@ -71,7 +71,8 @@ def review_rows(raw: Any) -> list[tuple[str, str]]:
                          f"輸入約 {r['input_chars']} 字元（非 Token）；"
                          f"耗時 {r['elapsed_ms']} ms"),
         ("LLM 覆核異常", (REVIEW_REASONS[r["reason"]] if r["anomaly"]
-                         else ("未執行，無法判斷" if r["status"] == "disabled"\n                               else "未發現（僅代表規則檢查，不保證語意判斷正確）"))),
+                         else ("未執行，無法判斷" if r["status"] == "disabled"
+                               else "未發現（僅代表規則檢查，不保證語意判斷正確）"))),
     ]
     if r["status"] == "fallback":
         rows.append(("LLM 覆核降級處置", "原證據全部保留，不採用未完成或異常模型判斷"))
