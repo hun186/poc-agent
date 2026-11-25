@@ -43,6 +43,11 @@ CHARS 是 Python len() 計算的原始片段字元數，含日期驗證前掃描
 當 SRAF_ARC_GROUP_FREQUENCY=shadow 且 Data Agent mode=report/sra_report 時，在建構工具前建立一份私有 ArcRequestBudget，透過既有工具實例與 worker decorator 傳遞；執行結束或例外後 seal，重設 ContextVar。每個切片掃描前保留完整設定預算（最壞成本而非實際使用量），同一次 Data Agent invocation 最多 4 個預設大小切片；不足時紀錄 shared_budget_exhausted、無統計值，原始 Evidence 不變。單獨呼叫 builder 仍依單切片限制，尚無全報告共用範圍。
 此整合不是深度報告全部輪次共用預算；目前每次 Data Agent invocation 各自建立，尚待上層 coordinator 擁有並跨輪次傳遞同一物件。未增加 ES/LLM 呼叫，也未啟用跨語言檢索與加權篩選。測試為 synthetic runtime/worker 與真實 parser 路徑，不是實機驗收。
 
+### 深度報告 N-round 統計預算整合
+深度報告實際走 trusted N-round PIT execution loop，而非反覆呼叫 Data Agent。原有 RequestAdmissionBudget 仍獨立控制輪次、ES/PIT、planner 與保留報告生成期限；ARC 只限制額外 A3 shadow 樣本掃描，不取得額外 ES/LLM 授權。
+在單次 trusted loop 開始建立共用 ArcRequestBudget，於既有 canonical grant 與 complete_round 的 Evidence 路徑傳入實際輪次 ordinal；退出或失敗時 seal。兩次既有 canonical 解析各自保留一次配額，不能把兩份樣本統計當成唯一文件的累計 DF。預算不足只省略額外統計，不修改原本 coverage、PIT、語意覆核、checkpoint 或報告生成條件。
+測試用 synthetic two-round PIT/semantic loop 及故意較低的統計配額驗證第二輪仍正常完成；不是私有 ES 或 LLM 實機驗收。仍未接入 A3b 真實聚合或 A2b LLM 擴充，額外時間/token/bytes 預算待完成。
+
 ## 後續 gate
 - A1：Word/Markdown 分開未測與實測零值，再以真正 term_groups 顯示群組；歷史扁平清單不得推測歸屬。
 - A2：中英文雙向查漏及兩岸異譯；原始必要詞優先、同群組 OR、總/每組預算、跨組正規化碰撞與英文單詞邊界、短語 precision、人工指定/排除控制；獨立 opt-in 與 A/B。

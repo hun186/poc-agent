@@ -15,6 +15,9 @@ No production switch is provided.
 """
 from __future__ import annotations
 
+import os
+from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
+
 from dataclasses import dataclass, field
 from copy import deepcopy
 from typing import Any, Callable
@@ -116,6 +119,9 @@ def run_trusted_nround(
     report_rows: dict[tuple[str, str], CanonicalReportEvidence] = {}
     report_chars = 0
     next_plan: BoundNextRoundPlan | None = None
+    # Separate optional shadow accounting; original ES/planner admission,
+    # authorization, and generation-reserved deadline remain authoritative.
+    arc_budget = ArcRequestBudget() if os.getenv("SRAF_ARC_GROUP_FREQUENCY") == "shadow" else None
 
     def _persist_checkpoint() -> None:
         # This only emits coordinator-created, count-only safe progress;
@@ -240,31 +246,33 @@ def run_trusted_nround(
                         "semantic_callback_expired")
                 return verdict
 
-            grant = prepare_private_semantic_grant(
-                constraints=constraints,
-                evaluator=evaluator,
-                es_hits=list(fetched.hits),
-                term_groups=[set(x) for x in coordinator._groups],
-                effective_terms=list(coordinator._effective),
-                query_for_snippet=query_for_snippet,
-                complete=True,
-                assessor=guarded_semantic_assessor,
-                max_semantic_checks=max_semantic_checks_per_round,
-            )
+            with bind_arc_budget((arc_budget, frozen.round_number) if arc_budget is not None else None):
+                grant = prepare_private_semantic_grant(
+                    constraints=constraints,
+                    evaluator=evaluator,
+                    es_hits=list(fetched.hits),
+                    term_groups=[set(x) for x in coordinator._groups],
+                    effective_terms=list(coordinator._effective),
+                    query_for_snippet=query_for_snippet,
+                    complete=True,
+                    assessor=guarded_semantic_assessor,
+                    max_semantic_checks=max_semantic_checks_per_round,
+                )
             remaining = coordinator._budget.snapshot()
             if remaining.remaining_seconds <= remaining.generation_reserve_seconds:
                 raise TrustedNroundExecutionError("semantic_assessment_over_deadline")
-            coordinator.complete_round(
-                list(fetched.hits),
-                query_for_snippet=query_for_snippet,
-                complete=True,
-                # The trusted attestor explicitly approved this exact
-                # active frozen query after full PIT page-chain completion.
-                request_wide_attested=True,
-                coverage_evaluator=evaluator,
-                coverage_witnesses=grant.witnesses,
-                semantic_verifier=grant.semantic_verifier,
-            )
+            with bind_arc_budget((arc_budget, frozen.round_number) if arc_budget is not None else None):
+                coordinator.complete_round(
+                    list(fetched.hits),
+                    query_for_snippet=query_for_snippet,
+                    complete=True,
+                    # The trusted attestor explicitly approved this exact
+                    # active frozen query after full PIT page-chain completion.
+                    request_wide_attested=True,
+                    coverage_evaluator=evaluator,
+                    coverage_witnesses=grant.witnesses,
+                    semantic_verifier=grant.semantic_verifier,
+                )
             for row in grant._report_rows:
                 previous = report_rows.get(row.pair)
                 if previous is not None:
@@ -314,3 +322,6 @@ def run_trusted_nround(
         coordinator.revoke_unpersisted_report_readiness()
         coordinator.cancel()
         raise TrustedNroundExecutionError("trusted_nround_execution_failed") from None
+    finally:
+        if arc_budget is not None:
+            arc_budget.seal()
