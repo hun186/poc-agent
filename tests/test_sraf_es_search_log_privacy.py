@@ -246,7 +246,11 @@ def test_native_frequency_transport_preserves_primary_and_limits_calls(monkeypat
     assert extra["ignore_unavailable"] is False and extra["allow_no_indices"] is False
     assert extra["expand_wildcards"] == "none"
     assert extra["body"]["_source"] is False and extra["body"]["size"] == 0
-    assert extra["body"]["query"]["bool"]["filter"] == body["query"]["function_score"]["query"]["bool"]["filter"]
+    import json
+    def canonical(filters):
+        return sorted(json.dumps(f, sort_keys=True) for f in filters)
+    assert canonical(extra["body"]["query"]["bool"]["filter"]) == canonical(
+        body["query"]["function_score"]["query"]["bool"]["filter"])
     assert budget.snapshot()[0] == ArcUnits(es_calls=1)
     records = _native_logs(caplog)
     assert records[0]["observation"]["groups"][0]["document_frequency"] == 12
@@ -300,3 +304,24 @@ def test_native_frequency_failure_does_not_retry_or_modify_primary(monkeypatch, 
     assert budget.snapshot()[0] == ArcUnits(es_calls=1)
     assert _native_logs(caplog) == [{"schema": "sraf_arc_es_frequency_shadow_v1", "status": "unavailable"}]
     assert "PRIVATE_BACKEND" not in caplog.text
+
+
+@pytest.mark.parametrize("high,selected", [(False, False), (True, False), (False, True), (True, True)])
+def test_native_frequency_all_supported_filter_combinations(monkeypatch, high, selected):
+    from agent.es.arc_frequency_shadow import _primary_scope_verified
+    from agent.es.arc_frequency_plan import build_frequency_plan
+    from agent.es.query_body import build_main_query_body
+    monkeypatch.setenv("SRAF_ARC_ES_FREQUENCY_VERIFIED_INDEX", "news_test")
+    plan = build_frequency_plan([{"甲"}], date_from="2020-01-01", date_to="2020-12-31",
+                                must_high_value=high, must_selected=selected)
+    body = build_main_query_body("甲", high, selected, 5, "2020-01-01", "2020-12-31",
+                                 6.0, 2.5, False, "importDT", "30d")
+    assert _primary_scope_verified("news_test", body, _native_primary(), plan)
+    query = body["query"]["function_score"]["query"]["bool"]
+    query["filter"].reverse()
+    assert _primary_scope_verified("news_test", body, _native_primary(), plan)
+    query["filter"].append(query["filter"][0])
+    assert not _primary_scope_verified("news_test", body, _native_primary(), plan)
+    query["filter"].pop()
+    query["must_not"] = [{"term": {"owner": "PRIVATE_OWNER"}}]
+    assert not _primary_scope_verified("news_test", body, _native_primary(), plan)
