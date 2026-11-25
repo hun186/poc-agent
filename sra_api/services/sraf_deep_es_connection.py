@@ -57,7 +57,11 @@ def build_deep_es_connection(env: Mapping[str, str], *,
     """
     client = None
     try:
-        url = _value(env, "ES_URL", 512)
+        # Explicit deep-only entrypoint permits topology changes without
+        # altering legacy ordinary report or ingestion configuration.
+        # An explicitly invalid/empty override fails; no fallback on failure.
+        url_key = "SRAF_DEEP_ES_URL" if "SRAF_DEEP_ES_URL" in env else "ES_URL"
+        url = _value(env, url_key, 512)
         parts = urlsplit(url)
         if (any(ch.isspace() or ord(ch) < 32 for ch in url)
                 or parts.scheme != "https" or not parts.hostname or not parts.port
