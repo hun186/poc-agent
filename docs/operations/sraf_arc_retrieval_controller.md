@@ -52,6 +52,10 @@ CHARS 是 Python len() 計算的原始片段字元數，含日期驗證前掃描
 預設關閉；SRAF_ARC_ES_FREQUENCY=shadow 且 SRAF_ARC_ES_FREQUENCY_VERIFIED_INDEX=<單一具體索引名稱> 才可嘗試。後者為操作員明確批准該資料集合可做 corpus 統計、並已核對 live mapping/analyzer 的聲明，不是程式自動驗證。未核對勿設定。僅 report/sra_report Data Agent 的私有預算範圍、正常主查詢成功且完整、至少一筆 _index 精確吻合、原主查詢 root filters 完全相同時，保留一次 ES 配額後使用同一 SDK client 發出 size:0 聚合。無 wildcard/alias/remote cluster，明確日期雙端且不超過原計畫限制；不在 Requirement E2E、ordinary scope capture、highlight retry 或分頁重試增加統計。空結果無具體索引證據則略過；不改普通查詢或深度授權 receipt。
 每輪最多一次額外 ES 請求，SDK timeout 3s、ES timeout 2s、零重試，拒絕部分結果及缺索引；兩個 timeout 不是 server CPU 硬上限。額度保留後不退款。失敗僅記固定狀態；完整結果僅記群組序號與計數，不記原詞、索引、日期、ID、DSL 或後端錯誤，且不送入報告／模型。尚未接入深度報告 PIT 統計；普通報告真實索引/授權/分析器/負載實測仍為獨立驗收 gate。
 
+### A2b 普通報告跨語言候選 shadow LLM
+預設關閉，SRAF_ARC_BILINGUAL=shadow 為獨立操作員 opt-in。僅具私有 report Data Agent 預算、原始 report question、TOPIC_LLM_URL 啟用且非人工實體、Requirement E2E 或 ordinary scope capture 的正常主查詢路徑；使用現有 call_llm provider（TOPIC_LLM_URL 是原有抽詞功能開關，實際端點由既有 MODEL_BASE_URL/client 決定），不另設新端點。原始問題與語意群組作為提詞資料，不送 Evidence 或 ES 原文。每輪一次額外 LLM 呼叫；輸入原問題最多 6000 字元、序列化最多 64000 bytes，模型 num_predict 1536、requests timeout 15s、輸出解析上限 24000 字元。timeout 非端到端硬上限，模型是否遵守 token 限額須實機驗收。額度保留後不退款。
+原始 groups/effective_terms、ES DSL、Evidence、回傳 payload 均不變；只記固定狀態及各群組 ordinal、原詞數與通過結構驗證的新增候選數，不記候選詞、提詞、原問題或錯誤正文。候選數不是語意正確率、召回率或新增命中數。未接入深度報告或候選 Evidence 影響評估，未核對實機資源前勿啟用。
+
 ## 後續 gate
 - A1：Word/Markdown 分開未測與實測零值，再以真正 term_groups 顯示群組；歷史扁平清單不得推測歸屬。
 - A2：中英文雙向查漏及兩岸異譯；原始必要詞優先、同群組 OR、總/每組預算、跨組正規化碰撞與英文單詞邊界、短語 precision、人工指定/排除控制；獨立 opt-in 與 A/B。
