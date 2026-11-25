@@ -62,3 +62,41 @@ def test_no_eligible_sample_is_not_zero_idf():
     r = observe_group_frequency([], [{"甲軸"}], date_from=None, date_to=None, allowed_years=None)
     assert r["status"] == "no_date_eligible_sample"
     assert r["groups"][0]["idf_milli"] is None
+
+
+def test_arc_operator_budget_is_bounded_and_rejects_malformed_env(monkeypatch):
+    from agent.es.evidence_core.group_frequency import GroupFrequencyBudget, MAX_CHARS
+    prefix = "SRAF_ARC_GROUP_FREQUENCY_MAX_"
+    monkeypatch.setenv(prefix + "HITS", "3")
+    monkeypatch.setenv(prefix + "CHARS", "999999999")
+    monkeypatch.setenv(prefix + "ROWS", "-1")
+    monkeypatch.setenv(prefix + "TERMS", "0")
+    monkeypatch.setenv(prefix + "ROW_CHARS", "１２")
+    monkeypatch.setenv(prefix + "GROUPS", "9" * 100)
+    b = GroupFrequencyBudget.from_env()
+    assert b.hits == 3
+    assert b.chars == MAX_CHARS
+    assert b.rows == MAX_ROWS
+    assert b.terms == MAX_TERMS
+    assert b.row_chars == GroupFrequencyBudget().row_chars
+    assert b.groups == GroupFrequencyBudget().groups
+
+
+def test_arc_lower_observation_budget_does_not_change_evidence(monkeypatch, caplog):
+    hits = [_hit(["甲軸乙軸丙軸"] * 3, uuid=f"d-{i}", docid=str(i))
+            for i in range(3)]
+    monkeypatch.delenv("SRAF_ARC_GROUP_FREQUENCY", raising=False)
+    expected = _build(hits)
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY_MAX_HITS", "2")
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY_MAX_ROWS", "2")
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY_MAX_ROWS_PER_HIT", "1")
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY_MAX_CHARS", "10")
+    assert _build(hits) == expected
+    r = _observed(caplog)
+    assert r["effective_budget"]["chars"] == 10
+    assert r["effective_budget"]["rows_per_hit"] == 1
+    assert r["scanned_hits"] <= 2
+    assert r["inspected_rows"] <= 2
+    assert r["text_chars"] <= 10
+    assert r["sample_limited"] is True
