@@ -101,12 +101,15 @@ def probe_handoff_transport(transport: HandoffTransport) -> None:
         connection.request("GET", _CHAT_PATH, headers={
             "Accept": "application/json", "Connection": "close",
         })
-        response = connection.getresponse()
-        methods = {part.strip().upper()
-                   for part in (response.getheader("Allow") or "").split(",")}
-        if response.status != 405 or methods != {"POST"}:
-            raise HandoffDenied("handoff_probe_route_unconfirmed")
-        # Do not need or expose the response body.
+        # HTTPResponse can own the underlying socket after HTTPConnection
+        # detaches it on Connection: close. Close it even for an unread body
+        # or rejected status, including when an exception retains the frame.
+        with connection.getresponse() as response:
+            methods = {part.strip().upper()
+                       for part in (response.getheader("Allow") or "").split(",")}
+            if response.status != 405 or methods != {"POST"}:
+                raise HandoffDenied("handoff_probe_route_unconfirmed")
+            # Do not need or expose the response body.
     except HandoffDenied:
         raise
     except Exception:
@@ -138,15 +141,18 @@ def send_signed_chat(transport: HandoffTransport, trust: HandoffTrust, *,
             "Content-Type": "application/json", "Accept": "application/json",
             _HEADER: assertion, "Connection": "close",
         })
-        response = connection.getresponse()
-        if (response.status != 200
-                or (response.getheader("Content-Type") or "").partition(";")[0].strip().lower()
-                    != "application/json"):
-            raise HandoffDenied("handoff_transport_rejected")
-        data = response.read(_MAX_RESPONSE + 1)
-        if not data or len(data) > _MAX_RESPONSE:
-            raise HandoffDenied("handoff_transport_response_invalid")
-        return data
+        # Explicitly release the response-owned socket on rejection, read
+        # failure, or success. connection.close() alone is insufficient
+        # when getresponse() detached a Connection: close socket.
+        with connection.getresponse() as response:
+            if (response.status != 200
+                    or (response.getheader("Content-Type") or "").partition(";")[0].strip().lower()
+                        != "application/json"):
+                raise HandoffDenied("handoff_transport_rejected")
+            data = response.read(_MAX_RESPONSE + 1)
+            if not data or len(data) > _MAX_RESPONSE:
+                raise HandoffDenied("handoff_transport_response_invalid")
+            return data
     except HandoffDenied:
         raise
     except Exception:

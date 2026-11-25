@@ -10,7 +10,7 @@ from threading import Thread
 import pytest
 
 from api.security.sraf_handoff_assertion import HandoffDenied, verify_chat_assertion
-from api.security.sraf_handoff_transport import HandoffTransport, send_signed_chat
+from api.security.sraf_handoff_transport import HandoffTransport, send_signed_chat, probe_handoff_transport
 from test_sraf_handoff_assertion import BODY, trust
 
 
@@ -110,3 +110,43 @@ def test_real_https_requires_trusted_ca_and_matching_san(tmp_path):
         assert send(HandoffTransport("verified_https", f"https://127.0.0.1:{port}",
                                      ca_file=cert)) == b'{"synthetic":true}'
         assert len(received) == 1
+
+
+
+@pytest.mark.parametrize("operation,status,expected_error", [
+    ("send", 401, True), ("send", 200, False),
+    ("probe", 405, False), ("probe", 404, True),
+])
+def test_response_owner_released_even_when_body_unread(monkeypatch, operation, status, expected_error):
+    from api.security import sraf_handoff_transport
+    events = []
+    class Response:
+        def __enter__(self):
+            return self
+        def __exit__(self, *_):
+            events.append("response_closed")
+        def getheader(self, name):
+            return {"Content-Type": "application/json", "Allow": "POST"}.get(name)
+        def read(self, limit):
+            events.append("read")
+            return b'{"synthetic":true}'
+    Response.status = status
+    class Connection:
+        def request(self, *a, **kw):
+            pass
+        def getresponse(self):
+            return Response()
+        def close(self):
+            events.append("connection_closed")
+    monkeypatch.setattr(sraf_handoff_transport, "_direct_connection", lambda *a: Connection())
+    transport = HandoffTransport("local_http", "http://127.0.0.1:19002")
+    def invoke():
+        return send(transport) if operation == "send" else probe_handoff_transport(transport)
+    if expected_error:
+        with pytest.raises(HandoffDenied) as retained:
+            invoke()
+        assert retained.value is not None
+    else:
+        invoke()
+    assert events[-2:] == ["response_closed", "connection_closed"]
+    assert ("read" in events) == (operation == "send" and not expected_error)
