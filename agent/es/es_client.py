@@ -306,6 +306,7 @@ def safe_search(
     *,
     index: Optional[IndexType] = None,
     allow_highlight_retry: bool = True,
+    arc_frequency: Optional[Dict[str, Any]] = None,
 ):
     es = get_es()
     ES_TIMEOUT = int(os.getenv("ES_TIMEOUT", "30"))
@@ -358,6 +359,12 @@ def safe_search(
         if capture is not None:
             capture.observe_transport(index=es_index, body=body,
                                       real_client=type(es) is Elasticsearch, response=response)
+        if arc_frequency is not None:
+            from agent.es.arc_frequency_shadow import observe_native_frequency
+            observe_native_frequency(
+                es, index=es_index, ordinary_body=body,
+                ordinary_response=response, **arc_frequency,
+            )
         return response
     
     except BadRequestError as e:
