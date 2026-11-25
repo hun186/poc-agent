@@ -95,5 +95,9 @@
 - #503 merged c8305ef26b68 with 5/5 workflows and clean latest-head review; #504's separate N-round workflow subsequently exposed an import-order cycle already present in #503. Candidate removes Worker dependency on HTTP router package for ChatMessage and defers exact Worker type import until admission resolution; tests fresh processes in Worker-first, Chat-first, dispatch-first order and extends N-round path filters so future Chat/dispatch changes trigger it. No authorization relaxation, provider traffic or deployment. Latest-head CI/review pending.
 
 
+## 2026-11-25 #413 — scoped OpenWebUI session candidate (dependent on #503)
+- #503 P2 test helper now passes verified account binding for real job counts. OpenWebUI adapter prerequisite: server-owned reserved session ID from actual authenticated account generation and validated chat ID, not caller owner; reject legacy direct namespace selection in Chat/Word/ordinary Job, preserve exact signed Word capability, require same owner for direct bearer export of scoped sessions. Existing unscoped session semantics unchanged. CI/review pending; adapter and deployed identity/TLS still separate.
+
+
 ## 2026-11-25 #413 — portable deep runtime / ordinary-only isolation candidate
 - Operator verified co-located ES strict TLS, authenticated read-only Event/Timeline/Evidence mapping/date/paging PASS_PARTIAL via a certificate-matching loopback; LAN SAN mismatch diagnosed. Installed OpenWebUI 0.13.4 has encryption off and a nonpersistent existing secret. Operator requests multi-host/subnet portability and no mandatory OpenWebUI key/TLS migration. #505 HOLD; #504 ownership isolation remains. Candidate adds independent SRAF_DEEP_ES_URL (strict TLS, no fallback on invalid override) and explicit ordinary_only startup policy preserving queued deep jobs/checkpoints and ordinary worker path on typed configuration/setup failure; strict default unchanged. Synthetic CI/review pending; no production config changes.
