@@ -70,3 +70,7 @@ CHARS 是 Python len() 計算的原始片段字元數，含日期驗證前掃描
 ## 深度報告統計計畫補充
 ### A3b 深度報告統計 scope plan（離線，不發送）
 由 active FrozenSingleQueryPlan 與原始 coordinator 語意群組建構，保留日期及必要實體 root candidate filter，不納入 planner 新增詞或相關性 should。無界日期、analysis date、固定欄位未支援時拒絕。計畫本身不包含 PIT ID、不消耗 ES 額度、不宣稱 owner 授權或分支證明。未來 transport 必須保留同一授權 PIT 最新 ID、原本 ES/時間及 ARC 雙重預算、當前 owner 複查、PIT 更新與 cleanup、完整 shard/count 回應；不得污染 Evidence 分頁證明。尚無 live mapping/analyzer/負載驗收。
+
+## A4 嚴格 Evidence 局部排序觀察
+僅在 SRAF_ARC_GROUP_FREQUENCY=shadow 且 SRAF_ARC_RANK=shadow 同時開啟時，使用同一 parser slice 的局部樣本，至少 16 個 date-valid source hits、strict Evidence 超過 20 才嘗試。不是 ES corpus DF，不混用不同輪次/索引統計。僅比較原始 strict 前 128 rows，額外保留共用預算一切片、128 rows、131072 chars；每 row 最多 4096 chars，任何超限則略過排序而非靜默丟棄該 row。
+排序優先序：strong > weak、原有命中群組數、正文命中群組數、截頂 IDF 加總、原始順序。零觀測頻率權重為零而非最大罕見度；每群組最多 2000 milli IDF。只記 top20 替換數、相對不含 IDF 的 coverage-only 排序替換數、來源 hit 數與 strong 數。保留 prefix/sample 限制標記；不得推論整個資料庫的精確率、召回率或語意必要性。所有正式 Evidence、排序、篩選與來源維持原樣，無新增 ES/LLM 呼叫。尚未實作全域 DF 加權、必要實體獨立強制 gate、來源公平配置或自適應收緊；須待人工標記 A/B 驗收。
