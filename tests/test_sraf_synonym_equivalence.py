@@ -195,3 +195,34 @@ def test_prompt_explicitly_checks_official_and_common_names_both_directions(monk
     assert "俗稱" in prompts[0]
     assert "不確定的名稱不要生成" in prompts[0]
     assert "不得把松山機場或機場捷運列為同義詞" in prompts[0]
+
+
+def test_arc_a2_latin_alias_requires_token_boundaries():
+    from agent.es.evidence_core.cross_language_alias import alias_matches
+    assert alias_matches("US", "美國US政策")
+    assert alias_matches("US", "ＵＳ government")
+    assert not alias_matches("US", "business")
+    assert not alias_matches("US", "US2")
+    assert alias_matches("export controls", "new EXPORT  CONTROLS announced")
+    assert not alias_matches("export controls", "exportcontrols")
+    assert alias_matches("出口管制", "宣布出口管制措施")
+
+
+def test_arc_a2_admission_does_not_merge_axes_or_remove_originals():
+    from agent.es.evidence_core.cross_language_alias import admit_aliases
+    original = [{"美國", "USA"}, {"出口管制"}, {"中國"}]
+    proposed = [["United States", "ＥＣ"], ["Export controls", "EC", "usa"], ["China"]]
+    result = admit_aliases(original, proposed)
+    assert result == [{"美國", "USA", "United States"},
+                      {"出口管制", "Export controls"}, {"中國", "China"}]
+    assert original == [{"美國", "USA"}, {"出口管制"}, {"中國"}]
+
+
+def test_arc_a2_optional_budget_never_evicts_originals():
+    from agent.es.evidence_core.cross_language_alias import admit_aliases, MAX_PER_GROUP, MAX_PROPOSALS
+    original = [{"原詞", "原始別名"}]
+    proposals = [[f"alias{i}" for i in range(MAX_PER_GROUP + 2)]]
+    assert len(admit_aliases(original, proposals)[0]) == len(original[0]) + MAX_PER_GROUP
+    assert admit_aliases(original, [["alias"] * (MAX_PROPOSALS + 1)]) == original
+    assert admit_aliases(original, []) == original
+    assert admit_aliases(original, [["", "123", "!!!"]]) == original
