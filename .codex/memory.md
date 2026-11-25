@@ -177,3 +177,5 @@
 
 - #522 merged f7650f16585c1 after exact-head 4/4 Hosted workflows and clean code review; independent security/live acceptance pending.
 - 2026-11-25 ARC A1 candidate: common Word/Markdown topic adaptive diagnostics distinguish disabled, missing, not attempted, measured zero. Explain 3/2 semantic groups in plain language. No retrieval behavior changes; actual renderer regression tests submitted; Hosted CI/review pending.
+
+- 2026-11-25 ARC A3 candidate: default-off count-only group-frequency shadow on bounded date-valid parsed source-hit sample; ordinal counts/IDF only, no raw terms/IDs, no ES/LLM or selection changes. Document A1–A9 gates in docs/operations/sraf_arc_retrieval_controller.md. Not corpus DF or unbiased sampling. CI/review and private A/B pending.
