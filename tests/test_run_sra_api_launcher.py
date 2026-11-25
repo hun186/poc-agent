@@ -51,6 +51,11 @@ def launcher_env(tmp_path: Path) -> tuple[dict[str, str], Path]:
         'REQUIREMENT_HANDOFF_CREDENTIAL=sra_sk_test_not-a-real-secret\nEOF\n'
         'chmod 600 "$state_dir/requirement_handoff.env"; '
         'echo "deployment_bootstrap_state_path=$state_dir/requirement_handoff.env"; exit 0;; esac; '
+        'if [ "$*" = "-m api.run_api --public --http --port ${PORT:-9002}" ]; then '
+        "printf '\\n%s LISTEN\\n' \"$BASHPID\" >> \"$FAKE_PORT_PID_FILE\"; "
+        'echo "api:$*" >> "$TEST_EVENTS"; '
+        'trap \'echo api-term >> "$TEST_EVENTS"; exit 0\' TERM INT; '
+        'while :; do sleep 0.05; done; fi; '
         'echo "python:$*" >> "$TEST_EVENTS"; '
         'case "$*:$FAIL_SCHEDULE" in *schedule-worker:1) sleep .2; exit 7;; esac; '
         'trap \'echo "worker-term:$*" >> "$TEST_EVENTS"; exit 0\' TERM INT; '
@@ -259,7 +264,22 @@ def test_restart_contender_does_not_truncate_launcher_identity(launcher_env) -> 
     finally:
         first.send_signal(signal.SIGCONT)
         first.wait(timeout=5)
-        _wait_for(events, "handoff-worker", timeout=5)
+        # The old event log already contains "handoff-worker". Wait for
+        # replacement startup, not a historical event from the old process.
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            current = _poll_identity(identity)
+            content = _read_optional_text(events)
+            if (current.get("pid") == str(contender.pid)
+                    and content.count("handoff-worker") >= 2
+                    and all(_poll_identity(Path(env["BASE_DIR"]) / name).get("pid")
+                            for name in (".run_sra_api_schedule.identity", ".run_sra_api_handoff.identity"))):
+                break
+            time.sleep(0.03)
+        else:
+            if contender.poll() is None:
+                _stop(contender)
+            pytest.fail("replacement startup was not observed")
         _stop(contender)
 
 
@@ -757,3 +777,25 @@ def test_api_listener_final_gate_rejects_spoofed_start_tick(launcher_env) -> Non
     assert not any(line.startswith("python:") for line in (
         events.read_text().splitlines() if events.exists() else []
     ))
+
+
+def test_supervised_opt_in_keeps_all_three_owned_roles(launcher_env) -> None:
+    env, events = launcher_env
+    env["SRAF_HANDOFF_SUPERVISED_LAUNCH"] = "1"
+    env["PORT"] = "9123"
+    proc = _start(env)
+    try:
+        content = _wait_for(events, "handoff-worker", timeout=5)
+        for name in (".run_sra_api_schedule.identity", ".run_sra_api_handoff.identity"):
+            _wait_for(Path(env["BASE_DIR"]) / name, "process_start_time=", timeout=5)
+        assert "api:-m api.run_api --public --http --port 9123" in content
+        assert content.count("schedule-worker") == 1
+        assert content.count("handoff-worker") == 1
+        record = _poll_identity(Path(env["API_IDENTITY_FILE"]))
+        assert record["port"] == "9123"
+        assert f"{record['api_pid']} LISTEN" in Path(env["FAKE_PORT_PID_FILE"]).read_text()
+        assert proc.poll() is None
+    finally:
+        if proc.poll() is None:
+            code, _ = _stop(proc)
+            assert code == 0
