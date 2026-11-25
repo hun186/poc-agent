@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
+from dataclasses import asdict, dataclass
 
 from .models import HitDoc
 from .snippet import build_evidence_snippet
@@ -24,28 +26,57 @@ MAX_TERM_CHARS = 160
 _LOG = logging.getLogger("sraf.arc.group_frequency")
 
 
+@dataclass(frozen=True)
+class GroupFrequencyBudget:
+    """Operator-only per-slice budgets, capped at the original hard limits."""
+    hits: int = MAX_HITS
+    rows: int = MAX_ROWS
+    rows_per_hit: int = MAX_ROWS_PER_HIT
+    chars: int = MAX_CHARS
+    row_chars: int = MAX_ROW_CHARS
+    groups: int = MAX_GROUPS
+    terms: int = MAX_TERMS
+    term_chars: int = MAX_TERM_CHARS
+
+    @classmethod
+    def from_env(cls) -> GroupFrequencyBudget:
+        defaults = asdict(cls())
+        values = {}
+        for key, ceiling in defaults.items():
+            raw = os.getenv("SRAF_ARC_GROUP_FREQUENCY_MAX_" + key.upper(), "")
+            # Reject oversized, non-ASCII, negative, zero and malformed inputs.
+            # Do not log operator-provided raw values.
+            if 0 < len(raw) <= 9 and raw.isascii() and raw.isdecimal():
+                number = int(raw)
+                if number > 0:
+                    values[key] = min(number, ceiling)
+        return cls(**values)
+
+
 def observe_group_frequency(
     hits: list[HitDoc], groups: list[set[str]], *,
     date_from: str | None, date_to: str | None,
     allowed_years: set[int] | None,
 ) -> dict:
+    budget = GroupFrequencyBudget.from_env()
     result = {
         "schema": "sraf_arc_group_frequency_v1",
         "scope": "ordered_parser_slice_date_valid_sample_text_only",
         "status": "unsupported_groups",
+        "effective_budget": asdict(budget),
         "available_hits": len(hits), "scanned_hits": 0,
         "inspected_rows": 0, "eligible_rows": 0, "eligible_hits": 0,
         "text_chars": 0, "sample_limited": False, "groups": [],
     }
     # Bound both the matcher dimensions and raw input lengths before work.
-    if not 1 <= len(groups) <= MAX_GROUPS:
+    if not 1 <= len(groups) <= budget.groups:
         return result
-    if sum(len(group) for group in groups) > MAX_TERMS:
+    if sum(len(group) for group in groups) > budget.terms:
         return result
     normalized = []
     for group in groups:
         if not group or any(type(term) is not str or not
-                            0 < len(term) <= MAX_TERM_CHARS for term in group):
+                            0 < len(term) <= budget.term_chars for term in group):
             return result
         terms = {normalize_for_match(term) for term in group}
         terms.discard("")
@@ -54,24 +85,24 @@ def observe_group_frequency(
         normalized.append(terms)
 
     counts = [0] * len(normalized)
-    limited = len(hits) > MAX_HITS
-    for hit in hits[:MAX_HITS]:
-        if result["inspected_rows"] >= MAX_ROWS or result["text_chars"] >= MAX_CHARS:
+    limited = len(hits) > budget.hits
+    for hit in hits[:budget.hits]:
+        if result["inspected_rows"] >= budget.rows or result["text_chars"] >= budget.chars:
             limited = True
             break
         result["scanned_hits"] += 1
-        if len(hit.citations) > MAX_ROWS_PER_HIT:
+        if len(hit.citations) > budget.rows_per_hit:
             limited = True
         eligible = False
         matched: set[int] = set()
-        for citation in hit.citations[:MAX_ROWS_PER_HIT]:
-            if result["inspected_rows"] >= MAX_ROWS or result["text_chars"] >= MAX_CHARS:
+        for citation in hit.citations[:budget.rows_per_hit]:
+            if result["inspected_rows"] >= budget.rows or result["text_chars"] >= budget.chars:
                 limited = True
                 break
             result["inspected_rows"] += 1
             text = citation.text
-            if (type(text) is not str or not 0 < len(text) <= MAX_ROW_CHARS
-                    or result["text_chars"] + len(text) > MAX_CHARS):
+            if (type(text) is not str or not 0 < len(text) <= budget.row_chars
+                    or result["text_chars"] + len(text) > budget.chars):
                 limited = True
                 continue
             result["text_chars"] += len(text)
