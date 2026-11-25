@@ -49,8 +49,21 @@ def _primary_scope_verified(index, body, response, plan) -> bool:
         # Reuse precisely the primary root filter list. Do not silently
         # drop a future owner/tenant or other required filter.
         query = body["query"]["function_score"]["query"]["bool"]
-        return query["filter"] == plan["query"]["bool"]["filter"]
-    except (KeyError, TypeError):
+        # Conjunction order is immaterial; preserve multiplicity and every
+        # nested predicate, rather than comparing sets or dropping filters.
+        if type(query) is not dict or set(query) != {"filter", "should", "minimum_should_match"}:
+            return False
+        if type(query["minimum_should_match"]) is not int or query["minimum_should_match"] != 1:
+            return False
+        primary = query["filter"]
+        expected = plan["query"]["bool"]["filter"]
+        if type(primary) is not list or len(primary) != len(expected):
+            return False
+        def canonical(filters):
+            return sorted(json.dumps(f, sort_keys=True, separators=(",", ":"), allow_nan=False)
+                          for f in filters)
+        return canonical(primary) == canonical(expected)
+    except (KeyError, TypeError, ValueError):
         return False
 
 
