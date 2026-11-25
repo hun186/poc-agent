@@ -277,3 +277,7 @@ shell flag 本身不開啟 listener。非 0/1 在 bootstrap/lock 前拒絕。
 不要在仍執行工作時為遷移強制 restart。無法排空先停止本次遷移。
 正式環境未變更；本 PR 的測試為實際 shell spawn 片段及 Python launcher
 參數契約（stub child/uvicorn），不是完整私有 Linux supervisor 實測。
+
+
+## Admin manifest path and pilot runbook (candidate)
+- Pipe admin Valve CONFIG_FILE stores only an absolute local path; no UserValves or key. Existing env path remains supported; two paths must resolve to the same manifest. Standalone diagnostics accept --config-file. Avoid container recreation solely to add an environment variable when an existing restricted persistent mount is suitable. See [staged pilot and rollback runbook](sraf_deep_openwebui_pilot_runbook.md); independent review and real acceptance remain required.
