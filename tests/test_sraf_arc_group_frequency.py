@@ -891,3 +891,94 @@ def test_arc_a9_resource_eval_cli_aggregate_only(tmp_path,capsys):
     assert main(["resources",str(p)]) == 2
     out = capsys.readouterr()
     assert not out.out and json.loads(out.err)["status"] == "INVALID_OR_UNREADABLE_FIXTURE"
+
+
+def _a9_screen_case():
+    rows = [{"ordinal":1,"source":0,"gold":"relevant","direct_anchor":True,"strong":True,
+             "baseline_rank":1,"candidate_rank":1},
+            {"ordinal":2,"source":1,"gold":"unrelated","direct_anchor":False,"strong":False,
+             "baseline_rank":2,"candidate_rank":None},
+            {"ordinal":3,"source":2,"gold":"relevant","direct_anchor":False,"strong":False,
+             "baseline_rank":None,"candidate_rank":2}]
+    return {"selection":rows,"resources":{"baseline":_a9_measured(elapsed=100),
+                         "candidate":_a9_measured(elapsed=120)}}
+
+
+def _a9_screen_fixture():
+    return {"policy":{"minimum_cases":2,"min_full_precision_delta_bps":0,
+                       "min_top20_precision_delta_bps":0,"min_net_relevant_gain":2,
+                       "max_elapsed_increase_ms":20,"max_es_call_increase":0,
+                       "max_llm_call_increase":0,"max_prompt_token_increase":0,
+                       "max_completion_token_increase":0},
+            "cases":[_a9_screen_case(),_a9_screen_case()]}
+
+
+def test_arc_a9_acceptance_screen_requires_per_case_quality_and_resources():
+    from agent.es.evidence_core.arc_acceptance_screen import screen_selection_acceptance
+    fixture=_a9_screen_fixture()
+    result=screen_selection_acceptance(fixture)
+    assert result["status"]=="MEETS_OFFLINE_THRESHOLDS"
+    assert result["production_authorized"] is False
+    assert result["quality"]["full_selection"]["net_relevant_change"]==2
+    assert not result["blockers"] and not result["incomplete"]
+    # An extra-fast case cannot hide the regression of a different case.
+    fixture["cases"][0]["resources"]["candidate"]["elapsed_ms"]=1
+    fixture["cases"][1]["resources"]["candidate"]["elapsed_ms"]=121
+    result=screen_selection_acceptance(fixture)
+    assert result["status"]=="BLOCKED"
+    assert result["blockers"]["elapsed_ms_increase_above_policy"]==1
+
+
+def test_arc_a9_acceptance_screen_never_offsets_protected_loss_or_hides_failed_attempt():
+    from agent.es.evidence_core.arc_acceptance_screen import screen_selection_acceptance
+    fixture=_a9_screen_fixture()
+    first=fixture["cases"][0]
+    first["selection"][0]["candidate_rank"]=None
+    first["selection"][2]["candidate_rank"]=1
+    first["resources"]["candidate"]["status"]="timed_out"
+    result=screen_selection_acceptance(fixture)
+    assert result["status"]=="BLOCKED"
+    assert result["blockers"]["full_relevant_removed"]==1
+    assert result["blockers"]["full_relevant_anchor_loss"]==1
+    assert result["blockers"]["full_relevant_source_loss"]==1
+    assert result["blockers"]["attempt_not_jointly_completed"]==1
+    assert result["production_authorized"] is False
+
+
+def test_arc_a9_acceptance_screen_unknown_measurements_and_uncertainty_abstain():
+    from agent.es.evidence_core.arc_acceptance_screen import screen_selection_acceptance
+    fixture=_a9_screen_fixture()
+    fixture["policy"]["minimum_cases"]=3
+    fixture["cases"][0]["resources"]["candidate"]["prompt_tokens"]=None
+    fixture["cases"][0]["selection"].append({"ordinal":4,"source":3,"gold":"uncertain",
+        "direct_anchor":False,"strong":False,"baseline_rank":None,"candidate_rank":3})
+    result=screen_selection_acceptance(fixture)
+    assert result["status"]=="INCOMPLETE"
+    assert result["incomplete"]["minimum_case_count_not_met"]==1
+    assert result["incomplete"]["prompt_tokens_not_measured"]==1
+    assert result["incomplete"]["full_uncertain_selection_changed"]==1
+    assert result["production_authorized"] is False
+    fixture["policy"]["minimum_cases"]=True
+    assert screen_selection_acceptance(fixture) is None
+
+
+def test_arc_a9_acceptance_screen_explicit_precision_tolerance_and_cli(tmp_path,capsys):
+    import json
+    from agent.es.evidence_core.arc_eval_cli import main
+    from agent.es.evidence_core.arc_acceptance_screen import screen_selection_acceptance
+    fixture=_a9_screen_fixture()
+    # Retain the existing unrelated row and add another unrelated row.
+    # Baseline precision 1/2; candidate precision 2/4, exactly unchanged.
+    case=fixture["cases"][0]
+    case["selection"][1]["candidate_rank"]=3
+    case["selection"].append({"ordinal":4,"source":3,"gold":"unrelated",
+        "direct_anchor":False,"strong":False,"baseline_rank":None,"candidate_rank":4})
+    assert screen_selection_acceptance(fixture)["status"]=="MEETS_OFFLINE_THRESHOLDS"
+    fixture["policy"]["min_full_precision_delta_bps"]=1
+    assert screen_selection_acceptance(fixture)["blockers"]["full_precision_delta_below_policy"]==1
+    path=tmp_path/"PRIVATE_SCREEN.json"
+    path.write_text(json.dumps(fixture),encoding="utf-8")
+    assert main(["acceptance",str(path)])==0
+    out=capsys.readouterr()
+    assert json.loads(out.out)["result"]["status"]=="BLOCKED"
+    assert "PRIVATE_SCREEN" not in out.out and not out.err
