@@ -4,6 +4,7 @@ import json
 import time
 import os
 from .data_agent import run_data_agent
+from agent.arc_ordinary_resource_metrics import measure_ordinary_report
 #from .tools_es import ESSearchNews, ESTimeline, ESFetchDocById
 #from .tools_stats import AggregateMonthQuarter
 from agent.llm_utils.ollama_client import call_llm  # 你既有的封裝
@@ -84,6 +85,7 @@ class ReportAgent:
         result = ask_with_report(query)
         return result.get("answer", "").strip() or "[系統沒有產生任何文字答案]"
     
+@measure_ordinary_report
 def ask_with_report(
     question: str,
     trace: Optional[Dict[str, Any]] = None,
