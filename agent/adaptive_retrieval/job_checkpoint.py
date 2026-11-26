@@ -328,6 +328,42 @@ class NroundCheckpointStore:
         except Exception:
             raise ValueError("nround_report_job_claim_unverified") from None
 
+    def verify_active_retrieval_lease(
+        self, report_store: ReportJobStore, claimed_job: ReportJob,
+        lease_token: str, *, round_number: int,
+    ) -> bool:
+        """Read-only same-transaction check of the live Job and search lease.
+
+        Not an owner/document/egress policy. A separate trusted callback is
+        still required, and authorization cannot recall in-flight IO.
+        """
+        try:
+            if (not self._same_report_job_database(report_store)
+                    or type(claimed_job) is not ReportJob
+                    or not self._valid_id(claimed_job.job_id)
+                    or type(lease_token) is not str
+                    or re.fullmatch(r"[A-Za-z0-9_-]{43}", lease_token) is None
+                    or type(round_number) is not int or not 1 <= round_number <= 8):
+                return False
+
+            def op(con):
+                if not self._running_report_job_matches(con, claimed_job):
+                    return False
+                row = con.execute(
+                    f"SELECT state,phase,lease_hash,round_number,completed_rounds "
+                    f"FROM {_TABLE} WHERE job_id=?",
+                    (claimed_job.job_id,),
+                ).fetchone()
+                return (row is not None and row["state"] == "RUNNING"
+                        and row["phase"] == "SEARCHING"
+                        and row["lease_hash"] == self._hash(lease_token)
+                        and row["round_number"] == round_number
+                        and row["completed_rounds"] == round_number - 1)
+
+            return self._write(op)
+        except Exception:
+            return False
+
     def record_progress_for_running_report_job(
         self, report_store: ReportJobStore, claimed_job: ReportJob,
         lease_token: str, progress: dict[str, Any],

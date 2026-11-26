@@ -552,3 +552,103 @@ def test_directory_flush_failure_leaves_only_inaccessible_orphan(tmp_path, monke
     assert reports.get(J).status == "failed"
     assert reports.get(J).docx_basename is None
     assert list(root.iterdir()) == [root / (J + ".docx")]
+
+
+@pytest.mark.parametrize("mode", ["allow", "deny", "absent"])
+def test_arc_persisted_job_optional_frequency_policy_is_explicit(tmp_path,monkeypatch,caplog,mode):
+    from test_sraf_nround_worker_scope_binding import _pit_frequency_response
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY","shadow")
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY_VERIFIED_INDEX","news_test")
+    monkeypatch.delenv("SRAF_ARC_REVIEW_DEEP",raising=False)
+    c,scope,ev,_,reports,checkpoint,claimed=_case(tmp_path)
+    seen=[]
+    def policy(job,constraints):
+        assert job is not claimed
+        assert job.job_id==claimed.job_id and job.owner_id==claimed.owner_id
+        assert constraints is scope
+        progress=checkpoint.get_public(J)
+        assert progress["state"]=="RUNNING" and progress["phase"]=="SEARCHING"
+        seen.append(progress["round_number"])
+        return mode=="allow"
+    pages=[_verified_page("A")]
+    if mode=="allow":
+        pages.append(_pit_frequency_response())
+    pages.append(_verified_page("B"))
+    if mode=="allow":
+        pages.append(_pit_frequency_response())
+    es=FakeES(*pages)
+    result=_run(c,scope,ev,reports,checkpoint,claimed,es,
+                check_frequency_scope=None if mode=="absent" else policy)
+    assert len(result.private_result.rounds)==2
+    assert len(es.searches)==(4 if mode=="allow" else 2)
+    assert seen==([1,1,2,2] if mode=="allow" else [1,2] if mode=="deny" else [])
+    assert checkpoint.get_public(J)["state"]=="RETRIEVAL_STOPPED"
+
+
+@pytest.mark.parametrize("mode", ["allow","deny","absent","revoke_lease"])
+def test_arc_persisted_job_review_checks_source_policy_and_active_lease(tmp_path,monkeypatch,caplog,mode):
+    from test_sraf_nround_worker_scope_binding import _deep_review_page
+    from agent.es import arc_semantic_review_transport as transport
+    from agent.es.evidence_core.arc_semantic_review import summarize_semantic_review
+    monkeypatch.setenv("SRAF_ARC_REVIEW_DEEP","shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW","shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS","approved")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_ENDPOINT","https://review.invalid/api/chat")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_MODEL","private-model")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX","news_test")
+    monkeypatch.delenv("SRAF_ARC_REVIEW_CA_FILE",raising=False)
+    monkeypatch.delenv("SRAF_ARC_REVIEW_RESOURCE_METRICS",raising=False)
+    monkeypatch.delenv("SRAF_ARC_DEEP_FREQUENCY",raising=False)
+    monkeypatch.delenv("SRAF_ARC_GROUP_FREQUENCY",raising=False)
+    c,scope,ev,_,reports,checkpoint,claimed=_case(tmp_path)
+    seen,sent=[],[]
+    def policy(job,constraints,index,ids,endpoint,model,verify):
+        assert job is not claimed and job.owner_id==claimed.owner_id
+        assert constraints is scope and index=="news_test"
+        assert ids==tuple("PRIVATE_REVIEW_DOC_"+str(i) for i in range(5))
+        assert endpoint=="https://review.invalid/api/chat" and model=="private-model" and verify is True
+        seen.append(1)
+        if mode=="revoke_lease":
+            # Revoke the exact lease while the external policy is running.
+            # Use its real token captured by the claim method, not a DB guess.
+            assert checkpoint.fail_owned_lease(J, lease[0])
+        return mode!="deny"
+    lease=[]
+    original=checkpoint.claim_for_running_report_job
+    def capture_claim(*a):
+        token=original(*a)
+        lease.append(token)
+        return token
+    monkeypatch.setattr(checkpoint,"claim_for_running_report_job",capture_claim)
+    def review(approved,batch):
+        sent.append(1)
+        return summarize_semantic_review(json.dumps([
+            {"ordinal":i,"verdict":"uncertain"} for i in range(1,batch.count+1)]),batch)
+    monkeypatch.setattr(transport,"_request_review",review)
+    es=FakeES(_deep_review_page())
+    kwargs={"check_review_egress":None if mode=="absent" else policy}
+    if mode=="revoke_lease":
+        with pytest.raises(ClaimedNroundJobExecutionError):
+            _run(c,scope,ev,reports,checkpoint,claimed,es,**kwargs)
+        assert checkpoint.get_public(J)["state"]=="FAILED"
+    else:
+        result=_run(c,scope,ev,reports,checkpoint,claimed,es,**kwargs)
+        assert len(result.private_result._report_rows)==50
+    assert len(sent)==int(mode=="allow")
+    assert len(seen)==(2 if mode=="allow" else 0 if mode=="absent" else 1)
+    assert "PRIVATE_REVIEW_DOC_" not in caplog.text
+
+
+def test_arc_active_retrieval_lease_rejects_wrong_token_round_and_revoked_job(tmp_path):
+    c,scope,ev,_,reports,checkpoint,claimed=_case(tmp_path)
+    token=checkpoint.claim_for_running_report_job(reports,claimed)
+    assert token
+    assert c.start()
+    assert checkpoint.record_progress_for_running_report_job(reports,claimed,token,c.safe_progress())
+    verify=checkpoint.verify_active_retrieval_lease
+    assert verify(reports,claimed,token,round_number=1)
+    assert not verify(reports,claimed,"A"*43,round_number=1)
+    assert not verify(reports,claimed,token,round_number=2)
+    assert not verify(reports,claimed,token,round_number=True)
+    reports.fail(J,"Revoked","PRIVATE_REASON")
+    assert not verify(reports,claimed,token,round_number=1)
