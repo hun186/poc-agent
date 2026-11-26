@@ -25,7 +25,7 @@ from .group_frequency import log_group_frequency, observe_group_frequency
 from .arc_rank_shadow import observe_rank_shadow, log_rank_shadow
 from ..arc_native_rank_receipt import NativeRankFrequency, DeepNativeRankFrequency
 from .arc_tighten_shadow import CandidatePressure, observe_tightening, log_tightening
-from .arc_relax_shadow import StrictSliceCounts, observe_low_volume, log_low_volume
+from .arc_relax_shadow import StrictSliceCounts, observe_low_volume, log_low_volume, prepare_low_volume_pilot
 from ..arc_request_budget import current_arc_budget
 from .prose_anchor import propose_prose_shadow_anchor
 from .topic_audit import record as record_topic_audit
@@ -119,6 +119,8 @@ def build_hits_and_evidence(
     deep_rank_frequency: DeepNativeRankFrequency | None = None,
     arc_candidate_pressure: CandidatePressure | None = None,
     arc_strategy_diagnostics: dict | None = None,
+    _offline_a6_pilot: bool = False,
+    _offline_a6_status: dict | None = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int]:
     config = config or EvidenceBuildConfig()
     # Experimental, default-OFF. Use already-returned _source only; bounded
@@ -149,9 +151,29 @@ def build_hits_and_evidence(
         date_from or "N/A", date_to or "N/A",
     )
 
+    # Explicit private offline pilot only. No env/public report caller can
+    # grant this parameter. Refuse overlapping selection features so the
+    # comparator is the existing legacy builder, not a different rescue policy.
+    pilot = False
+    if _offline_a6_pilot is True:
+        from agent.external_capabilities import requirement_acceptance_active
+        from ..ordinary_scope_receipt import current_ordinary_scope_capture
+        pilot = (
+            not requirement_acceptance_active()
+            and current_ordinary_scope_capture() is None
+            and config == EvidenceBuildConfig()
+            and os.getenv("SRAF_EVIDENCE_RESCUE", "") != "1"
+            and os.getenv("SRAF_TOPIC_MATCH_ADAPTIVE", "off") == "off"
+            and include_source_hit_ordinal is True
+            and type(arc_candidate_pressure) is CandidatePressure
+            and current_arc_budget() is not None
+        )
+        if type(_offline_a6_status) is dict:
+            _offline_a6_status["status"] = "not_prepared" if pilot else "incompatible_scope_or_rescue"
+    pilot_candidates = ()
     # 1) strict
     arc_counts = StrictSliceCounts() if (
-        arc_shadow_enabled("SRAF_ARC_RELAX")
+        (pilot or arc_shadow_enabled("SRAF_ARC_RELAX"))
         and type(arc_candidate_pressure) is CandidatePressure
         and current_arc_budget() is not None
     ) else None
@@ -167,15 +189,27 @@ def build_hits_and_evidence(
     strict_evidence_count = len(evidence)
     if arc_counts is not None:
         try:
-            low_observation = observe_low_volume(
-                out_hits, evidence, term_groups, counts=arc_counts,
-                pressure=arc_candidate_pressure, original_question=original_question,
-                date_from=date_from, date_to=date_to, allowed_years=allowed_years,
-            )
+            if pilot:
+                low_observation, _, pilot_candidates, pilot_status = prepare_low_volume_pilot(
+                    out_hits, evidence, term_groups, counts=arc_counts,
+                    pressure=arc_candidate_pressure, original_question=original_question,
+                    date_from=date_from, date_to=date_to, allowed_years=allowed_years,
+                )
+                if type(_offline_a6_status) is dict:
+                    _offline_a6_status["status"] = pilot_status
+            else:
+                low_observation = observe_low_volume(
+                    out_hits, evidence, term_groups, counts=arc_counts,
+                    pressure=arc_candidate_pressure, original_question=original_question,
+                    date_from=date_from, date_to=date_to, allowed_years=allowed_years,
+                )
             log_low_volume(low_observation)
             if type(arc_strategy_diagnostics) is dict:
                 arc_strategy_diagnostics["low"] = low_observation
         except Exception:
+            pilot_candidates = ()
+            if pilot and type(_offline_a6_status) is dict:
+                _offline_a6_status["status"] = "unavailable"
             log_low_volume({"schema": "sraf_arc_relax_shadow_v1", "status": "unavailable"})
     # ARC A3: observation only, no ES/LLM calls or Evidence changes.
     observation = native_observation = None
@@ -391,6 +425,12 @@ def build_hits_and_evidence(
             )
         if adaptive_mode == "on" and adaptive.candidates:
             evidence.extend(adaptive.candidates)
+
+    # Only the explicit offline caller can exercise the real serialization
+    # and downstream selection of these prepared rows. Normal production
+    # calls retain the existing fallback/rescue sequence unchanged.
+    if pilot and pilot_candidates:
+        evidence.extend(pilot_candidates)
 
     # 2) relax
     if not evidence and out_hits and term_groups:
