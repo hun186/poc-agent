@@ -43,3 +43,24 @@ corpus or final report. No ES/LLM calls, no report mutation, no actual
 retrieval strategy change. Existing legacy rescue/refill and zero-strict
 fallback are not modeled by this comparison. Private data live acceptance
 and convenient local annotation file generation remain pending.
+
+
+## Private annotation file command
+
+Provide an array of unchanged case objects in a private local directory:
+
+```bash
+python -m agent.es.evidence_core.arc_relax_annotation_cli PRIVATE_CASES.json PRIVATE_ANNOTATION.json
+python -m agent.es.evidence_core.arc_eval_cli relax-replay PRIVATE_ANNOTATION.json
+```
+
+Between these commands, independently edit each label's gold from null to
+relevant, uncertain or unrelated. Leave every other field unchanged. The
+human-readable label text and local source ordinal are rechecked against
+the recomputed canonical row; older compact ordinal/gold labels remain
+valid. Output includes the original raw response and private text; never
+upload or commit it. The preparation command creates an exclusive new file
+(no overwrite), uses owner-only initial mode on POSIX, and requires an
+already private directory ACL on Windows. It emits only count/status JSON
+to stdout. A failed write may leave a partial file, never treated as valid.
+Input and generated output are each limited to 2 MiB. No ES/LLM calls.

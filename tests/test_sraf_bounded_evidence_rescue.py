@@ -950,3 +950,58 @@ def test_a9_relax_replay_cli_aggregate_only(tmp_path, capsys):
     out = capsys.readouterr()
     assert json.loads(out.out)["result"]["hypothetical_added"] == 2
     assert "PRIVATE" not in out.out and "甲軸" not in out.out and not out.err
+
+
+def test_a9_relax_annotation_cli_direct_roundtrip_and_exclusive_output(tmp_path, capsys):
+    import json
+    import os
+    from agent.es.evidence_core.arc_relax_annotation_cli import main as prepare
+    from agent.es.evidence_core.arc_eval_cli import main as evaluate
+    source = tmp_path / "PRIVATE_CASE.json"
+    target = tmp_path / "PRIVATE_LABEL.json"
+    source.write_text(json.dumps([_a9_relax_case()],ensure_ascii=False),encoding="utf-8")
+    assert prepare([str(source),str(target)]) == 0
+    out = capsys.readouterr()
+    assert json.loads(out.out) == {"status":"PRIVATE_ANNOTATION_CREATED","cases":1,"rows_to_label":5}
+    assert not out.err and "PRIVATE_CASE.json" not in out.out and "PRIVATE_LABEL.json" not in out.out and "甲軸" not in out.out
+    if os.name == "posix":
+        assert target.stat().st_mode & 0o077 == 0
+    initial = target.read_bytes()
+    assert prepare([str(source),str(target)]) == 2
+    assert target.read_bytes() == initial
+    assert json.loads(capsys.readouterr().err)["status"] == "OUTPUT_NOT_CREATED"
+    assert evaluate(["relax-replay",str(target)]) == 2
+    assert json.loads(capsys.readouterr().err)["status"] == "INVALID_OR_UNREADABLE_FIXTURE"
+    fixtures = json.loads(initial.decode("utf-8"))
+    for row in fixtures[0]["labels"]:
+        assert row["gold"] is None
+        row["gold"] = "unrelated" if "無關" in row["text"] else "relevant"
+    target.write_text(json.dumps(fixtures,ensure_ascii=False),encoding="utf-8")
+    assert evaluate(["relax-replay",str(target)]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["result"]["hypothetical_added"] == 2
+    for key, value in (("text","PRIVATE_FORGED"),("source",True),("source",100)):
+        from copy import deepcopy
+        changed = deepcopy(fixtures)
+        changed[0]["labels"][0][key] = value
+        target.write_text(json.dumps(changed,ensure_ascii=False),encoding="utf-8")
+        assert evaluate(["relax-replay",str(target)]) == 2
+        out = capsys.readouterr()
+        assert not out.out and "PRIVATE_FORGED" not in out.err
+
+
+def test_a9_relax_annotation_cli_invalid_input_creates_nothing(tmp_path,capsys,monkeypatch):
+    import json
+    from agent.es.evidence_core import arc_relax_annotation_cli as cli
+    p = tmp_path / "PRIVATE_CASE.json"
+    q = tmp_path / "PRIVATE_LABEL.json"
+    for raw in (b"[]",b'{"x":1,"x":2}',b"PRIVATE",b"\xff"):
+        p.write_bytes(raw)
+        assert cli.main([str(p),str(q)]) == 2
+        assert not q.exists()
+        assert json.loads(capsys.readouterr().err)["status"] == "INVALID_OR_UNREADABLE_FIXTURE"
+    p.write_text(json.dumps([_a9_relax_case()],ensure_ascii=False),encoding="utf-8")
+    monkeypatch.setattr(cli,"MAX_FILE_BYTES",p.stat().st_size)
+    assert cli.main([str(p),str(q)]) == 2
+    assert not q.exists()
+    assert "PRIVATE" not in capsys.readouterr().err

@@ -196,12 +196,21 @@ def replay_relax_cases(cases):
                 return None
             gold = {}
             for item in labels:
-                if (type(item) is not dict or set(item) != {"ordinal", "gold"}
+                if (type(item) is not dict
+                        or set(item) not in ({"ordinal", "gold"},
+                                             {"ordinal", "source", "text", "gold"})
                         or type(item["ordinal"]) is not int
                         or not 1 <= item["ordinal"] <= len(prepared.rows)
                         or item["ordinal"] in gold
                         or type(item["gold"]) is not str or item["gold"] not in _LABELS):
                     return None
+                if "text" in item:
+                    original = prepared.rows[item["ordinal"] - 1]
+                    if (type(item["source"]) is not int
+                            or item["source"] != original["source"]
+                            or type(item["text"]) is not str
+                            or item["text"] != original["text"]):
+                        return None
                 gold[item["ordinal"]] = item["gold"]
             total_rows += len(prepared.rows)
             if total_rows > MAX_TOTAL_ROWS:
