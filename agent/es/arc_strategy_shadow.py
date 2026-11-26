@@ -124,7 +124,7 @@ def route_strategy(*, pressure, low, high, final_count, strong_count, refill, ma
 
 
 def observe_strategy(*, pressure, diagnostics, final_count, strong_count, refill,
-                     original_question, groups, manual):
+                     original_question, groups, manual, allow_model=True):
     if not strategy_enabled():
         return
     result = {"schema": "sraf_arc_strategy_shadow_v1", "status": "unavailable"}
@@ -143,6 +143,9 @@ def observe_strategy(*, pressure, diagnostics, final_count, strong_count, refill
             final_count=final_count, strong_count=strong_count, refill=refill, manual=manual)
         result.update(status="deterministic", reason=reason, choice="keep_original")
         if not choices:
+            return
+        if allow_model is not True:
+            result["status"] = "deferred_by_priority"
             return
         if not os.getenv("TOPIC_LLM_URL"):
             result["status"] = "provider_unavailable"
