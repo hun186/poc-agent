@@ -125,6 +125,7 @@ def execute_single_frozen_query(
     max_pages: int = 20,
     request_timeout_seconds: int = 20,
     frequency_binding: Any = None,
+    frequency_receipts: list | None = None,
 ) -> CompletedSingleQueryRound:
     """Consume the manifest exactly once via the *real* strict ES PIT adapter.
 
@@ -159,7 +160,8 @@ def execute_single_frozen_query(
             max_pages=max_pages,
             request_timeout_seconds=request_timeout_seconds,
             execution_token=plan._execution_token,
-            **({"frequency_plan": plan, "frequency_binding": frequency_binding}
+            **({"frequency_plan": plan, "frequency_binding": frequency_binding,
+                "frequency_receipts": frequency_receipts}
                if frequency_binding is not None else {}),
         )
     except LiveRoundESFailure:
