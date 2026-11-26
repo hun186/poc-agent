@@ -673,3 +673,44 @@ def test_arc_selection_eval_rejects_noncontiguous_and_malformed_ranks():
                     [[{**row,"candidate_rank":1}, {**row,"ordinal":2,"candidate_rank":1}]],
                     [[row]]*33):
         assert evaluate_selection_cases(invalid) is None
+
+
+def test_arc_eval_cli_reads_private_file_and_outputs_only_aggregate(tmp_path, capsys):
+    import json
+    from agent.es.evidence_core.arc_eval_cli import main
+    private = tmp_path / "PRIVATE_PATH.json"
+    for mode, rows in [
+        ("semantic", [[_a9_label(1, 0, "relevant", "uncertain")]]),
+        ("selection", [[_selection_row(1, 0, "relevant", 1, 1)]])]:
+        private.write_text(json.dumps(rows), encoding="utf-8-sig")
+        assert main([mode, str(private)]) == 0
+        result = capsys.readouterr()
+        assert result.err == ""
+        obj = json.loads(result.out)
+        assert obj["status"] == "EVALUATED_OFFLINE"
+        assert obj["result"]["rows"] == 1
+        assert "PRIVATE_PATH" not in result.out
+        assert "ordinal" not in result.out
+
+
+def test_arc_eval_cli_fails_closed_on_invalid_or_oversized_input(tmp_path, capsys, monkeypatch):
+    import json
+    from agent.es.evidence_core import arc_eval_cli as cli
+    p = tmp_path / "PRIVATE_PATH.json"
+    for raw in (b"", b"PRIVATE_TEXT", b'[[{"ordinal":1,"ordinal":2}]]', b"\xff",
+                b"[]", b"[" * 10000):
+        p.write_bytes(raw)
+        assert cli.main(["selection", str(p)]) == 2
+        out = capsys.readouterr()
+        assert not out.out
+        assert json.loads(out.err) == {"status":"INVALID_OR_UNREADABLE_FIXTURE"}
+        assert "PRIVATE" not in out.err
+    monkeypatch.setattr(cli, "MAX_INPUT_BYTES", 8)
+    p.write_bytes(b" " * 9)
+    assert cli.main(["selection", str(p)]) == 2
+    assert json.loads(capsys.readouterr().err)["status"] == "INVALID_OR_UNREADABLE_FIXTURE"
+    for path in (str(tmp_path), str(tmp_path / "PRIVATE_MISSING.json"), "https://private.invalid"):
+        assert cli.main(["semantic", path]) == 2
+        assert json.loads(capsys.readouterr().err)["status"] == "INVALID_OR_UNREADABLE_FIXTURE"
+    assert cli.main(["PRIVATE_MODE", str(p)]) == 2
+    assert "PRIVATE_MODE" not in capsys.readouterr().err
