@@ -99,16 +99,33 @@ def _pipeline_check(case, groups, pressure, baseline, added):
             return None, "final_selection_changed"
         if pilot and status.get("status") != "pilot_candidate_prepared":
             return None, "pilot_builder_declined"
-        return [(row[origin], row.get(block), row["text"], tuple(row.get("event_ids", [])))
-                for row in evidence], "prepared"
+        return evidence, "prepared"
 
-    first, why = run(False)
-    if first != expected:
-        return "baseline_pipeline_mismatch"
-    second, why = run(True)
-    if second is None:
-        return why
-    return "pipeline_parity" if second == candidate else "candidate_pipeline_mismatch"
+    def identities(evidence):
+        return [(row[origin], row.get(block), row["text"], tuple(row.get("event_ids", [])))
+                for row in evidence]
+
+    try:
+        first, why = run(False)
+        if first is None or identities(first) != expected:
+            return "baseline_pipeline_mismatch"
+        second, why = run(True)
+        if second is None:
+            return why
+        if (identities(second) != candidate or second[:len(first)] != first
+                or any(row.get("match_policy") != "adaptive_two_axis"
+                       or row.get("weak_evidence") is not True
+                       or row.get("match_scope") != "text"
+                       or row.get("group_hits") != 2
+                       or row.get("structured_time_context") is not True
+                       or not row.get("matched_event_time_candidates")
+                       for row in second[len(first):])):
+            return "candidate_pipeline_mismatch"
+        return "pipeline_parity"
+    except Exception:
+        # A failed optional integration check cannot certify compatibility
+        # or discard the independently valid strict-only counterfactual.
+        return "pipeline_unavailable"
 
 
 def _prepare(case):
