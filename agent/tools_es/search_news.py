@@ -1,8 +1,9 @@
 # agent/tools_es/search_news.py
 from __future__ import annotations
 
+from agent.arc_mode import arc_shadow_enabled
+
 import time
-import os
 import re
 from typing import Any, Dict, List, Optional
 
@@ -207,8 +208,8 @@ class ESSearchNews(Tool):
                         "must_high_value": False if must_high_value is None else must_high_value,
                         "must_selected": False if must_selected is None else must_selected,
                         **({"receipt_sink": native_rank_receipts}
-                           if (os.getenv("SRAF_ARC_RANK_NATIVE") == "shadow"
-                               or os.getenv("SRAF_ARC_TIGHTEN") == "shadow") else {}),
+                           if (arc_shadow_enabled("SRAF_ARC_RANK_NATIVE")
+                               or arc_shadow_enabled("SRAF_ARC_TIGHTEN")) else {}),
                     }, **review_kwargs)
                 else:
                     res = _safe_es_search(body, index=index, **review_kwargs)
@@ -217,8 +218,8 @@ class ESSearchNews(Tool):
             raise
 
         pressure = None
-        if (os.getenv("SRAF_ARC_TIGHTEN") == "shadow"
-                or os.getenv("SRAF_ARC_RELAX") == "shadow"
+        if (arc_shadow_enabled("SRAF_ARC_TIGHTEN")
+                or arc_shadow_enabled("SRAF_ARC_RELAX")
                 or strategy_enabled() or llm_priority_enabled()) and capture is None:
             from agent.external_capabilities import requirement_acceptance_active
             if not requirement_acceptance_active():
@@ -243,7 +244,7 @@ class ESSearchNews(Tool):
 
         # A truly empty ES date query does not call the script-free fallback.
         if not hits:
-            if (os.getenv("SRAF_ARC_RELAX") == "shadow"
+            if (arc_shadow_enabled("SRAF_ARC_RELAX")
                     and type(pressure) is CandidatePressure and current_arc_budget() is not None):
                 try:
                     log_low_volume(observe_low_volume(
