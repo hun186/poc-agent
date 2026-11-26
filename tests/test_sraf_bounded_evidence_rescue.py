@@ -1367,3 +1367,33 @@ def test_a6_offline_builder_never_applies_pilot_without_shared_budget(monkeypatc
         _offline_a6_pilot=True,_offline_a6_status=status)
     assert len(rows)==1 and rows[0]["match_policy"]=="strict"
     assert status["status"]=="incompatible_scope_or_rescue"
+
+
+def test_a9_relax_replay_cli_fresh_process_has_no_live_config_import(tmp_path):
+    import json
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+    fixture = tmp_path / "PRIVATE_RELAX_FRESH.json"
+    fixture.write_text(json.dumps([_a9_relax_labeled(_a9_relax_case())],
+                                  ensure_ascii=False), encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("SRAF_")}
+    env["SRAF_ARC_MODE"] = "off"
+    code = (
+        "import sys; from agent.es.evidence_core.arc_eval_cli import main; "
+        "result = main(['relax-replay', sys.argv[1]]); "
+        "assert 'agent.tools_es' not in sys.modules; "
+        "assert 'config.index_loader' not in sys.modules; "
+        "sys.exit(result)"
+    )
+    proc = subprocess.run([sys.executable, "-c", code, str(fixture)],
+                          cwd=Path(__file__).resolve().parents[1], env=env,
+                          capture_output=True, text=True, encoding="utf-8",
+                          timeout=60, check=False)
+    assert proc.returncode == 0
+    output = json.loads(proc.stdout)
+    assert output["result"]["pipeline_status_counts"] == {"pipeline_parity":1}
+    assert "PRIVATE_RELAX_FRESH" not in proc.stdout
+    assert "PRIVATE_DOC" not in proc.stdout + proc.stderr
+    assert "甲軸" not in proc.stdout + proc.stderr
