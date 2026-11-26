@@ -128,8 +128,9 @@ def observe_strategy(*, pressure, diagnostics, final_count, strong_count, refill
     if not strategy_enabled():
         return
     result = {"schema": "sraf_arc_strategy_shadow_v1", "status": "unavailable"}
+    from agent.external_capabilities import requirement_acceptance_active
+
     try:
-        from agent.external_capabilities import requirement_acceptance_active
         if requirement_acceptance_active() or current_ordinary_scope_capture() is not None:
             result["status"] = "unsupported_scope"
             return
