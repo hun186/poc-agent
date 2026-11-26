@@ -40,6 +40,7 @@ class WorkerScopeBinding:
             [ReportJob, QueryConstraints, tuple[str, ...]], bool
         ],
         check_frequency_scope: Callable[[ReportJob, QueryConstraints], bool] | None = None,
+        check_review_egress: Callable[[ReportJob, QueryConstraints, str, tuple[str, ...], str, str, bool | str], bool] | None = None,
     ) -> None:
         if (type(job) is not ReportJob
                 or job.status != "running"
@@ -59,7 +60,8 @@ class WorkerScopeBinding:
                     set(authorized_indexes))
                 or not callable(check_index_access)
                 or not callable(check_single_branch_coverage)
-                or (check_frequency_scope is not None and not callable(check_frequency_scope))):
+                or (check_frequency_scope is not None and not callable(check_frequency_scope))
+                or (check_review_egress is not None and not callable(check_review_egress))):
             raise WorkerScopeBindingError("invalid_job_scope_binding")
         self._job = job
         self._constraints = constraints
@@ -68,6 +70,8 @@ class WorkerScopeBinding:
         self._check_index = check_index_access
         self._check_branches = check_single_branch_coverage
         self._check_frequency_scope = check_frequency_scope
+        self._check_review_egress = check_review_egress
+        self._review_sources = None
         self._lock = Lock()
         self._binding_token = object()
         self._attested_rounds: set[int] = set()
@@ -236,6 +240,14 @@ class WorkerScopeBinding:
             self._attested_rounds.add(plan.round_number)
             self._semantic_plans[plan.round_number] = plan
             del self._preflight_plans[plan.round_number]
+            # Only an explicitly configured trusted egress policy can retain
+            # this bounded current-round source identity manifest. No text.
+            self._review_sources = None
+            if (self._check_review_egress is not None
+                    and len(self._constraints.allowed_indexes) == 1
+                    and 1 <= len(receipt.hits) <= 128):
+                self._review_sources = (plan, self._constraints.allowed_indexes[0],
+                                        frozenset(hit["_id"] for hit in receipt.hits))
             return True
 
     def recheck_semantic_authorization(self, plan: FrozenSingleQueryPlan) -> None:
@@ -256,6 +268,48 @@ class WorkerScopeBinding:
                     or self._coordinator.safe_progress()["round"] != plan.round_number):
                 raise WorkerScopeBindingError("semantic_authorization_not_current")
             self._check_live_policy()
+
+    def check_optional_review_egress(self, plan, *, index, source_ids, approved) -> bool:
+        """Recheck live owner, exact current-round sources and endpoint policy.
+
+        Only the trusted executor passes IDs selected from its canonical
+        report-approved rows. Policy must authorize the original question,
+        all listed documents, model endpoint and TLS trust configuration.
+        An index grant or environment switch alone is insufficient.
+        """
+        from agent.es.arc_semantic_review_transport import _ApprovedEndpoint
+        with self._lock:
+            if (self._check_review_egress is None
+                    or type(plan) is not FrozenSingleQueryPlan
+                    or self._semantic_plans.get(plan.round_number) is not plan
+                    or plan._owner_binding_token is not self._binding_token
+                    or self._review_sources is None
+                    or self._review_sources[0] is not plan
+                    or index != self._review_sources[1]
+                    or type(approved) is not _ApprovedEndpoint or approved.index != index
+                    or type(source_ids) is not tuple or not 1 <= len(source_ids) <= 64
+                    or any(type(s) is not str or not 0 < len(s) <= 256 for s in source_ids)
+                    or len(set(source_ids)) != len(source_ids)
+                    or not set(source_ids).issubset(self._review_sources[2])):
+                return False
+            try:
+                self._check_live_policy()
+                if self._check_review_egress(
+                        self._job, self._constraints, index, source_ids,
+                        approved.url, approved.model, approved.verify) is not True:
+                    return False
+                progress = self._coordinator.safe_progress()
+                budget = self._coordinator._budget.snapshot()
+                return (progress["phase"] == "SEARCHING"
+                        and progress["round"] == plan.round_number
+                        and budget.remaining_seconds - budget.generation_reserve_seconds >= 25)
+            except Exception:
+                return False
+
+    def clear_optional_review_sources(self, plan):
+        with self._lock:
+            if self._review_sources is not None and self._review_sources[0] is plan:
+                self._review_sources = None
 
     def safe_audit(self) -> dict[str, int | str | bool]:
         with self._lock:
