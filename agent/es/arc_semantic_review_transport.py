@@ -83,7 +83,12 @@ def _reject_unapproved_response(response, *args, **kwargs):
     return response
 
 
-def _request_review(approved, batch):
+def _provider_count(value):
+    # Provider-reported counts only; do not infer from bytes or reservations.
+    return value if type(value) is int and 0 <= value <= 10**12 else None
+
+
+def _request_review(approved, batch, *, metrics=None):
     payload = {
         "model": approved.model, "stream": False,
         "messages": [{"role": "system", "content": SYSTEM_PROMPT},
@@ -97,6 +102,8 @@ def _request_review(approved, batch):
     try:
         with requests.Session() as session:
             session.trust_env = False
+            if metrics is not None:
+                metrics["llm_calls"] = 1
             with session.post(
                 approved.url, json=payload, timeout=(3, REQUEST_TIMEOUT_SECONDS),
                 allow_redirects=False, verify=approved.verify, stream=True,
@@ -108,6 +115,8 @@ def _request_review(approved, batch):
                     return None
                 for chunk in response.iter_content(chunk_size=4096):
                     if time.monotonic() - started > REQUEST_TIMEOUT_SECONDS:
+                        if metrics is not None:
+                            metrics["status"] = "timed_out"
                         return None
                     if len(body) + len(chunk) > MAX_RESPONSE_BYTES:
                         return None
@@ -115,6 +124,8 @@ def _request_review(approved, batch):
     except _RejectedResponse:
         return None
     if time.monotonic() - started > REQUEST_TIMEOUT_SECONDS:
+        if metrics is not None:
+            metrics["status"] = "timed_out"
         return None
     try:
         envelope = json.loads(body, object_pairs_hook=_unique_pairs)
@@ -125,7 +136,28 @@ def _request_review(approved, batch):
     message = envelope.get("message")
     if type(message) is not dict or message.get("role") != "assistant" or message.get("tool_calls"):
         return None
+    if metrics is not None:
+        metrics["prompt_tokens"] = _provider_count(envelope.get("prompt_eval_count"))
+        metrics["completion_tokens"] = _provider_count(envelope.get("eval_count"))
     return summarize_semantic_review(message.get("content"), batch)
+
+
+def _measured_review(approved, batch):
+    metrics = {"status": "failed", "elapsed_ms": None, "es_calls": 0,
+               "llm_calls": 0, "prompt_tokens": None, "completion_tokens": None}
+    started = time.monotonic_ns()
+    try:
+        summary = _request_review(approved, batch, metrics=metrics)
+        if summary is not None:
+            metrics["status"] = "completed"
+    except requests.Timeout:
+        summary = None
+        metrics["status"] = "timed_out"
+    except Exception:
+        summary = None
+    finally:
+        metrics["elapsed_ms"] = (time.monotonic_ns() - started) // 1000000
+    return summary, metrics
 
 
 def observe_semantic_review(batch, *, index, authorize=None):
@@ -166,13 +198,23 @@ def observe_semantic_review(batch, *, index, authorize=None):
         if not budget.reserve(ordinal, ArcUnits(llm_calls=1)):
             record["status"] = "shared_budget_exhausted"
             return
-        summary = _request_review(approved, batch)
+        measured = None
+        if os.getenv("SRAF_ARC_REVIEW_RESOURCE_METRICS") == "shadow":
+            summary, measured = _measured_review(approved, batch)
+        else:
+            summary = _request_review(approved, batch)
         if authorize(approved) is not True:
             record["status"] = "authorization_or_deadline_changed"
-        elif summary is None:
-            record["status"] = "invalid_or_incomplete_response"
         else:
-            record = summary
+            if measured is not None and measured["llm_calls"] == 1:
+                _LOG.warning("SRAF_ARC_REVIEW_RESOURCE=%s", json.dumps(
+                    {"schema": "sraf_arc_review_resource_v1",
+                     "scope": "single_optional_model_adapter_attempt",
+                     "measurement": measured}, sort_keys=True, separators=(",", ":")))
+            if summary is None:
+                record["status"] = "invalid_or_incomplete_response"
+            else:
+                record = summary
     except Exception:
         # No exception text, private payload, endpoint or provider response.
         record = {"schema": "sraf_arc_semantic_review_shadow_v1", "status": "unavailable"}
