@@ -75,3 +75,26 @@ ORDINARY_RESOURCE_METRICS、DEEP_RESOURCE_METRICS（皆為 SRAF_ARC_ 前綴）�
 不控制獨立的人工 --run 擷取命令。已開始的 IO 不能因修改 env 而撤回；
 改完需重新啟動服務，並以新報告驗證。尚無正式 ARC on 或實機品質/資源驗收。
 新增 ARC env 讀取時，同步更新根目錄樣本與此指南。
+
+
+## 8. 啟用前設定快檢
+
+在與 API / Worker 相同的啟動環境（已載入私有設定、已安裝專案依賴）執行：
+
+```bash
+python -m agent.arc_config_doctor
+```
+
+只讀取當前程序的環境變數，不自動搜尋、載入或覆寫任意 .env / .env.local，
+也不連線 ES、LLM、SQL。若私有設定由啟動器載入，必須在相同已載入環境中執行；
+單獨 shell 的結果不能當作另一個正在運行的 Worker 的配置證明。
+
+輸出固定 JSON：主模式、每個功能的有效開關、個別覆寫原因、依賴設定是否缺少、
+實際 A3 切片預算，以及獨立舊版 topic-adaptive 是否可能改變 Evidence。
+CONFIG_CHECKED（exit 0）僅表示設定檢查未發現列出的問題；
+CONFIG_ATTENTION（exit 2）表示有不支援值、預算被調整或依賴配置缺漏。
+requires_runtime_scope 表示仍需實際來源／索引／模型／Worker 授權與共用預算，
+不表示通過 live 驗收。eligible_for_observation 亦不保證每次報告均會執行。
+模型地址格式只做既有 endpoint 檢查，不核對 CA 檔案或 TLS 連線。
+不輸出私有位址、帳密、模型名、索引名、憑證路徑或非法原值。
+此工具不是正式策略啟用授權，也不是全報告的實機健康檢查。
