@@ -1,6 +1,8 @@
 #agent/es/evidence_core/builder.py
 from __future__ import annotations
 
+from agent.arc_mode import arc_shadow_enabled
+
 import logging
 import os
 from dataclasses import replace
@@ -149,7 +151,7 @@ def build_hits_and_evidence(
 
     # 1) strict
     arc_counts = StrictSliceCounts() if (
-        os.getenv("SRAF_ARC_RELAX") == "shadow"
+        arc_shadow_enabled("SRAF_ARC_RELAX")
         and type(arc_candidate_pressure) is CandidatePressure
         and current_arc_budget() is not None
     ) else None
@@ -177,30 +179,30 @@ def build_hits_and_evidence(
             log_low_volume({"schema": "sraf_arc_relax_shadow_v1", "status": "unavailable"})
     # ARC A3: observation only, no ES/LLM calls or Evidence changes.
     observation = native_observation = None
-    if os.getenv("SRAF_ARC_GROUP_FREQUENCY") == "shadow":
+    if arc_shadow_enabled("SRAF_ARC_GROUP_FREQUENCY"):
         observation = observe_group_frequency(
             out_hits, term_groups, date_from=date_from, date_to=date_to,
             allowed_years=allowed_years,
         )
         log_group_frequency(observation)
-        if os.getenv("SRAF_ARC_RANK") == "shadow":
+        if arc_shadow_enabled("SRAF_ARC_RANK"):
             try:
                 log_rank_shadow(observe_rank_shadow(evidence, term_groups, observation))
             except Exception:
                 # Optional diagnostics must never modify or block Evidence.
                 log_rank_shadow({"schema": "sraf_arc_rank_shadow_v1",
                                  "status": "unavailable"})
-    if (os.getenv("SRAF_ARC_RANK_NATIVE") == "shadow" or os.getenv("SRAF_ARC_TIGHTEN") == "shadow") and type(native_rank_frequency) is NativeRankFrequency:
+    if (arc_shadow_enabled("SRAF_ARC_RANK_NATIVE") or arc_shadow_enabled("SRAF_ARC_TIGHTEN")) and type(native_rank_frequency) is NativeRankFrequency:
         try:
             native_observation = native_rank_frequency.for_builder(
                 term_groups, date_from=date_from, date_to=date_to, allowed_years=allowed_years)
-            if native_observation is not None and os.getenv("SRAF_ARC_RANK_NATIVE") == "shadow":
+            if native_observation is not None and arc_shadow_enabled("SRAF_ARC_RANK_NATIVE"):
                 log_rank_shadow(observe_rank_shadow(evidence, term_groups, native_observation))
         except Exception:
             log_rank_shadow({"schema": "sraf_arc_rank_shadow_v1",
                              "scope": "same_search_native_df_strict_first_prefix_not_pit",
                              "status": "unavailable"})
-    if os.getenv("SRAF_ARC_RANK_DEEP") == "shadow" and type(deep_rank_frequency) is DeepNativeRankFrequency:
+    if arc_shadow_enabled("SRAF_ARC_RANK_DEEP") and type(deep_rank_frequency) is DeepNativeRankFrequency:
         try:
             deep_observation = deep_rank_frequency.for_builder(
                 term_groups, date_from=date_from, date_to=date_to, allowed_years=allowed_years)
@@ -210,7 +212,7 @@ def build_hits_and_evidence(
             log_rank_shadow({"schema": "sraf_arc_rank_shadow_v1",
                              "scope": "same_round_pit_native_df_strict_first_prefix",
                              "status": "unavailable"})
-    if os.getenv("SRAF_ARC_TIGHTEN") == "shadow" and type(arc_candidate_pressure) is CandidatePressure:
+    if arc_shadow_enabled("SRAF_ARC_TIGHTEN") and type(arc_candidate_pressure) is CandidatePressure:
         try:
             high_observation = observe_tightening(
                 evidence, term_groups, original_question=original_question,
