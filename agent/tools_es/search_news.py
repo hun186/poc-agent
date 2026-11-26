@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+import os
 import re
 from typing import Any, Dict, List, Optional
 
@@ -178,6 +179,7 @@ class ESSearchNews(Tool):
             )
         dbg("[es_search_news] ES query body prepared (content redacted)")
 
+        native_rank_receipts = []
         # === T3: ES 查詢 ===
         try:
             with log_duration("[es_search_news][T3] _safe_es_search", extra={"size": size}):
@@ -187,6 +189,8 @@ class ESSearchNews(Tool):
                         "date_to": date_to,
                         "must_high_value": False if must_high_value is None else must_high_value,
                         "must_selected": False if must_selected is None else must_selected,
+                        **({"receipt_sink": native_rank_receipts}
+                           if os.getenv("SRAF_ARC_RANK_NATIVE") == "shadow" else {}),
                     })
                 else:
                     res = _safe_es_search(body, index=index)
@@ -238,6 +242,9 @@ class ESSearchNews(Tool):
         # === T4: 後處理：hits + evidence ===
         with log_duration("[es_search_news][T4] build_hits_and_evidence"):
             def _build_candidates(candidate_hits: List[Dict[str, Any]]):
+                # Refill accumulates pages. Consume only at its first build;
+                # never transfer a prior search's DF to a later tool/page.
+                native_receipt = native_rank_receipts.pop() if native_rank_receipts else None
                 return build_hits_and_evidence(
                     candidate_hits,
                     date_from=date_from,
@@ -252,6 +259,7 @@ class ESSearchNews(Tool):
                     # Direct ES tools, style calls or missing originals yield
                     # None; the LLM-rewritten raw_query is never substituted.
                     original_question=get_original_report_question(),
+                    **({"native_rank_frequency": native_receipt} if native_receipt is not None else {}),
                 )
 
             if date_scoped:

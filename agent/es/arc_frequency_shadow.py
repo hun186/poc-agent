@@ -16,6 +16,7 @@ from elasticsearch import Elasticsearch
 
 from .arc_frequency_plan import build_frequency_plan, parse_frequency_response
 from .arc_request_budget import ArcUnits, current_arc_budget
+from .arc_native_rank_receipt import NativeRankFrequency
 from .ordinary_scope_receipt import current_ordinary_scope_capture
 
 _LOG = logging.getLogger("sraf.arc.es_frequency")
@@ -70,6 +71,7 @@ def _primary_scope_verified(index, body, response, plan) -> bool:
 def observe_native_frequency(
     client, *, index, ordinary_body, ordinary_response,
     groups, date_from, date_to, must_high_value, must_selected,
+    receipt_sink: list[NativeRankFrequency] | None = None,
 ) -> None:
     """At most one extra SDK search; no retry; fail closed to a count-only log."""
     if not native_frequency_enabled():
@@ -112,6 +114,11 @@ def observe_native_frequency(
         if type(raw) is dict and "_clusters" not in raw:
             observation = parse_frequency_response(raw, group_count=len(groups))
             status = observation["status"]
+            if type(receipt_sink) is list and not receipt_sink:
+                receipt = NativeRankFrequency.from_observation(
+                    observation, groups=groups, date_from=date_from, date_to=date_to)
+                if receipt is not None:
+                    receipt_sink.append(receipt)
         else:
             status = "incomplete"
     except Exception:

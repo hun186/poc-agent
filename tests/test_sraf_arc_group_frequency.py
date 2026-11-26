@@ -258,3 +258,53 @@ def test_arc_a4_rank_skips_when_sample_or_budget_insufficient(monkeypatch, caplo
     with bind_arc_budget((ArcRequestBudget(), 1)):
         _build(hits)
     assert _rank_record(caplog)["status"] == "insufficient_sample"
+
+
+def test_arc_native_rank_receipt_checks_exact_groups_and_dates():
+    from agent.es.arc_native_rank_receipt import NativeRankFrequency
+    from agent.es.arc_frequency_plan import SCOPE
+    groups = [{"甲", "A"}, {"乙"}]
+    obs = {"scope": SCOPE, "status": "exact_es_query_counts",
+           "eligible_documents": 1000, "groups": [
+               {"group_ordinal": 1, "document_frequency": 500},
+               {"group_ordinal": 2, "document_frequency": 20}]}
+    receipt = NativeRankFrequency.from_observation(
+        obs, groups=groups, date_from="2023-08-24", date_to="2023-08-24")
+    kw = dict(date_from="2023-08-24", date_to="2023-08-24", allowed_years=None)
+    assert receipt.for_builder(groups, **kw)["eligible_documents"] == 1000
+    assert receipt.for_builder(list(reversed(groups)), **kw) is None
+    assert receipt.for_builder(groups, **{**kw, "allowed_years": {2023}}) is None
+    assert receipt.for_builder(groups, **{**kw, "date_to": "2023-08-25"}) is None
+    groups[0].add("B")
+    assert receipt.for_builder(groups, **kw) is None
+    assert NativeRankFrequency.from_observation(
+        {**obs, "status": "incomplete"}, groups=groups,
+        date_from="2023-08-24", date_to="2023-08-24") is None
+
+
+def test_arc_native_rank_uses_native_df_without_local_scan(monkeypatch, caplog):
+    from agent.es.arc_native_rank_receipt import NativeRankFrequency
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    from agent.es.evidence_core.builder import build_hits_and_evidence
+    groups = [{"美國"}, {"政策"}, {"出口管制"}, {"半導體"}]
+    hits = [_hit(["美國 政策 出口管制"], uuid=f"d-{i}", docid=str(i))
+            for i in range(24)]
+    hits += [_hit(["美國 政策 半導體"], uuid="d-rare", docid="rare")]
+    kw = dict(date_from="2023-08-24", date_to="2023-08-24",
+              effective_terms=["美國", "政策", "出口管制", "半導體"],
+              term_groups=groups, query_for_snippet="美國 政策 出口管制 半導體")
+    monkeypatch.delenv("SRAF_ARC_GROUP_FREQUENCY", raising=False)
+    monkeypatch.delenv("SRAF_ARC_RANK_NATIVE", raising=False)
+    baseline = build_hits_and_evidence(hits, **kw)
+    receipt = NativeRankFrequency(tuple(map(frozenset, groups)), "2023-08-24",
+                                  "2023-08-24", 10000, (8000, 7000, 5000, 50))
+    monkeypatch.setenv("SRAF_ARC_RANK_NATIVE", "shadow")
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)):
+        assert build_hits_and_evidence(hits, **kw, native_rank_frequency=receipt) == baseline
+    r = _rank_record(caplog)
+    assert r["status"] == "observed_rank"
+    assert r["scope"] == "same_search_native_df_strict_first_prefix_not_pit"
+    assert r["snapshot_consistency"] == "not_pit"
+    assert r["rarity_only_top_k_replaced"] == 1
+    assert budget.snapshot()[0] == ArcUnits(slices=1, rows=128, chars=131072)

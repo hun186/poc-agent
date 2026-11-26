@@ -11,6 +11,7 @@ import logging
 import math
 
 from ..arc_request_budget import ArcUnits, current_arc_budget
+from ..arc_frequency_plan import SCOPE as NATIVE_SCOPE
 from .models import EvidenceSnippet
 from .text_norm import normalize_for_match
 
@@ -31,23 +32,34 @@ def observe_rank_shadow(evidence: list[EvidenceSnippet], groups: list[set[str]],
         "status": "insufficient_sample",
         "strict_count": len(evidence),
     }
-    n = frequency.get("eligible_hits")
+    native = frequency.get("schema") == "sraf_arc_native_rank_frequency_v1"
+    if native:
+        result["scope"] = "same_search_native_df_strict_first_prefix_not_pit"
+        n = frequency.get("eligible_documents")
+        df_key = "document_frequency"
+        scope_valid = (frequency.get("scope") == NATIVE_SCOPE
+                       and frequency.get("status") == "exact_es_query_counts"
+                       and type(n) is int and MIN_SAMPLE_HITS <= n <= 2**63 - 1)
+    else:
+        n = frequency.get("eligible_hits")
+        df_key = "sample_hit_frequency"
+        scope_valid = (frequency.get("schema") == "sraf_arc_group_frequency_v1"
+                       and frequency.get("scope") == "ordered_parser_slice_date_valid_sample_text_only"
+                       and frequency.get("status") == "observed_sample"
+                       and type(n) is int and MIN_SAMPLE_HITS <= n <= 128)
     rows = frequency.get("groups")
-    if (frequency.get("schema") != "sraf_arc_group_frequency_v1"
-            or frequency.get("scope") != "ordered_parser_slice_date_valid_sample_text_only"
-            or frequency.get("status") != "observed_sample"
-            or type(n) is not int or not MIN_SAMPLE_HITS <= n <= 128
+    if (not scope_valid
             or type(rows) is not list or type(groups) is not list
-            or not 1 <= len(groups) <= 16 or len(rows) != len(groups)
+            or not 1 <= len(groups) <= (8 if native else 16) or len(rows) != len(groups)
             or any(type(g) is not set or not g for g in groups)
-            or sum(map(len, groups)) > 64):
+            or sum(map(len, groups)) > (32 if native else 64)):
         return result
     weights = []
     normalized = []
     for i, (row, group) in enumerate(zip(rows, groups), 1):
         if type(row) is not dict or type(row.get("group_ordinal")) is not int or row["group_ordinal"] != i:
             return result
-        df = row.get("sample_hit_frequency")
+        df = row.get(df_key)
         if type(df) is not int or not 0 <= df <= n:
             return result
         if any(type(t) is not str or not 0 < len(t) <= 160 for t in group):
@@ -64,7 +76,10 @@ def observe_rank_shadow(evidence: list[EvidenceSnippet], groups: list[set[str]],
     prefix = evidence[:MAX_ROWS]
     result["prefix_count"] = len(prefix)
     result["prefix_limited"] = len(prefix) < len(evidence)
-    result["frequency_sample_limited"] = frequency.get("sample_limited") is True
+    if not native:
+        result["frequency_sample_limited"] = frequency.get("sample_limited") is True
+    else:
+        result["snapshot_consistency"] = "not_pit"
     # Reserve before normalizing any text. Skip oversized prefix, never silently
     # exclude a long row from comparison and treat it as a low ranking candidate.
     scope = current_arc_budget()
