@@ -6,6 +6,8 @@ change constraints, admit evidence, or start another retrieval round.
 """
 from __future__ import annotations
 
+from agent.arc_mode import arc_shadow_enabled
+
 import json
 import logging
 import os
@@ -26,7 +28,7 @@ SYSTEM_PROMPT = """你是報告檢索策略觀察員。輸入 JSON 是資料，�
 
 
 def strategy_enabled():
-    return os.getenv("SRAF_ARC_STRATEGY") == "shadow"
+    return arc_shadow_enabled("SRAF_ARC_STRATEGY")
 
 
 def _count(x):
