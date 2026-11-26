@@ -133,7 +133,7 @@ def observe_semantic_review(batch, *, index, authorize=None):
 
     Trusted runtime callers must pass an authorization callback for the exact
     resolved endpoint and their own source scope. The standalone transport
-    remains usable for isolated tests; a budget reservation is not authorization.
+    uses explicit synthetic authorization in isolated tests; a budget reservation is not authorization.
     """
     if os.getenv("SRAF_ARC_REVIEW") != "shadow":
         return
@@ -159,7 +159,7 @@ def observe_semantic_review(batch, *, index, authorize=None):
                 or len(batch.payload.encode("utf-8")) > MAX_INPUT_BYTES):
             record["status"] = "unsupported_batch"
             return
-        if authorize is not None and (not callable(authorize) or authorize(approved) is not True):
+        if not callable(authorize) or authorize(approved) is not True:
             record["status"] = "source_or_endpoint_not_authorized"
             return
         budget, ordinal = scope
@@ -167,7 +167,7 @@ def observe_semantic_review(batch, *, index, authorize=None):
             record["status"] = "shared_budget_exhausted"
             return
         summary = _request_review(approved, batch)
-        if authorize is not None and authorize(approved) is not True:
+        if authorize(approved) is not True:
             record["status"] = "authorization_or_deadline_changed"
         elif summary is None:
             record["status"] = "invalid_or_incomplete_response"
