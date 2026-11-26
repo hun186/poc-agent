@@ -169,14 +169,18 @@ class WorkerScopeBinding:
                 execution_token=plan._execution_token, completed_pages=pages,
             )
 
-    def recheck_optional_frequency(self, plan: FrozenSingleQueryPlan) -> bool:
+    def recheck_optional_frequency(self, plan: FrozenSingleQueryPlan, *, after_attest=False) -> bool:
         """Do not publish statistics if policy or active deadline changed."""
         with self._lock:
             if (type(plan) is not FrozenSingleQueryPlan
                     or self._check_frequency_scope is None
                     or plan._owner_binding_token is not self._binding_token
-                    or self._preflight_plans.get(plan.round_number) is not plan
-                    or plan.round_number in self._attested_rounds):
+                    or (after_attest is not True and (
+                        self._preflight_plans.get(plan.round_number) is not plan
+                        or plan.round_number in self._attested_rounds))
+                    or (after_attest is True and (
+                        self._semantic_plans.get(plan.round_number) is not plan
+                        or plan.round_number not in self._attested_rounds))):
                 return False
             try:
                 self._check_live_policy()
