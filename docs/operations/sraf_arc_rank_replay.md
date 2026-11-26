@@ -23,3 +23,27 @@ every row and confirm source/anchor identity. The input cannot prove real
 snapshot identity or canonical date eligibility; not a corpus-recall or
 full production A/B claim. Do not commit private input files. This is
 rank-only replay; A5/A6 and capture automation remain pending.
+
+
+## Actual report count-limit replay
+
+An optional case field `report_selection` may be supplied:
+
+```json
+{"scope":"complete_report_input_strong_first","limit":120}
+```
+
+The operator must attest that the ordered rows are the complete input to
+the report's legacy strong-first selection (21–128 rows), not an arbitrary
+prefix or one search among multiple tools. The limit must be the actual
+positive report count limit, up to 128. This excludes source-diverse
+selection. Both arms use the very same strong-first helper as ReportAgent,
+without changing report behavior. The candidate arm applies the existing
+A4 rank kernel before that helper. Aggregate report_selection_comparison
+measures selected rows at the declared limit separately from raw top-20
+diagnostics; report_selection_limit_cases shows the distribution of limits.
+Cases without the optional field retain the original evaluation. A gain
+at top 20 can disappear when a larger report cap includes all rows. This
+does not simulate compression, prompt token limits, LLM output, multiple
+searches, or source diversity; it cannot attest completeness or authorize
+production ranking. No new env variables or model/ES access.

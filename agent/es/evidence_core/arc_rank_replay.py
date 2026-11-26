@@ -11,6 +11,7 @@ from .arc_rank_shadow import _compare_rank, MAX_ROWS, MAX_ROW_CHARS, MAX_CHARS, 
 from .arc_selection_eval import evaluate_selection_cases
 from .arc_semantic_eval import MAX_CASES, MAX_TOTAL_ROWS
 from .models import EvidenceSnippet
+from agent.utils.report_evidence_selection import select_strong_first_evidence
 from ..arc_request_budget import ArcRequestBudget, bind_arc_budget
 
 _MAX_TOTAL_CHARS = 1048576
@@ -24,8 +25,16 @@ def replay_rank_cases(cases):
     total_rows = total_chars = 0
     paired = []
     scope_counts = {}
+    report_paired = []
+    report_limits = {}
     for case in cases:
-        if type(case) is not dict or set(case) != _CASE_KEYS:
+        if type(case) is not dict or set(case) not in (_CASE_KEYS, _CASE_KEYS | {"report_selection"}):
+            return None
+        report = case.get("report_selection")
+        if "report_selection" in case and (
+                type(report) is not dict or set(report) != {"scope", "limit"}
+                or report["scope"] != "complete_report_input_strong_first"
+                or type(report["limit"]) is not int or not 1 <= report["limit"] <= MAX_ROWS):
             return None
         groups, frequency, rows = case["groups"], case["frequency"], case["rows"]
         if (type(groups) is not list or not 1 <= len(groups) <= 16
@@ -74,15 +83,35 @@ def replay_rank_cases(cases):
         scope = observation["scope"]
         scope_counts[scope] = scope_counts.get(scope, 0) + 1
         candidate_ranks = {i: rank for rank, i in enumerate(order, 1)}
-        paired.append([
+        paired_rows = [
             {"ordinal": i + 1, "source": row["source"], "gold": row["gold"],
              "direct_anchor": row["direct_anchor"], "strong": not row["weak"],
              "baseline_rank": i + 1, "candidate_rank": candidate_ranks[i]}
             for i, row in enumerate(rows)
-        ])
+        ]
+        paired.append(paired_rows)
+        if report is not None:
+            # The operator attests that these rows are the complete ordered
+            # input to the ordinary strong-first report count cap, not merely
+            # a tool's first prefix. Only strength and identity are consumed
+            # by the real helper. No source UUID fabrication.
+            limit = report["limit"]
+            tokens = [{"ordinal": i, "weak_evidence": row["weak"]} for i, row in enumerate(rows)]
+            baseline_selected = select_strong_first_evidence(tokens, limit)
+            candidate_selected = select_strong_first_evidence([tokens[i] for i in order], limit)
+            ranks = [{row["ordinal"]: j for j, row in enumerate(selected, 1)}
+                     for selected in (baseline_selected, candidate_selected)]
+            report_paired.append([
+                {**row, "baseline_rank": ranks[0].get(i), "candidate_rank": ranks[1].get(i)}
+                for i, row in enumerate(paired_rows)
+            ])
+            report_limits[str(limit)] = report_limits.get(str(limit), 0) + 1
     result = evaluate_selection_cases(paired)
     if result is None:
         return None
     return {"schema": "sraf_arc_rank_replay_v1",
             "scope": "operator_frozen_labeled_strict_prefix_not_corpus",
-            "frequency_scope_cases": scope_counts, "comparison": result}
+            "frequency_scope_cases": scope_counts, "comparison": result,
+            "report_selection_scope": "operator_attested_complete_input_strong_first_precompression",
+            "report_selection_limit_cases": report_limits,
+            "report_selection_comparison": evaluate_selection_cases(report_paired) if report_paired else None}

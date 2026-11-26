@@ -15,7 +15,7 @@ from agent.utils.evidence_pack import pack_ev_for_llm
 from agent.utils.evidence_pack import filter_ev_fields
 from agent.utils.evidence_pack import guess_report_need_fields
 from agent.utils.report_evidence_trace import emit_report_evidence_trace, count_identified_sources
-from agent.utils.report_evidence_selection import select_source_diverse_evidence
+from agent.utils.report_evidence_selection import select_source_diverse_evidence, select_strong_first_evidence
 from agent.utils.report_evidence_review import review_report_evidence
 from agent.utils.report_citation_audit import audit_report_citation_labels, citation_integrity_notice
 from agent.utils.report_evidence_information import assess_report_evidence_information, evidence_information_notice
@@ -268,11 +268,7 @@ def _generate_report_from_payload(
     if os.getenv("SRAF_REPORT_DIVERSE_EVIDENCE") == "1":
         picked_for_llm = select_source_diverse_evidence(ev_all, MAX_EV_FOR_LLM)
     else:
-        # 強證據優先，不夠再補弱證據
-        picked_for_llm = ev_strong[:MAX_EV_FOR_LLM]
-        if len(picked_for_llm) < MAX_EV_FOR_LLM:
-            need = MAX_EV_FOR_LLM - len(picked_for_llm)
-            picked_for_llm += ev_weak[:need]
+        picked_for_llm = select_strong_first_evidence(ev_all, MAX_EV_FOR_LLM)
     
     # （可選）讓 payload 留個統計，方便 debug / 前端顯示
     payload["evidence_meta"] = {
