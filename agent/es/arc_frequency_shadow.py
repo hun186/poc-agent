@@ -103,9 +103,10 @@ def observe_native_frequency(
         if not budget.reserve(ordinal, ArcUnits(es_calls=1)):
             status = "shared_budget_exhausted"
             return
-        response = client.options(
+        from agent.arc_ordinary_resource_metrics import observed_attempt
+        response = observed_attempt("es_optional_frequency", client.options(
             request_timeout=3, max_retries=0, retry_on_timeout=False,
-        ).search(
+        ).search,
             index=index, body=plan, allow_partial_search_results=False,
             ignore_unavailable=False, allow_no_indices=False,
             expand_wildcards="none",

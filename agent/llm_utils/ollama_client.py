@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from typing import Optional, Dict, List, Any
 
 import requests
+from agent.arc_ordinary_resource_metrics import observed_ollama_json
 from urllib3.exceptions import ReadTimeoutError as Urllib3ReadTimeoutError
 
 logger = logging.getLogger(__name__)
@@ -145,9 +146,8 @@ class LLMClient:
         if extra_params:
             payload.update(extra_params)
 
-        resp = requests.post(url, json=payload, timeout=timeout or self.timeout)
-        resp.raise_for_status()
-        data = resp.json()
+        data = observed_ollama_json("ollama_chat", url, json=payload,
+                                    timeout=timeout or self.timeout)
 
         # Ollama /api/chat 非串流回應格式通常為：
         # {
@@ -187,9 +187,8 @@ class LLMClient:
         payload: Dict[str, Any] = {"model": self.model, "prompt": prompt, "stream": False}
         if extra_params:
             payload.update(extra_params)
-        resp = requests.post(self._get_generate_url(), json=payload, timeout=timeout or self.timeout)
-        resp.raise_for_status()
-        data = resp.json()
+        data = observed_ollama_json("ollama_generate", self._get_generate_url(),
+                                    json=payload, timeout=timeout or self.timeout)
         if isinstance(data, dict):
             for key in ("response", "result", "text"):
                 if isinstance(data.get(key), str):

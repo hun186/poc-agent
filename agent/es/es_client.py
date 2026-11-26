@@ -310,6 +310,7 @@ def safe_search(
     arc_review_receipts: Optional[list] = None,
 ):
     from agent.es.arc_review_scope import capture_primary_review
+    from agent.arc_ordinary_resource_metrics import observed_attempt
 
     es = get_es()
     ES_TIMEOUT = int(os.getenv("ES_TIMEOUT", "30"))
@@ -347,7 +348,7 @@ def safe_search(
             params=params,
         )
         '''
-        res = es.search(
+        res = observed_attempt("es_search", es.search,
             index=es_index,
             body=body,
             request_timeout=ES_TIMEOUT,
@@ -387,7 +388,7 @@ def safe_search(
                 params=params,
             )
             '''
-            res = es.search(
+            res = observed_attempt("es_highlight_retry", es.search,
                 index=es_index,
                 body=body2,
                 request_timeout=ES_TIMEOUT,
