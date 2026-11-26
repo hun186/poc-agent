@@ -564,3 +564,41 @@ def test_arc_a6_exact_empty_primary_logged_without_requery(monkeypatch, caplog):
     assert len(rows) == 1 and rows[0]["status"] == "primary_exact_zero"
     assert budget.snapshot()[0] == ArcUnits()
     assert "SECRET_QUERY" not in caplog.text and "SECRET_INDEX" not in caplog.text
+
+
+def test_arc_a7_receives_final_result_and_only_first_primary_diagnostics(monkeypatch):
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", "shadow")
+    monkeypatch.delenv("SRAF_ARC_ES_FREQUENCY", raising=False)
+    monkeypatch.delenv("SRAF_ARC_BILINGUAL", raising=False)
+    primary = _native_primary("SECRET_INDEX")
+    primary["hits"]["total"] = {"value": 100, "relation": "eq"}
+    _prepare(monkeypatch, responder=lambda body, *, index: primary)
+    calls = []
+    sinks = []
+
+    def build(hits, **kw):
+        sink = kw.get("arc_strategy_diagnostics")
+        sinks.append(sink)
+        if sink is not None:
+            sink["low"] = {"strict_count": 1}
+        return [], [], 0
+
+    def refill(**kw):
+        builder = kw["build_evidence"]
+        hits = primary["hits"]["hits"]
+        builder(hits[:])
+        builder(hits[:] + hits[:])
+        return [], [{"weak_evidence": False}] * 3, 0, {
+            "pages_fetched": 2, "incomplete_due_to_scan_limit": False}
+
+    monkeypatch.setattr(search_module, "build_hits_and_evidence", build)
+    monkeypatch.setattr(search_module, "refill_date_filtered_evidence", refill)
+    monkeypatch.setattr(search_module, "observe_strategy", lambda **kw: calls.append(kw))
+    result = search_module.ESSearchNews.forward.__wrapped__(
+        object(), query="SECRET_QUERY", size=5,
+        date_from="2020-01-01", date_to="2020-12-31")
+    assert len(calls) == 1 and sinks[1] is None
+    assert calls[0]["diagnostics"] == {"low": {"strict_count": 1}}
+    assert calls[0]["final_count"] == calls[0]["strong_count"] == 3
+    assert calls[0]["refill"]["pages_fetched"] == 2
+    assert "arc_strategy_diagnostics" not in repr(result)
