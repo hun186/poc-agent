@@ -498,3 +498,54 @@ def test_arc_a8_transport_exact_endpoint_and_bounded_response(monkeypatch, caplo
         if expected == "observed_verdicts":
             assert records[0]["unrelated_with_direct_anchor"] == 1
     assert len(calls) == len(cases)
+
+
+def test_arc_a8_real_session_rejects_redirect_before_body_read(monkeypatch):
+    # Keep actual Session.send and redirect logic. Only replace its network
+    # adapter; no live network or private prompt is sent by this regression.
+    import requests
+    from requests.adapters import BaseAdapter
+    from requests.structures import CaseInsensitiveDict
+    from agent.es import arc_semantic_review_transport as transport
+    from agent.es.evidence_core.arc_semantic_review import build_semantic_review_batch
+    batch = build_semantic_review_batch("主題：美國", [{"美國"}], [_a8_row(0, "美國政策")])
+    approved = transport._ApprovedEndpoint(
+        "https://review.invalid/api/chat", "test-model", "news_test", True)
+    session_type = requests.Session
+    reads = []
+    sends = []
+    closes = []
+    class Raw:
+        def stream(self, *args, **kwargs):
+            reads.append(1)
+            yield b"x" * (transport.MAX_RESPONSE_BYTES + 1)
+        def read(self, *args, **kwargs):
+            reads.append(1)
+            return b"x" * (transport.MAX_RESPONSE_BYTES + 1)
+        def close(self):
+            closes.append(1)
+        def release_conn(self):
+            pass
+    class Adapter(BaseAdapter):
+        def send(self, request, **kwargs):
+            sends.append(request.url)
+            response = requests.Response()
+            response.status_code = 302
+            response.headers = CaseInsensitiveDict({
+                "Location": "https://other.invalid/private",
+                "Content-Encoding": "gzip"})
+            response.url = request.url
+            response.request = request
+            response.raw = Raw()
+            return response
+        def close(self):
+            pass
+    def session():
+        result = session_type()
+        result.mount("https://", Adapter())
+        return result
+    monkeypatch.setattr(transport.requests, "Session", session)
+    assert transport._request_review(approved, batch) is None
+    assert sends == [approved.url]
+    assert not reads
+    assert closes
