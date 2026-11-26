@@ -999,13 +999,19 @@ def test_arc_release_env_example_covers_runtime_settings_and_safe_defaults():
             # Ignore commented alternative values, but retain documented
             # optional settings when there is no active assignment.
             assignments.setdefault(name, []).append((bool(commented), value))
-    required = set()
+    from agent.arc_mode import SHADOW_FLAGS, LOCAL_SHADOW_FLAGS
+    required = set(SHADOW_FLAGS)
     for folder in ("agent", "api", "sra_api"):
         for source in (root / folder).rglob("*.py"):
             tree = ast.parse(source.read_text(encoding="utf-8-sig"))
             for node in ast.walk(tree):
                 key = None
-                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                        and node.func.id == "arc_shadow_enabled" and node.args):
+                    key = node.args[0]
+                    if isinstance(key, ast.Constant):
+                        assert key.value in SHADOW_FLAGS
+                elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
                         and node.func.attr in ("getenv", "get", "setdefault")
                         and node.args):
                     key = node.args[0]
@@ -1016,6 +1022,8 @@ def test_arc_release_env_example_covers_runtime_settings_and_safe_defaults():
                 if (isinstance(key, ast.Constant) and isinstance(key.value, str)
                         and key.value.startswith("SRAF_ARC_")):
                     required.add(key.value)
+                    if key.value in SHADOW_FLAGS:
+                        assert isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "arc_shadow_enabled", str(source)
     from dataclasses import asdict
     from agent.es.evidence_core.group_frequency import GroupFrequencyBudget
     for key, value in asdict(GroupFrequencyBudget()).items():
@@ -1026,7 +1034,9 @@ def test_arc_release_env_example_covers_runtime_settings_and_safe_defaults():
     assert not required.difference(assignments), sorted(required.difference(assignments))
     for name, entries in assignments.items():
         active = [value for commented, value in entries if not commented]
-        if name.startswith("SRAF_ARC_GROUP_FREQUENCY_MAX_"):
+        if name in LOCAL_SHADOW_FLAGS:
+            assert not active and (True, "off") in entries, name
+        elif name.startswith("SRAF_ARC_GROUP_FREQUENCY_MAX_"):
             assert not active
         else:
             assert len(active) == 1, name
@@ -1037,3 +1047,60 @@ def test_arc_release_env_example_covers_runtime_settings_and_safe_defaults():
             else:
                 assert active == ["off"], name
     assert set(assignments) == required
+
+
+def test_arc_master_mode_legacy_shadow_override_and_fail_closed(monkeypatch):
+    from agent.arc_mode import arc_shadow_enabled, SHADOW_FLAGS, LOCAL_SHADOW_FLAGS
+    for flag in SHADOW_FLAGS | {"SRAF_ARC_MODE"}:
+        monkeypatch.delenv(flag, raising=False)
+    assert not any(arc_shadow_enabled(flag) for flag in SHADOW_FLAGS)
+    monkeypatch.setenv("SRAF_ARC_BILINGUAL", "shadow")
+    assert arc_shadow_enabled("SRAF_ARC_BILINGUAL")
+    monkeypatch.delenv("SRAF_ARC_BILINGUAL")
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    assert {flag for flag in SHADOW_FLAGS if arc_shadow_enabled(flag)} == LOCAL_SHADOW_FLAGS
+    monkeypatch.setenv("SRAF_ARC_RANK", "off")
+    monkeypatch.setenv("SRAF_ARC_BILINGUAL", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW", "on")
+    assert not arc_shadow_enabled("SRAF_ARC_RANK")
+    assert arc_shadow_enabled("SRAF_ARC_BILINGUAL")
+    assert not arc_shadow_enabled("SRAF_ARC_REVIEW")
+    assert not arc_shadow_enabled("SRAF_ARC_REVIEW_EGRESS")
+    for mode in ("off", "on", "", "SHADOW", "unknown"):
+        monkeypatch.setenv("SRAF_ARC_MODE", mode)
+        for flag in SHADOW_FLAGS:
+            monkeypatch.setenv(flag, "shadow")
+        assert not any(arc_shadow_enabled(flag) for flag in SHADOW_FLAGS)
+    # Resolution must not erase explicit overrides from the environment.
+    import os
+    assert os.getenv("SRAF_ARC_BILINGUAL") == "shadow"
+
+
+def test_arc_master_shadow_external_features_remain_independently_gated(monkeypatch):
+    from agent.arc_mode import SHADOW_FLAGS
+    from agent.es.arc_bilingual_shadow import bilingual_shadow_enabled
+    from agent.es.arc_frequency_shadow import native_frequency_enabled
+    from agent.es.arc_strategy_shadow import strategy_enabled
+    from agent.adaptive_retrieval.arc_deep_frequency_transport import deep_frequency_enabled
+    from agent.adaptive_retrieval.arc_deep_review import deep_review_enabled
+    from agent.es.arc_review_scope import review_scope_enabled
+    for flag in SHADOW_FLAGS:
+        monkeypatch.delenv(flag, raising=False)
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS", "approved")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX", "news_test")
+    assert not any(f() for f in (bilingual_shadow_enabled, native_frequency_enabled,
+                                strategy_enabled, deep_frequency_enabled, deep_review_enabled))
+    assert not review_scope_enabled("news_test")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_DEEP", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW", "shadow")
+    assert deep_review_enabled()
+    monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS", "off")
+    assert not deep_review_enabled()
+    for flag in SHADOW_FLAGS:
+        monkeypatch.setenv(flag, "shadow")
+    monkeypatch.setenv("SRAF_ARC_MODE", "off")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS", "approved")
+    assert not any(f() for f in (bilingual_shadow_enabled, native_frequency_enabled,
+                                strategy_enabled, deep_frequency_enabled, deep_review_enabled))
+    assert not review_scope_enabled("news_test")
