@@ -410,3 +410,98 @@ def test_arc_a5_abstains_without_anchor_or_shared_budget():
     with bind_arc_budget((b, 1)):
         assert observe_tightening(rows, groups, original_question="主題：美國")["status"] == "shared_budget_exhausted"
     assert b.snapshot()[0] == ArcUnits()
+
+
+def _relax_record(caplog):
+    prefix = "SRAF_ARC_RELAX_SHADOW="
+    rows = [json.loads(r.getMessage().split(prefix, 1)[1])
+            for r in caplog.records if r.getMessage().startswith(prefix)]
+    assert len(rows) == 1
+    return rows[0]
+
+
+def test_arc_a6_distinguishes_date_topic_and_content_rejections(monkeypatch, caplog):
+    from agent.es.evidence_core.builder import build_hits_and_evidence
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    monkeypatch.setenv("SRAF_ARC_RELAX", "shadow")
+    groups = [{"美國"}, {"政策"}, {"半導體"}, {"出口管制"}]
+    hits = [
+        _hit(["美國 政策 半導體"], uuid="private-strict", docid="1"),
+        _hit(["美國 出口管制", "美國 出口管制"], uuid="private-direct", docid="2"),
+        _hit(["政策 半導體"], uuid="private-unanchored", docid="3"),
+        _hit(["美國 政策"], uuid="private-date", docid="4", date="2023-09-24"),
+    ]
+    kw = dict(date_from="2023-08-24", date_to="2023-08-24",
+              term_groups=groups, effective_terms=["美國","政策","半導體","出口管制"],
+              query_for_snippet="美國 政策 半導體 出口管制", original_question="主題：美國")
+    monkeypatch.delenv("SRAF_ARC_RELAX")
+    baseline = build_hits_and_evidence(hits, **kw)
+    monkeypatch.setenv("SRAF_ARC_RELAX", "shadow")
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)):
+        assert build_hits_and_evidence(hits, **kw, arc_candidate_pressure=CandidatePressure("eq", 500, 4)) == baseline
+    r = _relax_record(caplog)
+    assert r["status"] == "observed_relaxation"
+    assert r["strict_count"] == 1 and r["date_rejected"] == 1
+    assert r["canonical_eligible"] == r["strict_count"] + r["topic_rejected"]
+    assert r["new_candidate_rows"] == 1
+    assert r["candidate_source_hits"] == 1 and r["hypothetical_add_cap"] == 1
+    assert budget.snapshot()[0] == ArcUnits(slices=1, hits=128, rows=128, chars=131072)
+    serialized = json.dumps(r, ensure_ascii=False)
+    for private in ("private-", "美國", "政策", "2023-08-24"):
+        assert private not in serialized
+
+
+def test_arc_a6_zero_strict_remains_shadow_even_if_legacy_relaxes(monkeypatch, caplog):
+    from agent.es.evidence_core.builder import build_hits_and_evidence
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
+    groups = [{"美國"}, {"政策"}, {"出口管制"}]
+    hits = [_hit(["美國 政策"], uuid="private-1", docid="1"),
+            _hit(["美國 出口管制"], uuid="private-2", docid="2"),
+            _hit(["政策 出口管制"], uuid="private-3", docid="3")]
+    kw = dict(date_from="2023-08-24", date_to="2023-08-24", term_groups=groups,
+              effective_terms=["美國","政策","出口管制"], query_for_snippet="美國 政策 出口管制",
+              original_question="必要主題：美國")
+    monkeypatch.delenv("SRAF_ARC_RELAX", raising=False)
+    baseline = build_hits_and_evidence(hits, **kw)
+    assert len(baseline[1]) == 3
+    monkeypatch.setenv("SRAF_ARC_RELAX", "shadow")
+    with bind_arc_budget((ArcRequestBudget(), 1)):
+        assert build_hits_and_evidence(hits, **kw,
+                    arc_candidate_pressure=CandidatePressure("eq", 3, 3)) == baseline
+    r = _relax_record(caplog)
+    assert r["strict_count"] == 0 and r["topic_rejected"] == 3
+    assert r["new_candidate_rows"] == 2 and r["hypothetical_add_cap"] == 2
+
+
+def test_arc_a6_diagnostic_only_abstention_and_count_certainty():
+    from agent.es.evidence_core.arc_relax_shadow import StrictSliceCounts, observe_low_volume
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    groups = [{"美國"}, {"政策"}, {"半導體"}]
+    def observe(counts, pressure, question="主題：美國", axes=groups):
+        return observe_low_volume([], [], axes, counts=counts, pressure=pressure,
+                                  original_question=question, date_from=None, date_to=None,
+                                  allowed_years=None)
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)):
+        assert observe(StrictSliceCounts(), CandidatePressure("eq", 0, 0))["status"] == "primary_exact_zero"
+        assert observe(StrictSliceCounts(), CandidatePressure())["status"] == "primary_empty_unconfirmed"
+        assert observe(StrictSliceCounts(), CandidatePressure("eq", 20, 20))["status"] == "no_parsed_citations"
+        assert observe(StrictSliceCounts(inspected=2, date_rejected=2),
+                       CandidatePressure("eq", 20, 20))["status"] == "all_parsed_date_rejected"
+        assert observe(StrictSliceCounts(inspected=2, other_rejected=2),
+                       CandidatePressure("eq", 20, 20))["status"] == "no_canonical_eligible"
+        rejected = StrictSliceCounts(inspected=2, canonical_eligible=2, topic_rejected=2)
+        assert observe(rejected, CandidatePressure("eq", 20, 20), "研究美國")["status"] == "no_trusted_anchor"
+        assert observe(rejected, CandidatePressure("eq", 20, 20),
+                       axes=[{"美國"}, {"政策"}])["status"] == "unsupported_groups"
+        assert observe(rejected, CandidatePressure("eq", 20, 20),
+                       axes=[{"美國"}, {"政策","USA"}, {"半導體","usa"}])["status"] == "ambiguous_groups"
+    assert budget.snapshot()[0] == ArcUnits()
+    limited = ArcRequestBudget(request_limit=ArcUnits(slices=1), round_limit=ArcUnits(slices=1))
+    with bind_arc_budget((limited, 1)):
+        assert observe(rejected, CandidatePressure("eq", 20, 20))["status"] == "shared_budget_exhausted"
+    assert limited.snapshot()[0] == ArcUnits()
