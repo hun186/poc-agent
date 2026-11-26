@@ -485,3 +485,154 @@ def test_arc_deep_frequency_preserves_next_required_pit_open_and_page_budget():
     assert before == budget.snapshot().remaining_es_calls == 2
     assert arc.snapshot()[0] == ArcUnits(es_calls=1)
     assert c.safe_progress()["phase"] == "SEARCHING"
+
+
+def _pit_frequency_response(**changes):
+    return dict({"timed_out": False,
+                 "_shards": {"total": 2, "successful": 2, "failed": 0},
+                 "pit_id": "PRIVATE-PIT-FREQUENCY",
+                 "hits": {"total": {"value": 100, "relation": "eq"}, "hits": []},
+                 "aggregations": {"group_frequency": {"buckets": {
+                     "1": {"doc_count": 50}, "2": {"doc_count": 25}, "3": {"doc_count": 1}}}}},
+                **changes)
+
+
+def _pit_frequency_job(policy):
+    c, scope, ev, budget, _, _ = _setup()
+    binding = WorkerScopeBinding(
+        job=_job(scope), constraints=scope, coordinator=c,
+        authorized_indexes=("news_test",),
+        check_index_access=lambda *_: True,
+        check_single_branch_coverage=lambda *_: True,
+        check_frequency_scope=policy,
+    )
+    assert c.start()
+    plan = _frozen_plan(c, scope, binding)
+    binding.preflight(plan)
+    return c, budget, binding, plan
+
+
+def _pit_frequency_logs(caplog):
+    return [json.loads(row.getMessage().split("SRAF_ARC_DEEP_FREQUENCY=", 1)[1])
+            for row in caplog.records if row.getMessage().startswith("SRAF_ARC_DEEP_FREQUENCY=")]
+
+
+def test_arc_deep_frequency_uses_latest_pit_after_main_pages(monkeypatch, caplog):
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    from test_sraf_nround_es_pit_adapter import _hit, _page
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY_VERIFIED_INDEX", "news_test")
+    c, budget, binding, plan = _pit_frequency_job(lambda *_: True)
+    es = FakeES(_page([_hit(1), _hit(2)], pit_id="PRIVATE-PIT-2"),
+                _page([_hit(3)], pit_id="PRIVATE-PIT-3"),
+                _pit_frequency_response())
+    arc = ArcRequestBudget()
+    with bind_arc_budget((arc, 1)):
+        fetched = execute_single_frozen_query(plan=plan, client=es, page_size=2,
+                                               frequency_binding=binding)
+    assert [kind for kind, _ in es.calls] == ["open", "search", "search", "search", "close"]
+    assert fetched.unique_sources == 3 and fetched.pages_completed == 2
+    assert fetched.request_wide_attested is False
+    assert binding.attest(plan, fetched)
+    body = es.searches[-1]["body"]
+    assert body["pit"]["id"] == "PRIVATE-PIT-3"
+    assert "search_after" not in body and "sort" not in body and "index" not in es.searches[-1]
+    assert body["size"] == 0 and body["_source"] is False and body["timeout"] == "2s"
+    assert body["query"]["bool"]["filter"] == es.searches[0]["body"]["query"]["function_score"]["query"]["bool"]["filter"]
+    assert es.searches[-1]["allow_partial_search_results"] is False
+    assert es.transport_options[-2]["request_timeout"] == 3
+    assert es.transport_options[-2]["max_retries"] == 0
+    assert es.calls[-1][1]["id"] == "PRIVATE-PIT-FREQUENCY"
+    assert arc.snapshot()[0] == ArcUnits(es_calls=1)
+    assert budget.snapshot().remaining_es_calls == 20
+    assert c._es_slots_this_round == 3
+    rows = _pit_frequency_logs(caplog)
+    assert rows[0]["status"] == "observed_counts"
+    assert rows[0]["eligible_documents"] == 100
+    assert rows[0]["groups"][2] == {"group_ordinal": 3, "document_frequency": 1}
+    assert "PRIVATE" not in caplog.text and "news_test" not in caplog.text
+    assert "甲軸" not in caplog.text
+
+
+@pytest.mark.parametrize("problem", ["partial", "lower_bound", "bad_buckets", "cluster", "revoked"])
+def test_arc_deep_frequency_rejects_counts_but_closes_updated_pit(monkeypatch, caplog, problem):
+    from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
+    from test_sraf_nround_es_pit_adapter import _page
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY_VERIFIED_INDEX", "news_test")
+    checks = []
+    def policy(*_):
+        checks.append(1)
+        return problem != "revoked" or len(checks) == 1
+    c, _, binding, plan = _pit_frequency_job(policy)
+    response = _pit_frequency_response()
+    if problem == "partial":
+        response["timed_out"] = True
+    elif problem == "lower_bound":
+        response["hits"]["total"]["relation"] = "gte"
+    elif problem == "bad_buckets":
+        response["aggregations"] = {}
+    elif problem == "cluster":
+        response["_clusters"] = {"total": 1}
+    es = FakeES(_page([]), response)
+    with bind_arc_budget((ArcRequestBudget(), 1)):
+        receipt = execute_single_frozen_query(plan=plan, client=es,
+                                               frequency_binding=binding)
+    assert receipt.query_plan_complete and receipt.pages_completed == 1
+    assert es.calls[-1][1]["id"] == "PRIVATE-PIT-FREQUENCY"
+    assert len(es.searches) == 2
+    logs = _pit_frequency_logs(caplog)
+    assert logs[0]["status"] == ("authorization_or_deadline_changed" if problem == "revoked" else "incomplete")
+    assert "eligible_documents" not in logs[0]
+    assert c.safe_progress()["phase"] == "SEARCHING"
+
+
+@pytest.mark.parametrize("case", ["off", "no_policy", "denied", "wrong_index", "no_budget"])
+def test_arc_deep_frequency_never_calls_unapproved_statistics(monkeypatch, caplog, case):
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    from test_sraf_nround_es_pit_adapter import _page
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY", "off" if case == "off" else "shadow")
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY_VERIFIED_INDEX", "other" if case == "wrong_index" else "news_test")
+    c, budget, binding, plan = _pit_frequency_job(None if case == "no_policy" else lambda *_: case != "denied")
+    es = FakeES(_page([]))
+    arc = ArcRequestBudget()
+    with bind_arc_budget(None if case == "no_budget" else (arc, 1)):
+        receipt = execute_single_frozen_query(plan=plan, client=es, frequency_binding=binding)
+    assert receipt.query_plan_complete
+    assert [kind for kind, _ in es.calls] == ["open", "search", "close"]
+    assert budget.snapshot().remaining_es_calls == 22
+    assert arc.snapshot()[0] == ArcUnits()
+    assert c.safe_progress()["phase"] == "SEARCHING"
+
+
+@pytest.mark.parametrize("case", ["transport", "malformed_pit", "close_failure"])
+def test_arc_deep_frequency_cleanup_failure_never_certifies_round(monkeypatch, caplog, case):
+    from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
+    from agent.adaptive_retrieval.round_query_execution import RoundQueryPlanError
+    from test_sraf_nround_es_pit_adapter import _page
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY_VERIFIED_INDEX", "news_test")
+    c, _, binding, plan = _pit_frequency_job(lambda *_: True)
+    class OptionalFailure(FakeES):
+        def search(self, **kw):
+            if case == "transport" and self.searches:
+                self.calls.append(("search", kw))
+                self.searches.append(kw)
+                raise RuntimeError("PRIVATE_TRANSPORT")
+            return super().search(**kw)
+    es = OptionalFailure(_page([]), _pit_frequency_response(
+        **({"pit_id": None} if case == "malformed_pit" else {})),
+        closing=RuntimeError("PRIVATE_CLOSE") if case == "close_failure" else None)
+    with bind_arc_budget((ArcRequestBudget(), 1)):
+        if case == "transport":
+            assert execute_single_frozen_query(plan=plan, client=es,
+                                               frequency_binding=binding).query_plan_complete
+            assert _pit_frequency_logs(caplog)[0]["status"] == "unavailable"
+        else:
+            with pytest.raises(RoundQueryPlanError):
+                execute_single_frozen_query(plan=plan, client=es, frequency_binding=binding)
+            assert c.safe_progress()["phase"] == "TERMINAL"
+            assert not _pit_frequency_logs(caplog)
+    assert es.calls[-1][0] == "close"
+    assert es.calls[-1][1]["id"] == ("PRIVATE-PIT-FREQUENCY" if case == "close_failure" else "PRIVATE-PIT-1")
+    assert "PRIVATE" not in caplog.text
