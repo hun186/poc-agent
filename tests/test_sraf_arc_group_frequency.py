@@ -871,3 +871,23 @@ def test_arc_a9_resources_rejects_estimates_malformed_and_private_fields():
                     [{"baseline":row,"candidate":row,"case_id":"PRIVATE"}],
                     [{"baseline":row,"candidate":row}]*33):
         assert evaluate_resource_cases(invalid) is None
+
+
+def test_arc_a9_resource_eval_cli_aggregate_only(tmp_path,capsys):
+    import json
+    from agent.es.evidence_core.arc_eval_cli import main
+    p = tmp_path / "PRIVATE_RESOURCE_CASES.json"
+    p.write_text(json.dumps([{"baseline":_a9_measured(elapsed=100),
+                              "candidate":_a9_measured(elapsed=120,llm=1,prompt=None)}]),
+                 encoding="utf-8")
+    assert main(["resources",str(p)]) == 0
+    out = capsys.readouterr()
+    obj = json.loads(out.out)
+    assert obj["status"] == "EVALUATED_OFFLINE"
+    assert obj["result"]["all_attempts"]["elapsed_ms"]["delta_total"] == 20
+    assert obj["result"]["all_attempts"]["prompt_tokens"]["paired_cases"] == 0
+    assert not out.err and "PRIVATE_RESOURCE_CASES" not in out.out
+    p.write_text(json.dumps([{"baseline":_a9_measured(),"candidate":{**_a9_measured(),"private_text":"PRIVATE"}}]),encoding="utf-8")
+    assert main(["resources",str(p)]) == 2
+    out = capsys.readouterr()
+    assert not out.out and json.loads(out.err)["status"] == "INVALID_OR_UNREADABLE_FIXTURE"
