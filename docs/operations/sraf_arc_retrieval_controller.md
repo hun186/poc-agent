@@ -78,3 +78,7 @@ CHARS 是 Python len() 計算的原始片段字元數，含日期驗證前掃描
 ### A4 普通報告原生 DF 排序觀察
 SRAF_ARC_ES_FREQUENCY=shadow 與 SRAF_ARC_RANK_NATIVE=shadow 同時啟用才走正式 transport 的 private receipt 路徑；仍需 operator 核准索引、mapping/analyzer 與原生查詢所有既有安全 gate。完整 native counts 透過單次工具呼叫的私有 sink 傳給首次 Evidence builder，核對原始群組內容及順序、日期雙端、不接受額外 allowed_years。每份 receipt 僅消費一次，不帶入後續 refill、其他 tool、其他報告、LLM 或公開輸出。
 沿用 A4 strong/coverage/正文優先順序與有界 IDF；使用原生 root document frequency 而非局部樣本，仍需最少 16 個 eligible documents，零頻率不獎勵，額外排序使用同一 ARC budget。原生與局部排序各自記錄，不能混合分母或頻率；原生 scope 標明 not_pit，因普通報告主查詢與統計並非同一 PIT 快照，即使查詢條件一致也不保證資料版本相同。ES analyzer 與 Python 正規化匹配仍可能不同。沒有新增 ES/LLM 呼叫，無正式排序或結果變更，尚待實機及人工標記驗收。
+
+## A5 初篩爆量及收緊反事實觀察（普通報告）
+SRAF_ARC_TIGHTEN=shadow，預設關閉。只將第一次普通報告主查詢的 ES total（eq 精確、gte 下限、其他 unknown）與第一次 strict parser slice 配對，拒絕 timeout、提前終止、失敗 shard、remote cluster 或矛盾計數；不把回傳頁大小當全體命中數。候選總數 >=256 為暫定壓力訊號，不是報告充分性；即使候選爆量，strict 少於40也不提出收緊比較。非首次 refill、fallback、Requirement E2E 或 ordinary scope capture 不傳入壓力資訊。
+至少4群組且有來自原問題的明確必要主體才比較：全群組正文命中；正文至少3群組、必要主體字面命中並命中局部最具鑑別力的非主體群組；同條件但使用原生 DF。各頻率來源分開，零觀測或全體命中不提供鑑別力候選。保留原日期驗證、strict Evidence 及正文語意群組基準，Latin alias 使用邊界驗證；不得將原有必要詞刪除。每種策略僅統計留下的 prefix rows / source hits、是否達到暫定20 rows及8 sources觀察門檻。最多128 rows、每row4096 chars、合計131072 chars，先保留ARC共用預算，超限略過。原生DF非同一PIT快照，局部樣本有偏差，prefix不代表全體，門檻不是召回率或充分性證明。無新增 ES/LLM 呼叫，不選擇/排除任何正式 Evidence，不啟動重查；尚待必要多實體保護、人工標記、時間及負載驗收。
