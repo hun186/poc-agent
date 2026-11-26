@@ -206,6 +206,32 @@ class AdaptiveRequestCoordinator:
             self._es_slots_this_round += 1
             return True
 
+    def _admit_optional_frequency(
+        self, round_number: int, *, owner_token: object,
+        execution_token: object, completed_pages: int,
+    ) -> bool:
+        """Nonterminal optional accounting, after a trusted complete PIT chain.
+
+        The owner binding must independently authorize the broader count
+        scope and check the actual fence. This does not authorize transport
+        or count as another canonical page admission.
+        """
+        with self._lock:
+            if (type(round_number) is not int or type(completed_pages) is not int
+                    or not 1 <= completed_pages <= 24
+                    or type(owner_token) is not object
+                    or type(execution_token) is not object
+                    or self._phase != "SEARCHING" or self._round != round_number
+                    or self._budget.rounds_started != round_number
+                    or self._owner_preflight_round != round_number
+                    or self._owner_preflight_token is not owner_token
+                    or self._owner_preflight_execution_token is not execution_token
+                    or self._single_query_claimed_round != round_number
+                    or self._single_query_claim_token is not execution_token
+                    or self._es_slots_this_round != completed_pages + 1):
+                return False
+            return self._budget.admit_optional_es(round_number)
+
     def complete_round(
         self, es_hits: list[dict[str, Any]], *,
         query_for_snippet: str, complete: bool,
