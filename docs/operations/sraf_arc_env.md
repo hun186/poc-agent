@@ -7,15 +7,10 @@
 ## 1. 建議第一階段：本地觀察（不增加 ES / LLM 呼叫）
 
 ```dotenv
-SRAF_ARC_GROUP_FREQUENCY=shadow
-SRAF_ARC_RANK=shadow
-SRAF_ARC_TIGHTEN=shadow
-SRAF_ARC_RELAX=shadow
-SRAF_ARC_ORDINARY_RESOURCE_METRICS=shadow
-SRAF_ARC_DEEP_RESOURCE_METRICS=shadow
+SRAF_ARC_MODE=shadow
 ```
 
-保持其餘 ARC 開關 off。A3/A4 共用掃描預算；超出時略過。A5/A6 普通報告只計算反事實統計，並不採用新 Evidence。
+新範例的六項本地開關預設為註解；若舊私有 env 已明確設定其中某項 off，請移除該行或改為 shadow。保持其餘 ARC 開關 off。A3/A4 共用掃描預算；超出時略過。A5/A6 普通報告只計算反事實統計，並不採用新 Evidence。
 資源觀察是既有介面的部分量測，不是完整的端到端用量。仍需先在私有環境量測負載。
 
 ## 2. 可選：A2/A7 額外模型策略觀察
@@ -59,14 +54,24 @@ SRAF_ARC_CAPTURE_ES_CA_FILE 是獨立唯讀擷取命令的設定，並非報告�
 
 ## 6. 回退
 
-將所有 ARC 模式設定恢復 `off`，並將 SRAF_ARC_REVIEW_EGRESS 恢復 `off`，
+將 SRAF_ARC_MODE 恢復 `off`（優先覆蓋所有 ARC shadow 功能開關），並將 SRAF_ARC_REVIEW_EGRESS 恢復 `off`，
 清空不再使用的 ARC 專用索引及端點設定，再重啟相關程序。不要修改原有 ES 或模型帳密。
 本指南的 ARC shadow 開關不會啟用新的正式 Evidence 選擇；既有 SRAF_TOPIC_MATCH_ADAPTIVE
 是不同功能，`on` 可能改變正式 Evidence，不能當作整套 ARC 啟用或回退開關。
 
-## 7. 後續整體模式
+## 7. 整體模式與覆寫順序
 
-目前沒有已實作的 ARC 主開關或正式策略組合。正式啟用前應建立一個簡單的整體模式，
-以明確優先順序處理個別 override，並保持索引、傳輸授權、A/B 驗收、共用預算及回退條件獨立。
-未實作、未驗收的整體模式不得寫入樣本當成可用設定。
+| SRAF_ARC_MODE | 行為 |
+| --- | --- |
+| 未設定 | 相容舊版：只有個別設定為 shadow 才開啟 |
+| off | 強制關閉全部 ARC shadow 功能，不受個別設定覆寫 |
+| shadow | 預設六項本地觀察；個別明確 shadow/off 可覆寫預設 |
+| on、空值或其他不合法值 | 尚未支援正式策略，一律安全關閉 |
+
+shadow 預設六項：GROUP_FREQUENCY、RANK、TIGHTEN、RELAX、
+ORDINARY_RESOURCE_METRICS、DEEP_RESOURCE_METRICS（皆為 SRAF_ARC_ 前綴）。
+其他個別功能預設關閉，仍需明確 opt-in 及既有授權、預算、資料政策。
+不改寫 os.environ、不自動核准 egress、不改變舊版 SRAF_TOPIC_MATCH_ADAPTIVE，
+不控制獨立的人工 --run 擷取命令。已開始的 IO 不能因修改 env 而撤回；
+改完需重新啟動服務，並以新報告驗證。尚無正式 ARC on 或實機品質/資源驗收。
 新增 ARC env 讀取時，同步更新根目錄樣本與此指南。
