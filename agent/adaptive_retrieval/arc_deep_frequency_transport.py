@@ -15,6 +15,7 @@ from .arc_deep_frequency_plan import build_deep_frequency_plan
 from .es_pit_adapter import _pit, _response, _timeout
 from .round_query_execution import FrozenSingleQueryPlan
 from .worker_scope_binding import WorkerScopeBinding
+from .arc_deep_resource_metrics import measured_es_call
 
 _LOG = logging.getLogger("sraf.arc.deep_frequency")
 _INDEX = re.compile(r"[a-z0-9][a-z0-9_.-]{0,127}\Z")
@@ -65,10 +66,10 @@ def observe_same_pit_frequency(*, plan, binding, fence, client, pit_id,
             record["status"] = "not_current"
             return pit_id, record
         body["pit"] = {"id": pit_id, "keep_alive": "1m"}
-        response = _response(client.options(
+        response = _response(measured_es_call(plan.coordinator, "optional_frequency", client.options(
             request_timeout=_timeout(plan.coordinator, min(3, request_timeout_seconds)),
             max_retries=0, retry_on_timeout=False, retry_on_status=(),
-        ).search(body=body, allow_partial_search_results=False))
+        ).search, body=body, allow_partial_search_results=False))
     except Exception:
         # The last known PIT still needs cleanup; transport errors do not
         # create evidence or trigger retries.
