@@ -55,3 +55,19 @@ def select_source_diverse_evidence(
             depth += 1
 
     return selected
+
+
+def select_strong_first_evidence(
+    snippets: list[dict[str, Any]], limit: int,
+) -> list[dict[str, Any]]:
+    """Legacy report count cap, stable strong before weak.
+
+    Keep this exact implementation shared with offline replay. No token
+    budget or source-diversity guarantee. Do not mutate the input rows.
+    """
+    strong = [e for e in snippets if not e.get("weak_evidence")]
+    weak = [e for e in snippets if e.get("weak_evidence")]
+    picked = strong[:limit]
+    if len(picked) < limit:
+        picked += weak[:limit - len(picked)]
+    return picked
