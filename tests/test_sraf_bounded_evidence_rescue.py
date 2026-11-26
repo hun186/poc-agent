@@ -832,3 +832,121 @@ def test_a9_tightening_replay_cli_privacy(tmp_path, capsys):
     assert main(["tighten-replay",str(p)]) == 2
     out = capsys.readouterr()
     assert not out.out and json.loads(out.err)["status"] == "INVALID_OR_UNREADABLE_FIXTURE"
+
+
+def _a9_relax_case():
+    hits = [_hit([_citation(t) for t in ["甲軸乙軸丙軸完整事件", "甲軸乙軸相關補充",
+                  "甲軸丙軸無關補充", "甲軸乙軸另一相關補充",
+                  "乙軸丙軸缺必要主體"]] + [
+                  _citation("甲軸乙軸異日資料", "E2")], docid="PRIVATE_DOC")]
+    # _hit accepts either all strings or all dictionaries.
+    return {"question":"主題：甲軸", "query":"甲軸乙軸丙軸",
+            "groups":[["甲軸"],["乙軸"],["丙軸"]],
+            "date_from":"2023-08-24","date_to":"2023-08-24",
+            "response":{"timed_out":False,
+                        "_shards":{"total":1,"successful":1,"failed":0},
+                        "hits":{"total":{"relation":"eq","value":1},"hits":hits}}}
+
+
+def _a9_relax_labeled(case):
+    from agent.es.evidence_core.arc_relax_replay import prepare_relax_annotation
+    prepared = prepare_relax_annotation(case)
+    assert prepared is not None
+    return {"case":case,"fixture_digest":prepared["fixture_digest"],
+            "labels":[{"ordinal":r["ordinal"],
+                       "gold":"unrelated" if "無關" in r["text"] else "relevant"}
+                      for r in prepared["rows"]]}
+
+
+def test_a9_relax_replay_exact_a6_bounded_additions_and_date_guard():
+    from agent.es.evidence_core.arc_relax_replay import prepare_relax_annotation, replay_relax_cases
+    from agent.es.evidence_core.arc_relax_shadow import observe_low_volume, StrictSliceCounts
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    from agent.es.evidence_core.builder import collect_snippets
+    from agent.es.evidence_core.parser import parse_es_hits
+    from agent.es.evidence_core.models import EvidenceBuildConfig
+    from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
+    case = _a9_relax_case()
+    template = prepare_relax_annotation(case)
+    assert template is not None
+    assert len(template["rows"]) == 5
+    assert all(r["gold"] is None for r in template["rows"])
+    assert all("異日" not in r["text"] for r in template["rows"])
+    assert "PRIVATE_DOC" not in repr(template)
+    fixture = _a9_relax_labeled(case)
+    result = replay_relax_cases([fixture])
+    full = result["comparison"]["full_selection"]
+    assert result["hypothetical_added"] == 2
+    assert full["baseline"]["selected"] == 1
+    assert full["candidate"]["selected"] == 3
+    assert full["added"]["relevant"] == full["added"]["unrelated"] == 1
+    assert full["removed"]["relevant"] == 0
+    assert full["candidate"]["known_label_precision"]["value"] == 2/3
+    assert "甲軸" not in repr(result) and "PRIVATE_DOC" not in repr(result)
+    hits, _ = parse_es_hits(case["response"]["hits"]["hits"],
+                             query_for_snippet=case["query"],config=EvidenceBuildConfig())
+    counts = StrictSliceCounts()
+    strict = collect_snippets(hits,date_from=case["date_from"],date_to=case["date_to"],
+                              term_groups=AXES,min_groups_required=None,arc_counts=counts)
+    with bind_arc_budget((ArcRequestBudget(),1)):
+        obs = observe_low_volume(hits,strict,AXES,counts=counts,
+              pressure=CandidatePressure.from_primary(case["response"]),
+              original_question=case["question"],date_from=case["date_from"],
+              date_to=case["date_to"],allowed_years=None)
+    assert obs["hypothetical_add_cap"] == result["hypothetical_added"]
+    assert obs["new_candidate_rows"] == 3
+    assert obs["date_rejected"] == 1
+
+
+def test_a9_relax_replay_rejects_changed_fixture_and_missing_labels():
+    from copy import deepcopy
+    from agent.es.evidence_core.arc_relax_replay import replay_relax_cases
+    fixture = _a9_relax_labeled(_a9_relax_case())
+    for change in ("text","query","date","digest","missing","duplicate","unknown"):
+        other = deepcopy(fixture)
+        if change == "text":
+            other["case"]["response"]["hits"]["hits"][0]["_source"]["multidim_event_json"][0]["evidence_snippets"][1]["text"] += "改"
+        elif change == "query":
+            other["case"]["query"] += "改"
+        elif change == "date":
+            other["case"]["date_to"] = "2023-08-25"
+        elif change == "digest":
+            other["fixture_digest"] = "0"*64
+        elif change == "missing":
+            other["labels"].pop()
+        elif change == "duplicate":
+            other["labels"][1]["ordinal"] = other["labels"][0]["ordinal"]
+        else:
+            other["labels"][0]["gold"] = None
+        assert replay_relax_cases([other]) is None
+
+
+def test_a9_relax_annotation_rejects_incomplete_and_ambiguous_inputs():
+    from agent.es.evidence_core.arc_relax_replay import prepare_relax_annotation
+    for change in ("timeout","duplicate","anchor","too_many","too_long"):
+        case = _a9_relax_case()
+        if change == "timeout":
+            case["response"]["timed_out"] = True
+        elif change == "anchor":
+            case["question"] = "不明確"
+        else:
+            rows = case["response"]["hits"]["hits"][0]["_source"]["multidim_event_json"][0]["evidence_snippets"]
+            if change == "duplicate":
+                rows.append(dict(rows[1]))
+            elif change == "too_many":
+                rows.extend(_citation("甲軸乙軸補充"+str(i)) for i in range(4))
+            else:
+                rows[1]["text"] = "甲軸乙軸" + "x"*4097
+        assert prepare_relax_annotation(case) is None
+
+
+def test_a9_relax_replay_cli_aggregate_only(tmp_path, capsys):
+    import json
+    from agent.es.evidence_core.arc_eval_cli import main
+    p = tmp_path / "PRIVATE_RELAX.json"
+    p.write_text(json.dumps([_a9_relax_labeled(_a9_relax_case())],ensure_ascii=False),
+                 encoding="utf-8")
+    assert main(["relax-replay",str(p)]) == 0
+    out = capsys.readouterr()
+    assert json.loads(out.out)["result"]["hypothetical_added"] == 2
+    assert "PRIVATE" not in out.out and "甲軸" not in out.out and not out.err

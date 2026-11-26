@@ -1,0 +1,219 @@
+"""A9 private offline replay of A6 on a frozen first-primary ES response.
+
+The raw response is supplied locally by an operator. No ES/LLM requests,
+production mutation, or automatic relaxation. The parser uses an explicit
+legacy default EvidenceBuildConfig, not ambient rollout flags. Only complete
+bounded parsed slices are evaluated. The fixture does not prove that the
+original ES query was correct, or that its returned slice is corpus-complete.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import date
+from hashlib import sha256
+import json
+
+from .arc_relax_shadow import (
+    _compare_low_volume, _identity, StrictSliceCounts, MAX_HITS, MAX_ROWS,
+    MAX_ROWS_PER_HIT, MAX_CHARS, MAX_ROW_CHARS, TARGET_STRICT,
+)
+from .arc_tighten_shadow import CandidatePressure
+from .arc_selection_eval import evaluate_selection_cases
+from .arc_semantic_eval import MAX_CASES, MAX_TOTAL_ROWS
+from .builder import collect_snippets
+from .parser import parse_es_hits
+from .snippet import build_evidence_snippet
+from .models import EvidenceBuildConfig
+from .question_anchor import derive_explicit_question_anchor
+from .cross_language_alias import alias_matches
+from ..arc_request_budget import ArcRequestBudget, bind_arc_budget
+
+_MAX_CASE_BYTES = 2 * 1024 * 1024
+_MAX_TOTAL_BYTES = 8 * 1024 * 1024
+_KEYS = {"question", "query", "groups", "date_from", "date_to", "response"}
+_LABELS = {"relevant", "uncertain", "unrelated"}
+
+
+@dataclass(frozen=True, repr=False)
+class _PreparedCase:
+    digest: str = field(repr=False)
+    rows: tuple[dict, ...] = field(repr=False)
+    observation: dict = field(repr=False)
+
+
+def _date_window(start, end):
+    try:
+        return (type(start) is str and type(end) is str
+                and date.fromisoformat(start).isoformat() == start
+                and date.fromisoformat(end).isoformat() == end and start <= end)
+    except ValueError:
+        return False
+
+
+def _prepare(case):
+    if type(case) is not dict or set(case) != _KEYS:
+        return None
+    # This API is for local JSON-native inputs. Bound the encoded fixture
+    # before parsing raw sources or expanding structured evidence.
+    raw = json.dumps(case, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+                     allow_nan=False).encode("utf-8")
+    if not 0 < len(raw) <= _MAX_CASE_BYTES:
+        return None
+    q, query, groups = case["question"], case["query"], case["groups"]
+    start, end, response = case["date_from"], case["date_to"], case["response"]
+    if (type(q) is not str or not 0 < len(q) <= 8192
+            or type(query) is not str or not 0 < len(query) <= 2048
+            or not _date_window(start, end)
+            or type(groups) is not list or not 3 <= len(groups) <= 16
+            or any(type(g) is not list or not 1 <= len(g) <= 32
+                   or any(type(t) is not str or not 0 < len(t) <= 160 or not t.strip() for t in g)
+                   or len(set(g)) != len(g) for g in groups)
+            or sum(map(len, groups)) > 64):
+        return None
+    groups = [set(g) for g in groups]
+    anchor = derive_explicit_question_anchor(q, groups)
+    if anchor is None:
+        return None
+    pressure = CandidatePressure.from_primary(response)
+    if pressure.relation not in ("eq", "gte") or not 1 <= pressure.returned <= MAX_HITS:
+        return None
+    raw_hits = response["hits"]["hits"]
+    source_ids = set()
+    for hit in raw_hits:
+        if (type(hit) is not dict or type(hit.get("_index")) is not str
+                or not 0 < len(hit["_index"]) <= 256
+                or type(hit.get("_id")) is not str or not 0 < len(hit["_id"]) <= 256
+                or type(hit.get("_source")) is not dict):
+            return None
+        pair = (hit["_index"], hit["_id"])
+        if pair in source_ids:
+            return None
+        source_ids.add(pair)
+    hits, _ = parse_es_hits(raw_hits, query_for_snippet=query, config=EvidenceBuildConfig())
+    if (len(hits) != len(raw_hits)
+            or any(h.source_hit_ordinal != i or len(h.citations) > MAX_ROWS_PER_HIT
+                   for i, h in enumerate(hits))):
+        return None
+    texts = [c.text for h in hits for c in h.citations]
+    if (not 1 <= len(texts) <= MAX_ROWS
+            or any(type(t) is not str or not 0 < len(t) <= MAX_ROW_CHARS for t in texts)
+            or sum(map(len, texts)) > MAX_CHARS):
+        return None
+    counts = StrictSliceCounts()
+    strict = collect_snippets(hits, date_from=start, date_to=end, term_groups=groups,
+                              min_groups_required=None, arc_counts=counts)
+    if len(strict) >= TARGET_STRICT:
+        return None
+    baseline = {_identity(e): i + 1 for i, e in enumerate(strict)}
+    if len(baseline) != len(strict):
+        return None
+    # Rebuild only canonical date-eligible rows. All such rows are labeled,
+    # not just the selected additions, so the denominator is explicit.
+    universe = []
+    seen = set()
+    for h in hits:
+        for c in h.citations:
+            ev = build_evidence_snippet(h, c, date_from=start, date_to=end)
+            if ev is None:
+                continue
+            key = _identity(ev)
+            if key in seen:
+                return None
+            seen.add(key)
+            universe.append((key, ev))
+    if len(universe) != counts.canonical_eligible or not set(baseline).issubset(seen):
+        return None
+    candidates = []
+    budget = ArcRequestBudget()
+    try:
+        with bind_arc_budget((budget, 1)):
+            observation = _compare_low_volume(
+                hits, strict, groups, counts=counts, pressure=pressure,
+                original_question=q, date_from=start, date_to=end, allowed_years=None,
+                _offline_candidates=candidates,
+            )
+    finally:
+        budget.seal()
+    if (observation["status"] != "observed_relaxation"
+            or observation["sample_limited"] is not False
+            or len(candidates) != observation["hypothetical_add_cap"]
+            or len(set(candidates)) != len(candidates)
+            or not set(candidates).issubset(seen)
+            or set(candidates).intersection(baseline)):
+        return None
+    added = {key: len(strict) + i for i, key in enumerate(candidates, 1)}
+    strong = {_identity(e): not e.weak_evidence for e in strict}
+    rows = tuple(
+        {"ordinal": i, "source": ev.source_hit_ordinal, "text": ev.text,
+         "direct_anchor": alias_matches(anchor.literal, ev.text),
+         "strong": strong.get(key, False),
+         "baseline_rank": baseline.get(key),
+         "candidate_rank": baseline.get(key, added.get(key))}
+        for i, (key, ev) in enumerate(universe, 1)
+    )
+    # Bind annotations to both frozen input and exact parser/order output,
+    # not merely to ordinal positions that could drift after a code change.
+    digest = sha256(raw + b"\x00" + json.dumps(
+        rows, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        allow_nan=False).encode("utf-8")).hexdigest()
+    return _PreparedCase(digest, rows, observation)
+
+
+def prepare_relax_annotation(case):
+    """Private local-only template; contains text, never log or upload it.
+
+    Gold is deliberately null until independently labeled. No actual source
+    ID is included. The digest is for pairing, not security or authorization.
+    """
+    try:
+        prepared = _prepare(case)
+    except (ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
+        return None
+    if prepared is None:
+        return None
+    return {"fixture_digest": prepared.digest,
+            "rows": [{"ordinal": r["ordinal"], "source": r["source"], "text": r["text"],
+                      "gold": None} for r in prepared.rows]}
+
+
+def replay_relax_cases(cases):
+    """Validate labels and compare strict-only vs first bounded A6 additions."""
+    if type(cases) is not list or not 1 <= len(cases) <= MAX_CASES:
+        return None
+    paired = []
+    added = total_rows = total_bytes = 0
+    for fixture in cases:
+        try:
+            if type(fixture) is not dict or set(fixture) != {"case", "fixture_digest", "labels"}:
+                return None
+            total_bytes += len(json.dumps(fixture, ensure_ascii=False, allow_nan=False).encode("utf-8"))
+            if total_bytes > _MAX_TOTAL_BYTES:
+                return None
+            prepared = _prepare(fixture["case"])
+            labels = fixture["labels"]
+            if (prepared is None or fixture["fixture_digest"] != prepared.digest
+                    or type(labels) is not list or len(labels) != len(prepared.rows)):
+                return None
+            gold = {}
+            for item in labels:
+                if (type(item) is not dict or set(item) != {"ordinal", "gold"}
+                        or type(item["ordinal"]) is not int
+                        or not 1 <= item["ordinal"] <= len(prepared.rows)
+                        or item["ordinal"] in gold
+                        or type(item["gold"]) is not str or item["gold"] not in _LABELS):
+                    return None
+                gold[item["ordinal"]] = item["gold"]
+            total_rows += len(prepared.rows)
+            if total_rows > MAX_TOTAL_ROWS:
+                return None
+            paired.append([{**{k: v for k, v in row.items() if k != "text"},
+                            "gold": gold[row["ordinal"]]} for row in prepared.rows])
+            added += prepared.observation["hypothetical_add_cap"]
+        except (ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
+            return None
+    result = evaluate_selection_cases(paired)
+    if result is None:
+        return None
+    return {"schema": "sraf_arc_relax_replay_v1",
+            "scope": "operator_frozen_first_primary_legacy_parser_strict_vs_bounded_additions",
+            "hypothetical_added": added, "comparison": result}
