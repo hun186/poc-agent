@@ -82,3 +82,7 @@ SRAF_ARC_ES_FREQUENCY=shadow 與 SRAF_ARC_RANK_NATIVE=shadow 同時啟用才走�
 ## A5 初篩爆量及收緊反事實觀察（普通報告）
 SRAF_ARC_TIGHTEN=shadow，預設關閉。只將第一次普通報告主查詢的 ES total（eq 精確、gte 下限、其他 unknown）與第一次 strict parser slice 配對，拒絕 timeout、提前終止、失敗 shard、remote cluster 或矛盾計數；不把回傳頁大小當全體命中數。候選總數 >=256 為暫定壓力訊號，不是報告充分性；即使候選爆量，strict 少於40也不提出收緊比較。非首次 refill、fallback、Requirement E2E 或 ordinary scope capture 不傳入壓力資訊。
 至少4群組且有來自原問題的明確必要主體才比較：全群組正文命中；正文至少3群組、必要主體字面命中並命中局部最具鑑別力的非主體群組；同條件但使用原生 DF。各頻率來源分開，零觀測或全體命中不提供鑑別力候選。保留原日期驗證、strict Evidence 及正文語意群組基準，Latin alias 使用邊界驗證；不得將原有必要詞刪除。每種策略僅統計留下的 prefix rows / source hits、是否達到暫定20 rows及8 sources觀察門檻。最多128 rows、每row4096 chars、合計131072 chars，先保留ARC共用預算，超限略過。原生DF非同一PIT快照，局部樣本有偏差，prefix不代表全體，門檻不是召回率或充分性證明。無新增 ES/LLM 呼叫，不選擇/排除任何正式 Evidence，不啟動重查；尚待必要多實體保護、人工標記、時間及負載驗收。
+
+## A6 低量原因與直接主體 3→2 反事實觀察
+SRAF_ARC_RELAX=shadow，預設關閉；普通報告同一首次主查詢及首次 strict parser slice，與 A5 共用候選 total 確定性資訊，但獨立開關。空主查詢直接辨別精確零與未知空頁，不增加重查；既有無日期 fallback 不變。非首次 refill、Requirement E2E、ordinary scope capture 不啟動。既有 strict pass 收集計數（已解析 citation、canonical eligible、日期拒絕、其他拒絕、主題拒絕與 strict），不啟用全量 Trace 或多跑一次 strict；這些是已解析片段的結果，不證明整個資料庫不存在符合條件的資料，canonical eligible 也不是所有 legacy 日期已證實。
+strict <3 且有主題淘汰、原始問題明確必要主體、3–16 群組及最多64詞時，才觀察 3→2；不把二群組降至一群組，不擴大日期或新增資料來源。正規化跨群組相同別名則略過，正文需直接含必要主體字面及恰好兩個原群組（Latin 邊界），再通過 canonical 日期/連結及去重；僅統計相對 strict 的新增候選，不代表相對最終輸出有增益（舊有 zero-only relaxation/rescue 等可已納入）。不使用同事件上下文的候選；既有 topic_adaptive 機制不變。觀察上限128 hits、128 rows、每hit8 rows、每row4096字元、總131072字元，先保留共用預算，假設最多補2筆且達3筆即止；無候選實際加入。明示樣本限制，無人工相關性、召回率或實機效能證明。
