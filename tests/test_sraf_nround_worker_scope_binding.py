@@ -385,3 +385,103 @@ def test_another_owners_frozen_claim_cannot_steal_preflight():
         round_number=1, execution_token=plan._execution_token,
         owner_token=another._binding_token)
     assert c.safe_progress()["termination"] == "UNTRACKED_QUERY_ADMISSION"
+
+
+def _frequency_context(*, policy, index_policy=None):
+    from agent.adaptive_retrieval.es_page_fence import RoundESPageFence
+    c, scope, _, budget, _, _ = _setup()
+    binding = WorkerScopeBinding(
+        job=_job(scope), constraints=scope, coordinator=c,
+        authorized_indexes=("news_test",),
+        check_index_access=index_policy or (lambda *_: True),
+        check_single_branch_coverage=lambda *_: True,
+        check_frequency_scope=policy,
+    )
+    assert c.start()
+    plan = FrozenSingleQueryPlan(c, scope, ("news_test",), 1, None,
+                                 _owner_binding_token=binding._binding_token)
+    binding.preflight(plan)
+    assert c.claim_single_query_execution(1, execution_token=plan._execution_token,
+                                          owner_token=binding._binding_token)
+    assert c.admit_es_call(execution_token=plan._execution_token)
+    fence = RoundESPageFence(coordinator=c, constraints=scope, round_number=1,
+                             page_size=2, execution_token=plan._execution_token)
+    return c, budget, binding, plan, fence
+
+
+def test_arc_deep_frequency_admission_is_separate_from_required_page_slots():
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    from test_sraf_nround_es_pit_adapter import _page
+    calls = []
+    c, budget, binding, plan, fence = _frequency_context(
+        policy=lambda job, constraints: calls.append((job, constraints)) or True)
+    arc = ArcRequestBudget()
+    with bind_arc_budget((arc, 1)):
+        assert not binding.admit_optional_frequency(plan, fence)
+        ticket = fence.begin_page()
+        assert fence.submit_page(ticket, _page([]))
+        assert not binding.admit_optional_frequency(plan, fence)
+        assert fence.take_complete_hits() == []
+        before = budget.snapshot().remaining_es_calls
+        assert binding.admit_optional_frequency(plan, fence)
+        assert budget.snapshot().remaining_es_calls == before - 1
+        assert c._es_slots_this_round == 2
+        assert not binding.admit_optional_frequency(plan, fence)
+    assert calls and calls[0][1] is plan.constraints
+    assert arc.snapshot()[0] == ArcUnits(es_calls=1)
+    assert c.safe_progress()["phase"] == "SEARCHING"
+    assert fence.safe_audit()["pages_accepted"] == 1
+
+
+@pytest.mark.parametrize("case", ["missing_policy", "deny", "policy_exception",
+                                  "wrong_plan", "wrong_round_budget", "no_budget",
+                                  "revoked_owner", "cancel_during_policy"])
+def test_arc_deep_frequency_denial_never_spends_es_or_cancels_main(case):
+    from contextlib import nullcontext
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    from test_sraf_nround_es_pit_adapter import _page
+    checks = []
+    def index_policy(*_):
+        checks.append(1)
+        return case != "revoked_owner" or len(checks) == 1
+    def policy(*_):
+        if case == "policy_exception":
+            raise RuntimeError("PRIVATE_POLICY")
+        if case == "cancel_during_policy":
+            c.cancel()
+        return case != "deny"
+    c, budget, binding, plan, fence = _frequency_context(
+        policy=None if case == "missing_policy" else policy,
+        index_policy=index_policy)
+    assert fence.submit_page(fence.begin_page(), _page([]))
+    fence.take_complete_hits()
+    arc = ArcRequestBudget()
+    if case == "wrong_plan":
+        plan = replace(plan)
+    before = budget.snapshot().remaining_es_calls
+    with bind_arc_budget(None if case == "no_budget" else
+                         (arc, 2 if case == "wrong_round_budget" else 1)):
+        assert not binding.admit_optional_frequency(plan, fence)
+    assert arc.snapshot()[0] == ArcUnits()
+    if case != "cancel_during_policy":
+        assert budget.snapshot().remaining_es_calls == before
+        assert c.safe_progress()["phase"] == "SEARCHING"
+    else:
+        assert c.safe_progress()["termination"] == "CANCELLED"
+
+
+def test_arc_deep_frequency_preserves_next_required_pit_open_and_page_budget():
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    from test_sraf_nround_es_pit_adapter import _page
+    c, budget, binding, plan, fence = _frequency_context(policy=lambda *_: True)
+    assert fence.submit_page(fence.begin_page(), _page([]))
+    fence.take_complete_hits()
+    while budget.snapshot().remaining_es_calls > 2:
+        assert budget.admit("es")
+    before = budget.snapshot().remaining_es_calls
+    arc = ArcRequestBudget()
+    with bind_arc_budget((arc, 1)):
+        assert not binding.admit_optional_frequency(plan, fence)
+    assert before == budget.snapshot().remaining_es_calls == 2
+    assert arc.snapshot()[0] == ArcUnits(es_calls=1)
+    assert c.safe_progress()["phase"] == "SEARCHING"
