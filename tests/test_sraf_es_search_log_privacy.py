@@ -710,3 +710,68 @@ def test_arc_a8_final_scope_rejects_cross_response_and_more_pages(monkeypatch):
                         {"selected":[{"__sraf_source_hit_ordinal":1}]}):
             assert prepare_final_review(scope, **{**base, **changes}) is None
     assert budget.snapshot()[0] == ArcUnits()
+
+
+def test_arc_priority_defers_optional_llm_until_final_selection(monkeypatch):
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    monkeypatch.setenv("SRAF_ARC_LLM_PRIORITY", "shadow")
+    monkeypatch.delenv("SRAF_ARC_ES_FREQUENCY", raising=False)
+    monkeypatch.delenv("SRAF_ARC_REVIEW_SCOPE", raising=False)
+    monkeypatch.delenv("SRAF_ARC_STRATEGY", raising=False)
+    primary = _native_primary("SECRET_INDEX")
+    primary["hits"]["total"] = {"value": 100, "relation": "eq"}
+    calls = []
+    _prepare(monkeypatch, responder=lambda body, *, index: primary)
+
+    def build(hits, **kw):
+        calls.append("build")
+        sink = kw.get("arc_strategy_diagnostics")
+        assert sink is not None
+        sink["low"] = {"strict_count": 1}
+        return [], [], 0
+
+    def refill(**kw):
+        kw["build_evidence"](primary["hits"]["hits"])
+        calls.append("refill_completed")
+        return [], [{"weak_evidence": False}] * 3, 0, {
+            "pages_fetched": 1, "incomplete_due_to_scan_limit": False}
+
+    def allocate(**kw):
+        calls.append("allocate")
+        assert kw["pressure"] == CandidatePressure("eq", 100, 1)
+        assert kw["diagnostics"] == {"low": {"strict_count": 1}}
+        assert kw["final_count"] == kw["strong_count"] == 3
+
+    monkeypatch.setattr(search_module, "build_hits_and_evidence", build)
+    monkeypatch.setattr(search_module, "refill_date_filtered_evidence", refill)
+    monkeypatch.setattr(search_module, "observe_allocated_llm", allocate)
+    monkeypatch.setattr(search_module, "observe_bilingual_proposal",
+                        lambda **kw: pytest.fail("early bilingual call"))
+    monkeypatch.setattr(search_module, "observe_strategy",
+                        lambda **kw: pytest.fail("separate strategy call"))
+    result = search_module.ESSearchNews.forward.__wrapped__(
+        object(), query="SECRET_QUERY", size=5,
+        date_from="2020-01-01", date_to="2020-12-31")
+    assert calls == ["build", "refill_completed", "allocate"]
+    assert len(result["evidence_snippets"]) == 3
+    assert "arc_strategy_diagnostics" not in repr(result)
+
+
+def test_arc_priority_default_off_preserves_existing_early_bilingual(monkeypatch):
+    monkeypatch.delenv("SRAF_ARC_LLM_PRIORITY", raising=False)
+    monkeypatch.delenv("SRAF_ARC_ES_FREQUENCY", raising=False)
+    monkeypatch.delenv("SRAF_ARC_REVIEW_SCOPE", raising=False)
+    monkeypatch.delenv("SRAF_ARC_STRATEGY", raising=False)
+    primary = _native_primary("SECRET_INDEX")
+    calls = []
+    _prepare(monkeypatch, responder=lambda body, *, index: primary)
+    monkeypatch.setattr(search_module, "observe_bilingual_proposal",
+                        lambda **kw: calls.append("bilingual"))
+    monkeypatch.setattr(search_module, "observe_allocated_llm",
+                        lambda **kw: pytest.fail("priority default must be off"))
+    def build(hits, **kwargs):
+        calls.append("build")
+        return [], [], 0
+    monkeypatch.setattr(search_module, "build_hits_and_evidence", build)
+    search_module.ESSearchNews.forward.__wrapped__(object(), query="SECRET_QUERY", size=5)
+    assert calls == ["bilingual", "build"]
