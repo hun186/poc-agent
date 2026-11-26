@@ -15,6 +15,7 @@ from agent.es.arc_bilingual_shadow import observe_bilingual_proposal
 from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
 from agent.es.evidence_core.arc_relax_shadow import StrictSliceCounts, observe_low_volume, log_low_volume
 from agent.es.arc_request_budget import current_arc_budget
+from agent.es.arc_strategy_shadow import observe_strategy, strategy_enabled
 from agent.es.ordinary_scope_receipt import current_ordinary_scope_capture
 from agent.es.query_terms import compute_effective_terms
 from agent.es.evidence import build_hits_and_evidence
@@ -204,10 +205,13 @@ class ESSearchNews(Tool):
 
         pressure = None
         if (os.getenv("SRAF_ARC_TIGHTEN") == "shadow"
-                or os.getenv("SRAF_ARC_RELAX") == "shadow") and capture is None:
+                or os.getenv("SRAF_ARC_RELAX") == "shadow"
+                or strategy_enabled()) and capture is None:
             from agent.external_capabilities import requirement_acceptance_active
             if not requirement_acceptance_active():
                 pressure = CandidatePressure.from_primary(res)
+        strategy_pressure = pressure if strategy_enabled() else None
+        strategy_diagnostics = {}
         # Optional count-only observation; original query and groups remain authoritative.
         observe_bilingual_proposal(
             original_question=get_original_report_question(),
@@ -235,6 +239,11 @@ class ESSearchNews(Tool):
                 except Exception:
                     log_low_volume({"schema": "sraf_arc_relax_shadow_v1", "status": "unavailable"})
             if date_scoped:
+                if strategy_pressure is not None:
+                    observe_strategy(pressure=strategy_pressure, diagnostics=strategy_diagnostics,
+                                     final_count=0, strong_count=0, refill=None,
+                                     original_question=get_original_report_question(),
+                                     groups=term_groups, manual=is_manual_entity_query)
                 query_meta = build_query_meta(
                     raw_query=raw_query,
                     es_query=es_query,
@@ -251,6 +260,7 @@ class ESSearchNews(Tool):
                 return {"hits": [], "evidence_snippets": [], "query_meta": query_meta}
 
             pressure = None  # fallback is not the primary query scope
+            strategy_pressure = None
             dbg(">>>>>>>> [FALLBACK] using NON-SCRIPT query")
             body = build_fallback_query_body(es_query, must_high_value, must_selected, size)
             try:
@@ -284,6 +294,8 @@ class ESSearchNews(Tool):
                     original_question=get_original_report_question(),
                     **({"native_rank_frequency": native_receipt} if native_receipt is not None else {}),
                     **({"arc_candidate_pressure": initial_pressure} if initial_pressure is not None else {}),
+                    **({"arc_strategy_diagnostics": strategy_diagnostics}
+                       if initial_pressure is not None and strategy_pressure is not None else {}),
                 )
 
             if date_scoped:
@@ -302,6 +314,12 @@ class ESSearchNews(Tool):
 
         strong_snippets = [ev for ev in evidence_snippets if not ev.get("weak_evidence")]
         weak_snippets = [ev for ev in evidence_snippets if ev.get("weak_evidence")]
+
+        if strategy_pressure is not None:
+            observe_strategy(pressure=strategy_pressure, diagnostics=strategy_diagnostics,
+                             final_count=len(evidence_snippets), strong_count=len(strong_snippets),
+                             refill=date_refill_meta, original_question=get_original_report_question(),
+                             groups=term_groups, manual=is_manual_entity_query)
 
         # Log timing and counts, never the raw question, ES DSL, index or terms.
         log_total("[es_search_news][TOTAL]", t_start)
