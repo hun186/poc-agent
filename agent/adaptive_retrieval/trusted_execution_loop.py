@@ -123,12 +123,18 @@ def run_trusted_nround(
     # authorization, and generation-reserved deadline remain authoritative.
     from .arc_deep_frequency_transport import deep_frequency_enabled
     from .arc_deep_rank_receipt import DeepRoundRankReceipt
+    from .arc_deep_review import deep_review_enabled, observe_deep_review
+
+    review_binding = (job_scope_binding if deep_review_enabled()
+                      and job_scope_binding is not None
+                      and job_scope_binding._check_review_egress is not None else None)
 
     frequency_binding = (job_scope_binding if deep_frequency_enabled()
                          and job_scope_binding is not None
                          and job_scope_binding._check_frequency_scope is not None else None)
     arc_budget = ArcRequestBudget() if (
         os.getenv("SRAF_ARC_GROUP_FREQUENCY") == "shadow" or frequency_binding is not None
+        or review_binding is not None
     ) else None
 
     def _persist_checkpoint() -> None:
@@ -276,6 +282,13 @@ def run_trusted_nround(
                     max_semantic_checks=max_semantic_checks_per_round,
                     **({"deep_rank_frequency": deep_rank_frequency} if deep_rank_frequency is not None else {}),
                 )
+            if review_binding is not None:
+                try:
+                    with bind_arc_budget((arc_budget, frozen.round_number)):
+                        observe_deep_review(plan=frozen, binding=review_binding,
+                                            fetched=fetched, grant=grant)
+                finally:
+                    review_binding.clear_optional_review_sources(frozen)
             remaining = coordinator._budget.snapshot()
             if remaining.remaining_seconds <= remaining.generation_reserve_seconds:
                 raise TrustedNroundExecutionError("semantic_assessment_over_deadline")
