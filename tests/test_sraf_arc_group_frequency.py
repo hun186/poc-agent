@@ -1198,6 +1198,9 @@ def test_a9_rank_report_cap_respects_legacy_strong_first():
     assert comp["net_relevant_change"] == 0
 
 
+import pytest
+
+
 @pytest.mark.parametrize("selection", [None, {}, {"scope":"complete_report_input_strong_first","limit":True},
     {"scope":"complete_report_input_strong_first","limit":129},
     {"scope":"prefix","limit":20}, {"scope":"source_diverse","limit":20},
