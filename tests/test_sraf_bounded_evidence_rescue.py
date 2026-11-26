@@ -644,6 +644,46 @@ def test_arc_a8_measured_transport_counts_actual_attempt_and_provider_tokens(mon
     assert "PRIVATE_" not in caplog.text and "美國" not in caplog.text and "review.invalid" not in caplog.text
 
 
+@pytest.mark.parametrize("timeout", [True, False])
+def test_arc_a8_measured_real_iter_content_timeout_vs_connection_failure(monkeypatch, timeout):
+    import requests
+    from urllib3.exceptions import ReadTimeoutError, ProtocolError
+    from agent.es import arc_semantic_review_transport as transport
+    from agent.es.evidence_core.arc_semantic_review import build_semantic_review_batch
+    batch = build_semantic_review_batch("主題：美國", [{"美國"}], [_a8_row(0, "美國政策")])
+    approved = transport._ApprovedEndpoint(
+        "https://review.invalid/api/chat", "test-model", "news_test", True)
+    class Raw:
+        def stream(self, *args, **kwargs):
+            yield b'{"done":'
+            if timeout:
+                raise ReadTimeoutError(None, "PRIVATE_URL", "PRIVATE_TIMEOUT")
+            raise ProtocolError("PRIVATE_CONNECTION")
+        def close(self):
+            pass
+        def release_conn(self):
+            pass
+    class Session:
+        trust_env = True
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            pass
+        def post(self, *args, **kwargs):
+            response = requests.Response()
+            response.status_code = 200
+            response.raw = Raw()
+            return response
+    monkeypatch.setattr(transport.requests, "Session", Session)
+    summary, metrics = transport._measured_review(approved, batch)
+    assert summary is None
+    assert metrics["status"] == ("timed_out" if timeout else "failed")
+    assert metrics["llm_calls"] == 1
+    assert metrics["elapsed_ms"] >= 0
+    assert metrics["prompt_tokens"] is None and metrics["completion_tokens"] is None
+    assert "PRIVATE" not in repr(metrics)
+
+
 def _a9_label(i, source, gold, predicted, anchor=False, strong=False):
     return {"ordinal": i, "source": source, "gold": gold, "predicted": predicted,
             "direct_anchor": anchor, "strong": strong}
