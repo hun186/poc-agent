@@ -938,3 +938,15 @@ def test_a9_relax_annotation_rejects_incomplete_and_ambiguous_inputs():
             else:
                 rows[1]["text"] = "甲軸乙軸" + "x"*4097
         assert prepare_relax_annotation(case) is None
+
+
+def test_a9_relax_replay_cli_aggregate_only(tmp_path, capsys):
+    import json
+    from agent.es.evidence_core.arc_eval_cli import main
+    p = tmp_path / "PRIVATE_RELAX.json"
+    p.write_text(json.dumps([_a9_relax_labeled(_a9_relax_case())],ensure_ascii=False),
+                 encoding="utf-8")
+    assert main(["relax-replay",str(p)]) == 0
+    out = capsys.readouterr()
+    assert json.loads(out.out)["result"]["hypothetical_added"] == 2
+    assert "PRIVATE" not in out.out and "甲軸" not in out.out and not out.err
