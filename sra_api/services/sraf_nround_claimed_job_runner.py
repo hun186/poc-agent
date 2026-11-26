@@ -109,6 +109,8 @@ def execute_claimed_nround_job(
     max_semantic_checks_per_round: int = 512,
     report_call: Callable[..., str] | None = None,
     report_model_id: str | None = None,
+    check_frequency_scope: Callable[[ReportJob, QueryConstraints], bool] | None = None,
+    check_review_egress: Callable[[ReportJob, QueryConstraints, str, tuple[str, ...], str, str, bool | str], bool] | None = None,
 ) -> ClaimedNroundRetrieval:
     """Run an explicitly claimed and pre-registered N-round sidecar job.
 
@@ -132,6 +134,8 @@ def execute_claimed_nround_job(
                     or report_model_id != report_model_id.strip()))
                 or not callable(check_owner_index)
                 or not callable(check_question_branches)
+                or (check_frequency_scope is not None and not callable(check_frequency_scope))
+                or (check_review_egress is not None and not callable(check_review_egress))
                 or checkpoint_store.db_path.resolve() !=
                    report_store.db_path.resolve()):
             raise ClaimedNroundJobExecutionError("invalid_claimed_job_context")
@@ -145,7 +149,6 @@ def execute_claimed_nround_job(
             check_owner_index=check_owner_index,
             check_question_branches=check_question_branches,
         )
-        binding = scope.make_binding()
         # Do NOT auto-register a sidecar: a future trusted scheduler must
         # pre-register N-round intent explicitly. No legacy/unbound claim.
         lease = checkpoint_store.claim_for_running_report_job(
@@ -153,6 +156,16 @@ def execute_claimed_nround_job(
         )
         if lease is None:
             raise ClaimedNroundJobExecutionError("nround_job_lease_not_admitted")
+
+        def check_active_lease(round_number: int) -> bool:
+            return checkpoint_store.verify_active_retrieval_lease(
+                report_store, claimed_job, lease, round_number=round_number)
+
+        binding = scope.make_binding(
+            check_frequency_scope=check_frequency_scope,
+            check_review_egress=check_review_egress,
+            check_active_lease=check_active_lease,
+        )
 
         def persist(progress: dict[str, object]) -> bool:
             assert lease is not None
