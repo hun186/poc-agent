@@ -19,6 +19,7 @@ from .contracts import QueryConstraints
 from .coordinator import AdaptiveRequestCoordinator
 from .es_page_fence import PageFenceError, RoundESPageFence
 from .planner import BoundNextRoundPlan, _list_of_terms
+from .arc_deep_resource_metrics import measured_es_call
 
 
 class LiveRoundESFailure(ValueError):
@@ -264,10 +265,10 @@ def search_fenced_es_round(
         # independently claims a second nonrefundable slot before search.
         if not coordinator.admit_es_call(execution_token=execution_token):
             raise LiveRoundESFailure("es_retrieval_budget_exhausted")
-        pit_resp = _response(client.options(
+        pit_resp = _response(measured_es_call(coordinator, "pit_open", client.options(
             request_timeout=_timeout(coordinator, request_timeout_seconds),
             max_retries=0, retry_on_timeout=False, retry_on_status=(),
-        ).open_point_in_time(
+        ).open_point_in_time,
             index=",".join(constraints.allowed_indexes),
             keep_alive="1m", ignore_unavailable=False,
             # Requires Elasticsearch Python client/server supporting PIT
@@ -283,10 +284,10 @@ def search_fenced_es_round(
             body["pit"] = {"id": pit_id, "keep_alive": "1m"}
             if ticket.search_after is not None:
                 body["search_after"] = list(ticket.search_after)
-            response = _response(client.options(
+            response = _response(measured_es_call(coordinator, "canonical_page", client.options(
                 request_timeout=_timeout(coordinator, request_timeout_seconds),
                 max_retries=0, retry_on_timeout=False, retry_on_status=(),
-            ).search(
+            ).search,
                 body=body, allow_partial_search_results=False,
             ))
             next_id = response.get("pit_id")
@@ -313,10 +314,10 @@ def search_fenced_es_round(
         coordinator.cancel() if error is not None else None
         if pit_id is not None:
             try:
-                closed = _response(client.options(
+                closed = _response(measured_es_call(coordinator, "pit_close", client.options(
                     request_timeout=min(5, request_timeout_seconds),
                     max_retries=0, retry_on_timeout=False, retry_on_status=(),
-                ).close_point_in_time(id=pit_id))
+                ).close_point_in_time, id=pit_id))
                 if closed.get("succeeded") is not True:
                     raise LiveRoundESFailure("es_pit_cleanup_unverified")
             except Exception:
