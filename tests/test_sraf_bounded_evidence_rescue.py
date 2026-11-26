@@ -603,3 +603,73 @@ def test_arc_a9_zero_denominator_and_strict_labels():
                     [[{**row, "predicted": None}]], [[{**row, "private_text":"secret"}]],
                     [[{**row, "strong": 1}]], [[row]] * 33):
         assert evaluate_semantic_cases(invalid) is None
+
+
+def _selection_row(i, source, gold, baseline, candidate, *, anchor=False, strong=False):
+    return {"ordinal": i, "source": source, "gold": gold,
+            "direct_anchor": anchor, "strong": strong,
+            "baseline_rank": baseline, "candidate_rank": candidate}
+
+
+def test_arc_selection_eval_distinguishes_relevant_gain_and_loss():
+    from agent.es.evidence_core.arc_selection_eval import evaluate_selection_cases
+    rows = [_selection_row(1, 1, "relevant", 1, None, anchor=True, strong=True),
+            _selection_row(2, 1, "unrelated", 2, 2),
+            _selection_row(3, 2, "relevant", None, 1),
+            _selection_row(4, 3, "uncertain", 3, None),
+            _selection_row(5, 4, "relevant", None, None)]
+    result = evaluate_selection_cases([rows])
+    full = result["full_selection"]
+    assert full["baseline"]["known_label_precision"]["value"] == 1/2
+    assert full["candidate"]["known_label_precision"]["value"] == 1/2
+    assert full["candidate"]["labeled_universe_relevant_coverage"]["value"] == 1/3
+    assert full["net_relevant_change"] == 0
+    assert full["removed"] == {"relevant":1, "uncertain":1, "unrelated":0}
+    assert full["added"] == {"relevant":1, "uncertain":0, "unrelated":0}
+    assert full["baseline_relevant_loss"]["value"] == 1
+    assert full["baseline_relevant_anchor_loss"]["value"] == 1
+    assert full["baseline_relevant_strong_loss"]["value"] == 1
+    assert full["baseline_relevant_source_loss"]["value"] == 1
+    assert full["gained_relevant_sources"] == 1
+    assert full["cases_with_relevant_source_loss"] == 1
+    assert result["top_20"] == full
+
+
+def test_arc_selection_eval_top20_separates_reordering_from_full_selection():
+    from agent.es.evidence_core.arc_selection_eval import evaluate_selection_cases
+    rows = [_selection_row(i, i, "unrelated", i, i) for i in range(1, 20)]
+    rows += [_selection_row(20, 20, "unrelated", 20, 21),
+             _selection_row(21, 21, "relevant", 21, 20)]
+    result = evaluate_selection_cases([rows])
+    assert result["full_selection"]["net_relevant_change"] == 0
+    assert result["full_selection"]["added"]["relevant"] == 0
+    assert result["top_20"]["net_relevant_change"] == 1
+    assert result["top_20"]["candidate"]["known_label_precision"]["value"] == 1/20
+    assert result["top_20"]["baseline"]["known_label_precision"]["value"] == 0
+    assert result["top_20"]["baseline_relevant_loss"]["value"] is None
+
+
+def test_arc_selection_eval_source_loss_is_per_case_and_requires_relevance():
+    from agent.es.evidence_core.arc_selection_eval import evaluate_selection_cases
+    first = [_selection_row(1, 1, "relevant", 1, None),
+             _selection_row(2, 1, "unrelated", 2, 1)]
+    second = [_selection_row(1, 1, "relevant", 1, 1),
+              _selection_row(2, 1, "relevant", 2, None)]
+    full = evaluate_selection_cases([first, second])["full_selection"]
+    assert full["baseline"]["sources"] == full["candidate"]["sources"] == 2
+    assert full["baseline_relevant_source_loss"]["value"] == 1/2
+    assert full["cases_with_relevant_loss"] == 2
+    assert full["cases_with_relevant_source_loss"] == 1
+
+
+def test_arc_selection_eval_rejects_noncontiguous_and_malformed_ranks():
+    from agent.es.evidence_core.arc_selection_eval import evaluate_selection_cases
+    row = _selection_row(1, 0, "uncertain", None, None)
+    assert evaluate_selection_cases([[row]])["full_selection"]["baseline"]["known_label_precision"]["value"] is None
+    for invalid in ([], [[]], [[row,row]], [[{**row, "ordinal":True}]],
+                    [[{**row, "source":False}]], [[{**row,"candidate_rank":True}]],
+                    [[{**row,"baseline_rank":2}]], [[{**row,"gold":"unknown"}]],
+                    [[{**row,"strong":1}]], [[{**row,"text":"PRIVATE"}]],
+                    [[{**row,"candidate_rank":1}, {**row,"ordinal":2,"candidate_rank":1}]],
+                    [[row]]*33):
+        assert evaluate_selection_cases(invalid) is None
