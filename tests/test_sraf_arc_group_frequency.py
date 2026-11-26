@@ -744,3 +744,73 @@ def test_arc_deep_native_rank_scope_is_distinct_and_unchanged_output(monkeypatch
     assert result["snapshot_consistency"] == "same_round_pit"
     assert result["rarity_only_top_k_replaced"] == 1
     assert budget.snapshot()[0] == ArcUnits(slices=1, rows=128, chars=131072)
+
+
+def _a9_rank_replay_case():
+    from agent.es.arc_frequency_plan import SCOPE
+    groups = [["美國"], ["政策"], ["出口管制"], ["半導體"]]
+    rows = [{"text":"美國 政策 出口管制","source":i,"group_hits":3,
+             "weak":False,"direct_anchor":True,"gold":"unrelated"} for i in range(24)]
+    rows.append({"text":"美國 政策 半導體","source":24,"group_hits":3,
+                 "weak":False,"direct_anchor":True,"gold":"relevant"})
+    return {"groups":groups,"frequency":{
+        "schema":"sraf_arc_native_rank_frequency_v1","scope":SCOPE,
+        "status":"exact_es_query_counts","eligible_documents":10000,
+        "groups":[{"group_ordinal":i,"document_frequency":df}
+                  for i,df in enumerate((8000,7000,5000,50),1)]},"rows":rows}
+
+
+def test_a9_rank_replay_matches_actual_shadow_and_evaluates_top20():
+    from agent.es.evidence_core.arc_rank_replay import replay_rank_cases
+    from agent.es.evidence_core.arc_rank_shadow import observe_rank_shadow
+    from agent.es.evidence_core.models import EvidenceSnippet
+    from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
+    case = _a9_rank_replay_case()
+    result = replay_rank_cases([case])
+    evidence = [EvidenceSnippet(uuid="", text=r["text"], date_iso="", article_date_iso="",
+                group_hits=r["group_hits"],weak_evidence=r["weak"],source_hit_ordinal=r["source"])
+                for r in case["rows"]]
+    with bind_arc_budget((ArcRequestBudget(),1)):
+        actual = observe_rank_shadow(evidence,[set(g) for g in case["groups"]],case["frequency"])
+    assert actual["rarity_only_top_k_replaced"] == 1
+    cf = result["comparison"]
+    assert cf["full_selection"]["net_relevant_change"] == 0
+    assert cf["top_20"]["net_relevant_change"] == 1
+    assert cf["top_20"]["candidate"]["known_label_precision"]["value"] == 1/20
+    assert result["frequency_scope_cases"] == {actual["scope"]:1}
+    assert "美國" not in repr(result)
+    assert "ordinal" not in repr(result)
+
+
+def test_a9_rank_replay_rejects_invalid_or_partial_fixtures():
+    from copy import deepcopy
+    from agent.es.evidence_core.arc_rank_replay import replay_rank_cases
+    for key, value in [("source", True),("group_hits",5),("weak",0),
+                       ("gold","missing"),("text","x"*4097)]:
+        c = _a9_rank_replay_case()
+        c["rows"][0][key] = value
+        assert replay_rank_cases([c]) is None
+    for change in ("short","duplicate_group_term","bad_scope","extra_text","bad_frequency"):
+        c = _a9_rank_replay_case()
+        if change == "short":
+            c["rows"] = c["rows"][:20]
+        elif change == "duplicate_group_term":
+            c["groups"][0].append(c["groups"][0][0])
+        elif change == "bad_scope":
+            c["frequency"]["scope"] = "PRIVATE"
+        elif change == "extra_text":
+            c["question"] = "PRIVATE"
+        else:
+            c["frequency"]["groups"][0]["document_frequency"] = 10001
+        assert replay_rank_cases([c]) is None
+
+
+def test_a9_rank_replay_cli_privacy(tmp_path, capsys):
+    import json
+    from agent.es.evidence_core.arc_eval_cli import main
+    p = tmp_path / "PRIVATE_REPLAY.json"
+    p.write_text(json.dumps([_a9_rank_replay_case()],ensure_ascii=False),encoding="utf-8")
+    assert main(["rank-replay",str(p)]) == 0
+    out = capsys.readouterr()
+    assert json.loads(out.out)["result"]["comparison"]["top_20"]["net_relevant_change"] == 1
+    assert "PRIVATE" not in out.out and "美國" not in out.out and not out.err
