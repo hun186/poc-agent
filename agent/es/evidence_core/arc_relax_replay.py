@@ -20,7 +20,7 @@ from .arc_relax_shadow import (
 from .arc_tighten_shadow import CandidatePressure
 from .arc_selection_eval import evaluate_selection_cases
 from .arc_semantic_eval import MAX_CASES, MAX_TOTAL_ROWS
-from .builder import collect_snippets
+from .builder import collect_snippets, build_hits_and_evidence
 from .parser import parse_es_hits
 from .snippet import build_evidence_snippet
 from .models import EvidenceBuildConfig
@@ -40,6 +40,7 @@ class _PreparedCase:
     rows: tuple[dict, ...] = field(repr=False)
     observation: dict = field(repr=False)
     pilot_status: str
+    pipeline_status: str
 
 
 def _date_window(start, end):
@@ -49,6 +50,65 @@ def _date_window(start, end):
                 and date.fromisoformat(end).isoformat() == end and start <= end)
     except ValueError:
         return False
+
+
+def _pipeline_check(case, groups, pressure, baseline, added):
+    """Check the real builder and final date-refill selection, without IO.
+
+    The sample is exhausted, so use its returned source count as the
+    declared result limit, not a guessed original production request size.
+    """
+    from agent.tools_es.date_refill import refill_date_filtered_evidence
+
+    response = case["response"]
+    raw_hits = response["hits"]["hits"]
+    origin = "__sraf_source_hit_ordinal"
+    block = "__sraf_block_index"
+    expected = [key for key, _ in sorted(baseline.items(), key=lambda item: item[1])]
+    candidate = expected + [key for key, _ in sorted(added.items(), key=lambda item: item[1])]
+
+    def run(pilot):
+        status = {}
+        captured = []
+        budget = ArcRequestBudget()
+        def build(hits):
+            result = build_hits_and_evidence(
+                hits, date_from=case["date_from"], date_to=case["date_to"],
+                effective_terms=list(dict.fromkeys(t for g in case["groups"] for t in g)),
+                term_groups=groups, query_for_snippet=case["query"],
+                original_question=case["question"], include_source_hit_ordinal=True,
+                config=EvidenceBuildConfig(), arc_candidate_pressure=pressure if pilot else None,
+                _offline_a6_pilot=pilot, _offline_a6_status=status)
+            captured.append(result)
+            return result
+        def no_next(_):
+            raise ValueError("unexpected_refill")
+        try:
+            with bind_arc_budget((budget, 1)):
+                final_hits, final_rows, _, meta = refill_date_filtered_evidence(
+                    body={"size": len(raw_hits)}, first_response=response,
+                    requested_size=len(raw_hits), search_next=no_next,
+                    build_evidence=build)
+        finally:
+            budget.seal()
+        if len(captured) != 1 or meta["pages_fetched"] != 1:
+            return None, "unexpected_refill"
+        hits, evidence, _ = captured[0]
+        if (final_hits != [{k:v for k,v in row.items() if k != origin} for row in hits]
+                or final_rows != [{k:v for k,v in row.items() if k != origin} for row in evidence]):
+            return None, "final_selection_changed"
+        if pilot and status.get("status") != "pilot_candidate_prepared":
+            return None, "pilot_builder_declined"
+        return [(row[origin], row.get(block), row["text"], tuple(row.get("event_ids", [])))
+                for row in evidence], "prepared"
+
+    first, why = run(False)
+    if first != expected:
+        return "baseline_pipeline_mismatch"
+    second, why = run(True)
+    if second is None:
+        return why
+    return "pipeline_parity" if second == candidate else "candidate_pipeline_mismatch"
 
 
 def _prepare(case):
@@ -155,7 +215,10 @@ def _prepare(case):
     digest = sha256(raw + b"\x00" + json.dumps(
         rows, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
         allow_nan=False).encode("utf-8")).hexdigest()
-    return _PreparedCase(digest, rows, observation, pilot_status)
+    pipeline_status = "not_pilot_eligible"
+    if pilot_status == "pilot_candidate_prepared":
+        pipeline_status = _pipeline_check(case, groups, pressure, baseline, added)
+    return _PreparedCase(digest, rows, observation, pilot_status, pipeline_status)
 
 
 def prepare_relax_annotation(case):
@@ -182,6 +245,8 @@ def replay_relax_cases(cases):
     paired = []
     pilot_paired = []
     pilot_status_counts = {}
+    pipeline_status_counts = {}
+    pipeline_paired = []
     added = total_rows = total_bytes = 0
     for fixture in cases:
         try:
@@ -222,6 +287,9 @@ def replay_relax_cases(cases):
             pilot_status_counts[prepared.pilot_status] = pilot_status_counts.get(prepared.pilot_status, 0) + 1
             if prepared.pilot_status == "pilot_candidate_prepared":
                 pilot_paired.append(case_rows)
+            pipeline_status_counts[prepared.pipeline_status] = pipeline_status_counts.get(prepared.pipeline_status, 0) + 1
+            if prepared.pipeline_status == "pipeline_parity":
+                pipeline_paired.append(case_rows)
             added += prepared.observation["hypothetical_add_cap"]
         except (ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
             return None
@@ -233,4 +301,7 @@ def replay_relax_cases(cases):
             "hypothetical_added": added, "comparison": result,
             "pilot_scope": "exhausted_nonzero_strict_linked_event_legacy_parser_only",
             "pilot_status_counts": pilot_status_counts,
-            "pilot_comparison": evaluate_selection_cases(pilot_paired) if pilot_paired else None}
+            "pilot_comparison": evaluate_selection_cases(pilot_paired) if pilot_paired else None,
+            "pipeline_scope": "exhausted_primary_returned_count_as_result_limit_no_live_refill",
+            "pipeline_status_counts": pipeline_status_counts,
+            "pipeline_comparison": evaluate_selection_cases(pipeline_paired) if pipeline_paired else None}
