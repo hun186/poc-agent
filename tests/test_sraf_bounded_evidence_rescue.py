@@ -399,3 +399,153 @@ def test_arc_a8_unsupported_or_oversized_input_abstains_without_truncation():
     assert batch.count == 8
     assert sum(len(r["text"]) for r in json.loads(batch.payload)["passages"]) == 12000
     assert len(batch.payload.encode("utf-8")) <= 64000
+
+
+def test_arc_a8_transport_requires_explicit_egress_and_budget(monkeypatch, caplog):
+    from agent.es import arc_semantic_review_transport as transport
+    from agent.es.evidence_core.arc_semantic_review import build_semantic_review_batch
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    from agent.external_capabilities import requirement_acceptance_scope
+    batch = build_semantic_review_batch("主題：美國", [{"美國"}], [_a8_row(0, "美國政策")])
+    monkeypatch.setenv("SRAF_ARC_REVIEW", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_ENDPOINT", "https://review.invalid:11434/api/chat")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_MODEL", "private-model")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX", "news_test")
+    monkeypatch.delenv("SRAF_ARC_REVIEW_EGRESS", raising=False)
+    calls = []
+    monkeypatch.setattr(transport, "_request_review", lambda *a: calls.append(a))
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)):
+        transport.observe_semantic_review(batch, index="news_test")
+        monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS", "approved")
+        transport.observe_semantic_review(batch, index="news_*")
+        transport.observe_semantic_review(batch, index="other")
+        with requirement_acceptance_scope():
+            transport.observe_semantic_review(batch, index="news_test")
+    transport.observe_semantic_review(batch, index="news_test")
+    assert not calls and budget.snapshot()[0] == ArcUnits()
+    assert "private-model" not in caplog.text and "review.invalid" not in caplog.text
+    assert "美國" not in caplog.text
+
+
+def test_arc_a8_transport_exact_endpoint_and_bounded_response(monkeypatch, caplog):
+    import json
+    from agent.es import arc_semantic_review_transport as transport
+    from agent.es.evidence_core.arc_semantic_review import build_semantic_review_batch
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    batch = build_semantic_review_batch("主題：美國", [{"美國"}], [_a8_row(0, "美國政策")])
+    monkeypatch.setenv("SRAF_ARC_REVIEW", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS", "approved")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_MODEL", "private-model")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX", "news_test")
+    monkeypatch.delenv("SRAF_ARC_REVIEW_CA_FILE", raising=False)
+    for endpoint in ("http://review.invalid/api/chat", "https://u:p@review.invalid/api/chat",
+                     "https://review.invalid/api/chat?x=1", "https://review.invalid/api/generate",
+                     "https://review.invalid/api/chat#fragment", "https://review.invalid:0/api/chat"):
+        monkeypatch.setenv("SRAF_ARC_REVIEW_ENDPOINT", endpoint)
+        assert transport._approved_endpoint("news_test") is None
+    monkeypatch.setenv("SRAF_ARC_REVIEW_ENDPOINT", "https://review.invalid:11434/api/chat")
+    calls = []
+    good = json.dumps({"done": True, "message": {"role": "assistant",
+                       "content": '[{"ordinal":1,"verdict":"unrelated"}]'}}).encode()
+    cases = [
+        (200, {}, [good], "observed_verdicts"),
+        (302, {}, [good], "invalid_or_incomplete_response"),
+        (200, {"Content-Encoding": "gzip"}, [good], "invalid_or_incomplete_response"),
+        (200, {}, [b"x" * (transport.MAX_RESPONSE_BYTES + 1)], "invalid_or_incomplete_response"),
+        (200, {}, [b'{"done":false}'], "invalid_or_incomplete_response"),
+        (200, {}, [b'{"done":true,"done":true}'], "invalid_or_incomplete_response"),
+    ]
+    for status, headers, chunks, expected in cases:
+        caplog.clear()
+        class Response:
+            status_code = status
+            def __init__(self):
+                self.headers = headers
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+            def iter_content(self, chunk_size):
+                assert chunk_size == 4096
+                yield from chunks
+        class Session:
+            trust_env = True
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+            def post(self, url, **kw):
+                assert self.trust_env is False
+                assert url == "https://review.invalid:11434/api/chat"
+                assert kw["allow_redirects"] is False and kw["verify"] is True
+                assert kw["stream"] is True and kw["timeout"] == (3, 15)
+                assert kw["headers"] == {"Accept-Encoding": "identity"}
+                assert kw["json"]["model"] == "private-model"
+                assert kw["json"]["messages"][1]["content"] == batch.payload
+                calls.append(1)
+                return Response()
+        monkeypatch.setattr(transport.requests, "Session", Session)
+        budget = ArcRequestBudget()
+        with bind_arc_budget((budget, 1)):
+            transport.observe_semantic_review(batch, index="news_test")
+            transport.observe_semantic_review(batch, index="news_test")
+        records = [json.loads(r.getMessage().split("SRAF_ARC_SEMANTIC_REVIEW=", 1)[1])
+                   for r in caplog.records if r.getMessage().startswith("SRAF_ARC_SEMANTIC_REVIEW=")]
+        assert [r["status"] for r in records] == [expected, "shared_budget_exhausted"]
+        assert budget.snapshot()[0] == ArcUnits(llm_calls=1)
+        assert "美國" not in caplog.text and "review.invalid" not in caplog.text
+        if expected == "observed_verdicts":
+            assert records[0]["unrelated_with_direct_anchor"] == 1
+    assert len(calls) == len(cases)
+
+
+def test_arc_a8_real_session_rejects_redirect_before_body_read(monkeypatch):
+    # Keep actual Session.send and redirect logic. Only replace its network
+    # adapter; no live network or private prompt is sent by this regression.
+    import requests
+    from requests.adapters import BaseAdapter
+    from requests.structures import CaseInsensitiveDict
+    from agent.es import arc_semantic_review_transport as transport
+    from agent.es.evidence_core.arc_semantic_review import build_semantic_review_batch
+    batch = build_semantic_review_batch("主題：美國", [{"美國"}], [_a8_row(0, "美國政策")])
+    approved = transport._ApprovedEndpoint(
+        "https://review.invalid/api/chat", "test-model", "news_test", True)
+    session_type = requests.Session
+    reads = []
+    sends = []
+    closes = []
+    class Raw:
+        def stream(self, *args, **kwargs):
+            reads.append(1)
+            yield b"x" * (transport.MAX_RESPONSE_BYTES + 1)
+        def read(self, *args, **kwargs):
+            reads.append(1)
+            return b"x" * (transport.MAX_RESPONSE_BYTES + 1)
+        def close(self):
+            closes.append(1)
+        def release_conn(self):
+            pass
+    class Adapter(BaseAdapter):
+        def send(self, request, **kwargs):
+            sends.append(request.url)
+            response = requests.Response()
+            response.status_code = 302
+            response.headers = CaseInsensitiveDict({
+                "Location": "https://other.invalid/private",
+                "Content-Encoding": "gzip"})
+            response.url = request.url
+            response.request = request
+            response.raw = Raw()
+            return response
+        def close(self):
+            pass
+    def session():
+        result = session_type()
+        result.mount("https://", Adapter())
+        return result
+    monkeypatch.setattr(transport.requests, "Session", session)
+    assert transport._request_review(approved, batch) is None
+    assert sends == [approved.url]
+    assert not reads
+    assert closes

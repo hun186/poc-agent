@@ -91,3 +91,5 @@
 
 ## 2026-11-25 #413 — portable deep runtime / ordinary-only isolation candidate
 - Prefer portable explicit endpoints, DNS/loopback where identity matches and strict HTTPS, not blanket trust of private addresses. Keep ordinary-only opt-in isolation independent of authorization. Hold personal-token Pipe #505 pending service-side identity exchange design. No mandatory secret rotation or forced HTTPS change to existing OpenWebUI, no unreviewed bypass for credential-bearing transport.
+
+- ARC A8b: use a dedicated TLS-verified operator-approved endpoint/model/index instead of the mutable default LLM singleton, disable environment proxies/netrc and redirects, and refuse oversized/incomplete responses. Operator egress attestation and ARC reservation are necessary but not owner/source authorization. No model verdict can remove Evidence.

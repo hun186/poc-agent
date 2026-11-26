@@ -96,3 +96,5 @@
 
 ## #413 — optional private listener candidate
 - Main API owns state and Worker; one explicit private Uvicorn server task shares event loop without lifespan/signal ownership. Launcher actual public port fences collision. Default disabled, expected config/bind faults isolated, stop admission/drain before shared resource shutdown. No public route/auth downgrade.
+
+- ARC A8b candidate: `agent/es/arc_semantic_review_transport.py` separates explicitly approved semantic-review HTTPS transport from the ordinary LLM singleton. It consumes only a private A8 batch and returns count-only observation through logging. No production call site; actual authorized final Evidence binding remains a distinct gate.

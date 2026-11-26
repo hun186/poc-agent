@@ -233,3 +233,5 @@
 
 ## 2026-11-25 #413 — portable deep runtime / ordinary-only isolation candidate
 - [ ] Design trusted OpenWebUI backend identity exchange with stable subject mapping, credential rotation, bounded replay/audience, revocation and browser status authentication; no persistent per-user token and no user-controlled header trust. [ ] Verify cross-host/subnet deployment and explicit transport policy with no automatic downgrade. [ ] Actual PIT/LLM/Word and OpenWebUI version-specific acceptance separate.
+
+- [ ] ARC A8b: bind final date-qualified Evidence and source-hit ordinals to actual authorized index in ordinary report scope, reserve scan budget before private batch preparation, exclude incomplete/multi-page/manual/E2E scopes, and verify approved model/data-egress policy and deadline before enabling. Integrate A2/A7/A8 priority allocation and private A/B; no production rollout or real data transmission yet.
