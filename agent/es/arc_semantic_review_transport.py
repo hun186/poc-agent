@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 import requests
+from urllib3.exceptions import ReadTimeoutError
 
 from .arc_request_budget import ArcUnits, current_arc_budget
 from .ordinary_scope_receipt import current_ordinary_scope_capture
@@ -153,6 +154,13 @@ def _measured_review(approved, batch):
     except requests.Timeout:
         summary = None
         metrics["status"] = "timed_out"
+    except requests.ConnectionError as exc:
+        # Requests iter_content wraps urllib3 ReadTimeoutError in a
+        # ConnectionError. Do not classify unrelated connection failures
+        # or infer timeout from provider-controlled exception text.
+        summary = None
+        if any(isinstance(arg, ReadTimeoutError) for arg in exc.args):
+            metrics["status"] = "timed_out"
     except Exception:
         summary = None
     finally:
