@@ -78,7 +78,7 @@ def bind_measurement(measurement):
         _SCOPE.reset(token)
 
 
-def observed_attempt(kind, method, *args, **kwargs):
+def observed_attempt(kind, method, /, *args, **kwargs):
     measurement = current_measurement()
     if measurement is not None:
         measurement.attempt(kind)
