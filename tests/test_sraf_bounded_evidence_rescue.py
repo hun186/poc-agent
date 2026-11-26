@@ -549,3 +549,57 @@ def test_arc_a8_real_session_rejects_redirect_before_body_read(monkeypatch):
     assert sends == [approved.url]
     assert not reads
     assert closes
+
+
+def _a9_label(i, source, gold, predicted, anchor=False, strong=False):
+    return {"ordinal": i, "source": source, "gold": gold, "predicted": predicted,
+            "direct_anchor": anchor, "strong": strong}
+
+
+def test_arc_a9_semantic_eval_exposes_precision_recall_tradeoff():
+    from agent.es.evidence_core.arc_semantic_eval import evaluate_semantic_cases
+    cases = [[_a9_label(1, 0, "relevant", "unrelated", True, True),
+              _a9_label(2, 1, "relevant", "uncertain", True, True),
+              _a9_label(3, 2, "unrelated", "unrelated"),
+              _a9_label(4, 2, "uncertain", "unrelated")],
+             [_a9_label(1, 0, "relevant", "relevant"),
+              _a9_label(2, 0, "unrelated", "uncertain")]]
+    result = evaluate_semantic_cases(cases)
+    assert result["rows"] == 6 and result["cases"] == 2
+    assert result["baseline"]["known_label_precision"]["value"] == 3/5
+    cf = result["counterfactual"]
+    assert cf["retained"] == 3 and cf["removed"] == 3
+    assert cf["known_label_precision"]["value"] == 2/3
+    assert cf["relevant_retention"]["value"] == 2/3
+    assert cf["false_removal_rate"]["value"] == 1/3
+    assert cf["unrelated_removal_rate"]["value"] == 1/2
+    assert cf["uncertain_gold_removed"] == 1
+    assert cf["anchor_relevant_false_removal"]["value"] == 1/2
+    assert cf["strong_relevant_false_removal"]["value"] == 1/2
+    assert cf["source_retention"]["value"] == 2/4
+    assert cf["relevant_source_loss"]["value"] == 1/3
+    assert cf["cases_with_relevant_source_loss"] == 1
+    assert result["model_uncertain"] == 2
+
+
+def test_arc_a9_retained_unrelated_from_source_does_not_prove_relevant_source_coverage():
+    from agent.es.evidence_core.arc_semantic_eval import evaluate_semantic_cases
+    r = evaluate_semantic_cases([[_a9_label(1, 0, "relevant", "unrelated"),
+                                  _a9_label(2, 0, "unrelated", "relevant")]])
+    assert r["counterfactual"]["source_retention"]["value"] == 1
+    assert r["counterfactual"]["relevant_source_loss"]["value"] == 1
+
+
+def test_arc_a9_zero_denominator_and_strict_labels():
+    from agent.es.evidence_core.arc_semantic_eval import evaluate_semantic_cases
+    row = _a9_label(1, 0, "uncertain", "uncertain")
+    result = evaluate_semantic_cases([[row]])
+    assert result["baseline"]["known_label_precision"] == {
+        "numerator":0, "denominator":0, "value":None}
+    assert result["counterfactual"]["false_removal_rate"]["value"] is None
+    assert result["counterfactual"]["uncertain_gold_removed"] == 0
+    for invalid in ([], [[]], [[row, row]], [[{**row, "ordinal": True}]],
+                    [[{**row, "source": False}]], [[{**row, "gold": "unknown"}]],
+                    [[{**row, "predicted": None}]], [[{**row, "private_text":"secret"}]],
+                    [[{**row, "strong": 1}]], [[row]] * 33):
+        assert evaluate_semantic_cases(invalid) is None
