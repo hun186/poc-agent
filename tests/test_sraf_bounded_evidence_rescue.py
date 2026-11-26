@@ -714,3 +714,83 @@ def test_arc_eval_cli_fails_closed_on_invalid_or_oversized_input(tmp_path, capsy
         assert json.loads(capsys.readouterr().err)["status"] == "INVALID_OR_UNREADABLE_FIXTURE"
     assert cli.main(["PRIVATE_MODE", str(p)]) == 2
     assert "PRIVATE_MODE" not in capsys.readouterr().err
+
+
+def _a9_tighten_replay_case():
+    from agent.es.arc_frequency_plan import SCOPE
+    groups = [["美國"],["政策"],["出口管制"],["半導體"]]
+    rows = [{"text":"美國 政策 出口管制 半導體","source":i,
+             "group_hits":4,"weak":False,"gold":"relevant"} for i in range(20)]
+    rows += [{"text":"美國 政策 出口管制","source":i,
+              "group_hits":3,"weak":False,"gold":"unrelated"} for i in range(20,40)]
+    rows += [{"text":"政策 出口管制 半導體","source":i,
+              "group_hits":3,"weak":False,"gold":"relevant"} for i in range(40,50)]
+    return {"groups":groups,"question":"主題：美國","pressure":{"relation":"eq","total":1000,"returned":50},
+            "local_frequency":None,"native_frequency":{
+                "schema":"sraf_arc_native_rank_frequency_v1","scope":SCOPE,
+                "status":"exact_es_query_counts","eligible_documents":1000,
+                "groups":[{"group_ordinal":i,"document_frequency":df}
+                          for i,df in enumerate((800,700,500,50),1)]},"rows":rows}
+
+
+def test_a9_tightening_replay_matches_shadow_and_measures_source_loss():
+    from agent.es.evidence_core.arc_tighten_replay import replay_tightening_cases
+    from agent.es.evidence_core.arc_tighten_shadow import observe_tightening, CandidatePressure
+    from agent.es.evidence_core.models import EvidenceSnippet
+    from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
+    case = _a9_tighten_replay_case()
+    result = replay_tightening_cases([case])
+    rows = case["rows"]
+    evidence = [EvidenceSnippet(uuid="",text=r["text"],date_iso="",article_date_iso="",
+                source_hit_ordinal=r["source"],group_hits=r["group_hits"],weak_evidence=r["weak"])
+                for r in rows]
+    with bind_arc_budget((ArcRequestBudget(),1)):
+        actual = observe_tightening(evidence,[set(g) for g in case["groups"]],
+                    original_question=case["question"],pressure=CandidatePressure(**case["pressure"]),
+                    native_frequency=case["native_frequency"])
+    assert set(result["strategies"]) == {s["strategy"] for s in actual["strategies"]}
+    for s in actual["strategies"]:
+        replay = result["strategies"][s["strategy"]]
+        assert replay["applicable_cases"] == replay["sample_floor_met_cases"] == 1
+        comp = replay["comparison"]["full_selection"]
+        assert comp["candidate"]["selected"] == s["retained_prefix_rows"] == 20
+        assert comp["candidate"]["sources"] == s["retained_source_hits"] == 20
+        assert comp["candidate"]["known_label_precision"]["value"] == 1
+        assert comp["baseline_relevant_loss"]["value"] == 1/3
+        assert comp["baseline_relevant_source_loss"]["value"] == 1/3
+        assert comp["baseline_relevant_anchor_loss"]["value"] == 0
+        assert comp["removed"]["unrelated"] == 20
+    assert "美國" not in repr(result)
+
+
+def test_a9_tightening_replay_separates_applicable_cases_and_floor_failures():
+    from agent.es.evidence_core.arc_tighten_replay import replay_tightening_cases
+    first, second = _a9_tighten_replay_case(), _a9_tighten_replay_case()
+    second["native_frequency"] = None
+    for row in second["rows"][:20]:
+        row["weak"] = True
+    result = replay_tightening_cases([first, second])
+    assert result["cases"] == 2
+    strategies = result["strategies"]
+    assert strategies["all_text_axes"]["applicable_cases"] == 2
+    assert strategies["all_text_axes"]["sample_floor_met_cases"] == 1
+    assert strategies["anchor_plus_native_discriminative_axis"]["applicable_cases"] == 1
+    assert strategies["anchor_plus_native_discriminative_axis"]["sample_floor_met_cases"] == 1
+
+
+def test_a9_tightening_replay_rejects_unconfirmed_pressure_and_invalid_rows():
+    from agent.es.evidence_core.arc_tighten_replay import replay_tightening_cases
+    for key, value in [("total",255),("total",True),("returned",0),("relation","unknown")]:
+        case = _a9_tighten_replay_case()
+        case["pressure"][key] = value
+        assert replay_tightening_cases([case]) is None
+    for key, value in [("source",50),("group_hits",2),("weak",1),("gold","unknown"),("text","x"*4097)]:
+        case = _a9_tighten_replay_case()
+        case["rows"][0][key] = value
+        assert replay_tightening_cases([case]) is None
+    case = _a9_tighten_replay_case()
+    case["question"] = "不明確的問題"
+    assert replay_tightening_cases([case]) is None
+    case = _a9_tighten_replay_case()
+    case["rows"] = case["rows"][:39]
+    assert replay_tightening_cases([case]) is None
