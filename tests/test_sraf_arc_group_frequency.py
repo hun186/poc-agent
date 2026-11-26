@@ -308,3 +308,105 @@ def test_arc_native_rank_uses_native_df_without_local_scan(monkeypatch, caplog):
     assert r["snapshot_consistency"] == "not_pit"
     assert r["rarity_only_top_k_replaced"] == 1
     assert budget.snapshot()[0] == ArcUnits(slices=1, rows=128, chars=131072)
+
+
+def _tighten_record(caplog):
+    prefix = "SRAF_ARC_TIGHTEN_SHADOW="
+    rows = [json.loads(r.getMessage().split(prefix, 1)[1])
+            for r in caplog.records if r.getMessage().startswith(prefix)]
+    assert len(rows) == 1
+    return rows[0]
+
+
+def test_arc_a5_candidate_count_distinguishes_exact_lower_bound_and_partial():
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    response = {"timed_out": False, "_shards": {"total": 2, "successful": 2, "failed": 0},
+                "hits": {"total": {"relation": "eq", "value": 1000}, "hits": [{}]}}
+    assert CandidatePressure.from_primary(response) == CandidatePressure("eq", 1000, 1)
+    response["hits"]["total"]["relation"] = "gte"
+    assert CandidatePressure.from_primary(response) == CandidatePressure("gte", 1000, 1)
+    for changed in ({**response, "timed_out": True},
+                    {**response, "_shards": {"total": 2, "successful": 1, "failed": 1}},
+                    {**response, "_clusters": {}},
+                    {**response, "hits": {"total": 1000, "hits": [{}]}},
+                    {**response, "hits": {"total": {"relation": "eq", "value": 0}, "hits": [{}]}}):
+        assert CandidatePressure.from_primary(changed) == CandidatePressure(returned=1)
+
+
+def test_arc_a5_high_candidates_do_not_tighten_sparse_evidence():
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure, observe_tightening
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)):
+        r = observe_tightening([], [{"美國"}, {"政策"}, {"出口管制"}, {"半導體"}],
+                               original_question="主題：美國",
+                               pressure=CandidatePressure("gte", 10000, 100))
+    assert r["candidate_status"] == "high_lower_bound"
+    assert r["status"] == "strict_not_high"
+    assert budget.snapshot()[0] == ArcUnits()
+    r = observe_tightening([], [], original_question=None,
+                           pressure=CandidatePressure("gte", 10, 10))
+    assert r["candidate_status"] == "unknown_or_lower_bound_below_threshold"
+
+
+def test_arc_a5_tightening_counterfactual_keeps_anchor_and_original_output(monkeypatch, caplog):
+    from agent.es.evidence_core.builder import build_hits_and_evidence
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    from agent.es.arc_native_rank_receipt import NativeRankFrequency
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    groups = [{"美國"}, {"政策"}, {"出口管制"}, {"半導體"}]
+    hits = []
+    for i, text in enumerate(
+        ["美國 政策 出口管制 半導體"] * 20
+        + ["美國 政策 出口管制"] * 20
+        + ["政策 出口管制 半導體"] * 10
+    ):
+        hits.append(_hit([text], uuid=f"private-{i}", docid=str(i)))
+    # One out-of-window document cannot enter strict or counterfactual Evidence.
+    hits.append(_hit(["美國 政策 出口管制 半導體"], uuid="private-invalid", docid="invalid",
+                     date="2023-09-24"))
+    kw = dict(date_from="2023-08-24", date_to="2023-08-24",
+              effective_terms=["美國", "政策", "出口管制", "半導體"], term_groups=groups,
+              query_for_snippet="美國 政策 出口管制 半導體",
+              original_question="主題：美國")
+    monkeypatch.delenv("SRAF_ARC_GROUP_FREQUENCY", raising=False)
+    monkeypatch.delenv("SRAF_ARC_TIGHTEN", raising=False)
+    monkeypatch.delenv("SRAF_ARC_RANK_NATIVE", raising=False)
+    baseline = build_hits_and_evidence(hits, **kw)
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_TIGHTEN", "shadow")
+    receipt = NativeRankFrequency(tuple(map(frozenset, groups)), "2023-08-24",
+                                  "2023-08-24", 10000, (8000, 7000, 100, 5000))
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)):
+        assert build_hits_and_evidence(
+            hits, **kw, native_rank_frequency=receipt,
+            arc_candidate_pressure=CandidatePressure("eq", 1000, 51)) == baseline
+    r = _tighten_record(caplog)
+    assert r["status"] == "observed_tightening"
+    assert r["strict_count"] == 50 and r["candidate_status"] == "high_exact"
+    strategies = {row["strategy"]: row for row in r["strategies"]}
+    assert strategies["all_text_axes"]["retained_prefix_rows"] == 20
+    assert strategies["anchor_plus_local_discriminative_axis"]["retained_prefix_rows"] == 20
+    assert strategies["anchor_plus_native_discriminative_axis"]["retained_prefix_rows"] == 40
+    assert all(row["sample_floor_met"] for row in strategies.values())
+    assert budget.snapshot()[0] == ArcUnits(slices=2, hits=128, rows=384, chars=262144)
+    serialized = json.dumps(r, ensure_ascii=False)
+    for private in ("private-", "美國", "政策", "出口管制", "半導體", "2023-08-24"):
+        assert private not in serialized
+
+
+def test_arc_a5_abstains_without_anchor_or_shared_budget():
+    from agent.es.evidence_core.arc_tighten_shadow import observe_tightening
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    from agent.es.evidence_core.models import EvidenceSnippet
+    groups = [{"美國"}, {"政策"}, {"出口管制"}, {"半導體"}]
+    rows = [EvidenceSnippet(uuid="private", text="美國 政策 出口管制",
+                            date_iso="2023-08-24", article_date_iso="2023-08-24",
+                            source_hit_ordinal=i, group_hits=3) for i in range(40)]
+    assert observe_tightening(rows, groups, original_question="研究美國政策")["status"] == "no_trusted_anchor"
+    assert observe_tightening(rows, groups, original_question="主題：美國")["status"] == "missing_shared_budget"
+    b = ArcRequestBudget(request_limit=ArcUnits(slices=1), round_limit=ArcUnits(slices=1))
+    with bind_arc_budget((b, 1)):
+        assert observe_tightening(rows, groups, original_question="主題：美國")["status"] == "shared_budget_exhausted"
+    assert b.snapshot()[0] == ArcUnits()

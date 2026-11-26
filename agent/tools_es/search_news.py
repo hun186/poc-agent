@@ -12,6 +12,7 @@ from smolagents import Tool
 from agent.es.es_client import safe_search as _safe_es_search
 from agent.es.arc_frequency_shadow import native_frequency_enabled
 from agent.es.arc_bilingual_shadow import observe_bilingual_proposal
+from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
 from agent.es.ordinary_scope_receipt import current_ordinary_scope_capture
 from agent.es.query_terms import compute_effective_terms
 from agent.es.evidence import build_hits_and_evidence
@@ -190,7 +191,8 @@ class ESSearchNews(Tool):
                         "must_high_value": False if must_high_value is None else must_high_value,
                         "must_selected": False if must_selected is None else must_selected,
                         **({"receipt_sink": native_rank_receipts}
-                           if os.getenv("SRAF_ARC_RANK_NATIVE") == "shadow" else {}),
+                           if (os.getenv("SRAF_ARC_RANK_NATIVE") == "shadow"
+                               or os.getenv("SRAF_ARC_TIGHTEN") == "shadow") else {}),
                     })
                 else:
                     res = _safe_es_search(body, index=index)
@@ -198,6 +200,11 @@ class ESSearchNews(Tool):
             print("[es_search_news] ES BadRequestError (details suppressed)")
             raise
 
+        pressure = None
+        if os.getenv("SRAF_ARC_TIGHTEN") == "shadow" and capture is None:
+            from agent.external_capabilities import requirement_acceptance_active
+            if not requirement_acceptance_active():
+                pressure = CandidatePressure.from_primary(res)
         # Optional count-only observation; original query and groups remain authoritative.
         observe_bilingual_proposal(
             original_question=get_original_report_question(),
@@ -230,6 +237,7 @@ class ESSearchNews(Tool):
                 query_meta["note"] = "0_hits_with_date_filter"
                 return {"hits": [], "evidence_snippets": [], "query_meta": query_meta}
 
+            pressure = None  # fallback is not the primary query scope
             dbg(">>>>>>>> [FALLBACK] using NON-SCRIPT query")
             body = build_fallback_query_body(es_query, must_high_value, must_selected, size)
             try:
@@ -242,6 +250,8 @@ class ESSearchNews(Tool):
         # === T4: 後處理：hits + evidence ===
         with log_duration("[es_search_news][T4] build_hits_and_evidence"):
             def _build_candidates(candidate_hits: List[Dict[str, Any]]):
+                nonlocal pressure
+                initial_pressure, pressure = pressure, None
                 # Refill accumulates pages. Consume only at its first build;
                 # never transfer a prior search's DF to a later tool/page.
                 native_receipt = native_rank_receipts.pop() if native_rank_receipts else None
@@ -260,6 +270,7 @@ class ESSearchNews(Tool):
                     # None; the LLM-rewritten raw_query is never substituted.
                     original_question=get_original_report_question(),
                     **({"native_rank_frequency": native_receipt} if native_receipt is not None else {}),
+                    **({"arc_candidate_pressure": initial_pressure} if initial_pressure is not None else {}),
                 )
 
             if date_scoped:
