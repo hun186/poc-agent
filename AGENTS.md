@@ -397,5 +397,6 @@ pytest tests/test_excel_to_sql_dashboard_static.py tests/test_dashboard_filters.
 - 優先做小範圍修改，避免跨多個不相關模組重構。
 - API response shape 或前端 dashboard 行為改變時，請同步補測試或更新既有測試。
 - 不要把密碼、token、私有連線資訊寫死到程式碼或文件。
+- 新增、改名或移除 ARC 環境變數時，須同步更新 `.env.example` 的 ARC 統一區塊、`docs/operations/sraf_arc_env.md` 及設定覆蓋測試；未實作或未驗收的正式策略不能偽裝成可啟用的開關。
 - Python import 不要包在 try/except 裡。
 - 修改靜態 web UI 且可執行時，若環境允許請截圖驗證。
