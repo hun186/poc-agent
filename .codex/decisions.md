@@ -93,3 +93,5 @@
 - Prefer portable explicit endpoints, DNS/loopback where identity matches and strict HTTPS, not blanket trust of private addresses. Keep ordinary-only opt-in isolation independent of authorization. Hold personal-token Pipe #505 pending service-side identity exchange design. No mandatory secret rotation or forced HTTPS change to existing OpenWebUI, no unreviewed bypass for credential-bearing transport.
 
 - ARC A8b: use a dedicated TLS-verified operator-approved endpoint/model/index instead of the mutable default LLM singleton, disable environment proxies/netrc and redirects, and refuse oversized/incomplete responses. Operator egress attestation and ARC reservation are necessary but not owner/source authorization. No model verdict can remove Evidence.
+
+- ARC deep DF: use same-round existing PIT only after canonical pages, never a separate snapshot or a query-page admission. Explicit operator concrete-index mapping attestation plus independent owner frequency permission. Malformed replacement PIT identity/failed close fail technical receipt; ordinary optional count failure abstains. No count-based Evidence changes without A/B.

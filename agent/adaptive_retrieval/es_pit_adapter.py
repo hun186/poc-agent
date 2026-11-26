@@ -173,6 +173,8 @@ def search_fenced_es_round(
     max_pages: int = 20,
     request_timeout_seconds: int = 20,
     execution_token: object | None = None,
+    frequency_plan: Any = None,
+    frequency_binding: Any = None,
 ) -> FencedESRound:
     """Run ONE full PIT page chain after worker-owned authorization and budget.
 
@@ -243,7 +245,13 @@ def search_fenced_es_round(
     except Exception:
         raise LiveRoundESFailure("invalid_es_query_builder") from None
 
+    # Local imports avoid the frozen-plan/adapter module cycle. No import
+    # failure may be hidden inside the optional transport exception handler.
+    if frequency_binding is not None:
+        from .arc_deep_frequency_transport import observe_same_pit_frequency, log_same_pit_frequency
+
     pit_id: str | None = None
+    frequency_record = None
     error: str | None = None
     result: FencedESRound | None = None
     try:
@@ -282,6 +290,12 @@ def search_fenced_es_round(
             if fence.submit_page(ticket, response):
                 result = FencedESRound(
                     hits=fence.take_complete_hits(), audit=fence.safe_audit())
+                if frequency_binding is not None:
+                    pit_id, frequency_record = observe_same_pit_frequency(
+                        plan=frequency_plan, binding=frequency_binding, fence=fence,
+                        client=client, pit_id=pit_id, canonical_body=base_query,
+                        request_timeout_seconds=request_timeout_seconds,
+                    )
                 break
     except (PageFenceError, LiveRoundESFailure):
         error = "es_pit_page_chain_unverified"
@@ -308,4 +322,7 @@ def search_fenced_es_round(
 
     if error is not None or result is None:
         raise LiveRoundESFailure(error or "es_pit_page_chain_unverified")
+    if frequency_record is not None:
+        log_same_pit_frequency(frequency_record, plan=frequency_plan,
+                               binding=frequency_binding)
     return result

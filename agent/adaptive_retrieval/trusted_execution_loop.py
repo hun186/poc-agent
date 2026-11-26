@@ -121,7 +121,14 @@ def run_trusted_nround(
     next_plan: BoundNextRoundPlan | None = None
     # Separate optional shadow accounting; original ES/planner admission,
     # authorization, and generation-reserved deadline remain authoritative.
-    arc_budget = ArcRequestBudget() if os.getenv("SRAF_ARC_GROUP_FREQUENCY") == "shadow" else None
+    from .arc_deep_frequency_transport import deep_frequency_enabled
+
+    frequency_binding = (job_scope_binding if deep_frequency_enabled()
+                         and job_scope_binding is not None
+                         and job_scope_binding._check_frequency_scope is not None else None)
+    arc_budget = ArcRequestBudget() if (
+        os.getenv("SRAF_ARC_GROUP_FREQUENCY") == "shadow" or frequency_binding is not None
+    ) else None
 
     def _persist_checkpoint() -> None:
         # This only emits coordinator-created, count-only safe progress;
@@ -167,11 +174,13 @@ def run_trusted_nround(
             # mode exists only for isolated compatibility tests.
             if job_scope_binding is not None:
                 job_scope_binding.preflight(frozen)
-            fetched = execute_single_frozen_query(
-                plan=frozen, client=es_client, page_size=page_size,
-                max_pages=max_pages,
-                request_timeout_seconds=request_timeout_seconds,
-            )
+            with bind_arc_budget((arc_budget, frozen.round_number) if arc_budget is not None else None):
+                fetched = execute_single_frozen_query(
+                    plan=frozen, client=es_client, page_size=page_size,
+                    max_pages=max_pages,
+                    request_timeout_seconds=request_timeout_seconds,
+                    **({"frequency_binding": frequency_binding} if frequency_binding is not None else {}),
+                )
             if (fetched.request_wide_attested is not False
                     or fetched.query_plan_complete is not True):
                 raise TrustedNroundExecutionError("untrusted_query_receipt")
