@@ -1104,3 +1104,64 @@ def test_arc_master_shadow_external_features_remain_independently_gated(monkeypa
     assert not any(f() for f in (bilingual_shadow_enabled, native_frequency_enabled,
                                 strategy_enabled, deep_frequency_enabled, deep_review_enabled))
     assert not review_scope_enabled("news_test")
+
+
+def test_arc_config_doctor_local_preset_and_explicit_override(monkeypatch):
+    from agent.arc_mode import SHADOW_FLAGS, LOCAL_SHADOW_FLAGS
+    from agent.arc_config_doctor import configuration_report
+    for name in SHADOW_FLAGS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    report = configuration_report()
+    assert report["mode"] == "shadow"
+    assert {k for k, v in report["features"].items() if v["enabled_by_mode"]} == LOCAL_SHADOW_FLAGS
+    assert not report["formal_arc_selection_enabled"]
+    assert not report["runtime_authorization_verified"]
+    assert not report["live_connectivity_verified"]
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY", "off")
+    report = configuration_report()
+    assert report["status"] == "CONFIG_ATTENTION"
+    assert report["features"]["SRAF_ARC_GROUP_FREQUENCY"]["reasons"] == ["explicit_local_override"]
+    assert report["features"]["SRAF_ARC_RANK"]["status"] == "configuration_blocked"
+    assert report["features"]["SRAF_ARC_RANK"]["reasons"] == ["group_frequency_disabled"]
+
+
+def test_arc_config_doctor_optional_dependencies_and_privacy(monkeypatch, capsys):
+    import json
+    from agent.arc_mode import SHADOW_FLAGS
+    from agent.arc_config_doctor import main
+    for name in SHADOW_FLAGS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_ES_FREQUENCY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_ES_FREQUENCY_VERIFIED_INDEX", "private_index")
+    monkeypatch.setenv("SRAF_ARC_RANK_NATIVE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_DEEP", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS", "approved")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX", "private_index")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_ENDPOINT", "https://private.example/api/chat")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_MODEL", "private_model")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_CA_FILE", "/private/ca.pem")
+    monkeypatch.setenv("SRAF_ARC_CAPTURE_ES_PASSWORD", "PRIVATE_PASSWORD")
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY_MAX_CHARS", "999999")
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY_MAX_ROWS", "PRIVATE_INVALID")
+    monkeypatch.setenv("SRAF_TOPIC_MATCH_ADAPTIVE", "on")
+    assert main([]) == 2
+    out = capsys.readouterr().out
+    report = json.loads(out)
+    assert report["features"]["SRAF_ARC_ES_FREQUENCY"]["status"] == "requires_runtime_scope"
+    assert report["features"]["SRAF_ARC_REVIEW_DEEP"]["status"] == "requires_runtime_scope"
+    assert report["budget_notes"] == {"chars":"clamped_to_ceiling", "rows":"invalid_uses_default"}
+    assert report["group_frequency_budget"]["chars"] == 131072
+    assert report["legacy_topic_adaptive_can_change_selection"]
+    assert all(value not in out for value in ("private_index", "private.example", "private_model", "/private/ca.pem", "PRIVATE_PASSWORD", "PRIVATE_INVALID", "999999"))
+    monkeypatch.setenv("SRAF_ARC_REVIEW_ENDPOINT", "http://private.example/api/chat")
+    assert main([]) == 2
+    report = json.loads(capsys.readouterr().out)
+    assert report["features"]["SRAF_ARC_REVIEW"]["status"] == "configuration_blocked"
+    monkeypatch.setenv("SRAF_ARC_MODE", "on")
+    assert main([]) == 2
+    report = json.loads(capsys.readouterr().out)
+    assert report["mode"] == "unsupported"
+    assert not any(v["enabled_by_mode"] for v in report["features"].values())
