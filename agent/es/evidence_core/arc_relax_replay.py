@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from datetime import date
 from hashlib import sha256
 import json
+import os
+import time
 
 from .arc_relax_shadow import (
     prepare_low_volume_pilot, _identity, StrictSliceCounts, MAX_HITS, MAX_ROWS,
@@ -19,6 +21,8 @@ from .arc_relax_shadow import (
 )
 from .arc_tighten_shadow import CandidatePressure
 from .arc_selection_eval import evaluate_selection_cases
+from .arc_acceptance_screen import _valid_policy, screen_selection_acceptance
+from .arc_resource_eval import evaluate_resource_cases
 from .arc_semantic_eval import MAX_CASES, MAX_TOTAL_ROWS
 from .builder import collect_snippets, build_hits_and_evidence
 from .parser import parse_es_hits
@@ -41,6 +45,7 @@ class _PreparedCase:
     observation: dict = field(repr=False)
     pilot_status: str
     pipeline_status: str
+    pipeline_resources: dict | None = field(default=None, repr=False)
 
 
 def _date_window(start, end):
@@ -52,7 +57,7 @@ def _date_window(start, end):
         return False
 
 
-def _pipeline_check(case, groups, pressure, baseline, added):
+def _pipeline_check(case, groups, pressure, baseline, added, *, measurements=None):
     """Check the real builder and final date-refill selection, without IO.
 
     The sample is exhausted, so use its returned source count as the
@@ -105,11 +110,29 @@ def _pipeline_check(case, groups, pressure, baseline, added):
         return [(row[origin], row.get(block), row["text"], tuple(row.get("event_ids", [])))
                 for row in evidence]
 
+    def run_measured(pilot):
+        if measurements is None:
+            return run(pilot)
+        arm = "candidate" if pilot else "baseline"
+        record = {"status": "failed", "elapsed_ms": None, "es_calls": 0,
+                  "llm_calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
+        measurements[arm] = record
+        started = time.monotonic_ns()
+        try:
+            result, why = run(pilot)
+            if result is not None:
+                record["status"] = "completed"
+            return result, why
+        finally:
+            record["elapsed_ms"] = (time.monotonic_ns() - started) // 1000000
+
     try:
-        first, why = run(False)
+        first, why = run_measured(False)
         if first is None or identities(first) != expected:
+            if measurements is not None:
+                measurements["baseline"]["status"] = "failed"
             return "baseline_pipeline_mismatch"
-        second, why = run(True)
+        second, why = run_measured(True)
         if second is None:
             return why
         if (identities(second) != candidate or second[:len(first)] != first
@@ -120,6 +143,8 @@ def _pipeline_check(case, groups, pressure, baseline, added):
                        or row.get("structured_time_context") is not True
                        or not row.get("matched_event_time_candidates")
                        for row in second[len(first):])):
+            if measurements is not None:
+                measurements["candidate"]["status"] = "failed"
             return "candidate_pipeline_mismatch"
         return "pipeline_parity"
     except Exception:
@@ -128,7 +153,7 @@ def _pipeline_check(case, groups, pressure, baseline, added):
         return "pipeline_unavailable"
 
 
-def _prepare(case, *, check_pipeline=False):
+def _prepare(case, *, check_pipeline=False, measure_pipeline=False):
     if type(case) is not dict or set(case) != _KEYS:
         return None
     # This API is for local JSON-native inputs. Bound the encoded fixture
@@ -233,9 +258,25 @@ def _prepare(case, *, check_pipeline=False):
         rows, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
         allow_nan=False).encode("utf-8")).hexdigest()
     pipeline_status = "not_pilot_eligible"
+    measurements = None
     if check_pipeline and pilot_status == "pilot_candidate_prepared":
-        pipeline_status = _pipeline_check(case, groups, pressure, baseline, added)
-    return _PreparedCase(digest, rows, observation, pilot_status, pipeline_status)
+        if measure_pipeline:
+            measurements = {}
+            pipeline_status = _pipeline_check(case, groups, pressure, baseline, added,
+                                              measurements=measurements)
+            for arm in ("baseline", "candidate"):
+                if arm not in measurements:
+                    measurements[arm] = {"status": "cancelled", "elapsed_ms": None,
+                                         "es_calls": 0, "llm_calls": 0,
+                                         "prompt_tokens": 0, "completion_tokens": 0}
+            if pipeline_status != "pipeline_parity":
+                # A parity/validation exception may occur after a builder
+                # returned. No failed case can certify a completed pair.
+                if all(v["status"] == "completed" for v in measurements.values()):
+                    measurements["candidate"]["status"] = "failed"
+        else:
+            pipeline_status = _pipeline_check(case, groups, pressure, baseline, added)
+    return _PreparedCase(digest, rows, observation, pilot_status, pipeline_status, measurements)
 
 
 def prepare_relax_annotation(case):
@@ -255,12 +296,15 @@ def prepare_relax_annotation(case):
                       "gold": None} for r in prepared.rows]}
 
 
-def replay_relax_cases(cases):
+def replay_relax_cases(cases, *, _acceptance_policy=None):
     """Validate labels and compare strict-only vs first bounded A6 additions."""
     if type(cases) is not list or not 1 <= len(cases) <= MAX_CASES:
         return None
     paired = []
     pilot_paired = []
+    measured_cases = []
+    acceptance_pairs = []
+    digests = set()
     pilot_status_counts = {}
     pipeline_status_counts = {}
     pipeline_paired = []
@@ -272,11 +316,16 @@ def replay_relax_cases(cases):
             total_bytes += len(json.dumps(fixture, ensure_ascii=False, allow_nan=False).encode("utf-8"))
             if total_bytes > _MAX_TOTAL_BYTES:
                 return None
-            prepared = _prepare(fixture["case"], check_pipeline=True)
+            prepared = _prepare(fixture["case"], check_pipeline=True,
+                                measure_pipeline=_acceptance_policy is not None)
             labels = fixture["labels"]
             if (prepared is None or fixture["fixture_digest"] != prepared.digest
                     or type(labels) is not list or len(labels) != len(prepared.rows)):
                 return None
+            if _acceptance_policy is not None:
+                if prepared.digest in digests:
+                    return None
+                digests.add(prepared.digest)
             gold = {}
             for item in labels:
                 if (type(item) is not dict
@@ -305,15 +354,20 @@ def replay_relax_cases(cases):
             if prepared.pilot_status == "pilot_candidate_prepared":
                 pilot_paired.append(case_rows)
             pipeline_status_counts[prepared.pipeline_status] = pipeline_status_counts.get(prepared.pipeline_status, 0) + 1
+            if prepared.pipeline_resources is not None:
+                measured_cases.append(prepared.pipeline_resources)
             if prepared.pipeline_status == "pipeline_parity":
                 pipeline_paired.append(case_rows)
+                if _acceptance_policy is not None:
+                    acceptance_pairs.append({"selection": case_rows,
+                                             "resources": prepared.pipeline_resources})
             added += prepared.observation["hypothetical_add_cap"]
         except (ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
             return None
     result = evaluate_selection_cases(paired)
     if result is None:
         return None
-    return {"schema": "sraf_arc_relax_replay_v1",
+    output = {"schema": "sraf_arc_relax_replay_v1",
             "scope": "operator_frozen_first_primary_legacy_parser_strict_vs_bounded_additions",
             "hypothetical_added": added, "comparison": result,
             "pilot_scope": "exhausted_nonzero_strict_linked_event_legacy_parser_only",
@@ -322,3 +376,42 @@ def replay_relax_cases(cases):
             "pipeline_scope": "exhausted_primary_returned_count_as_result_limit_no_live_refill",
             "pipeline_status_counts": pipeline_status_counts,
             "pipeline_comparison": evaluate_selection_cases(pipeline_paired) if pipeline_paired else None}
+    if _acceptance_policy is None:
+        return output
+    acceptance = None
+    if len(acceptance_pairs) == len(cases):
+        acceptance = screen_selection_acceptance({"policy": _acceptance_policy,
+                                                   "cases": acceptance_pairs})
+        if acceptance is None:
+            return None
+    failures = sum(count for reason, count in pipeline_status_counts.items()
+                   if reason not in ("pipeline_parity", "not_pilot_eligible"))
+    status = ("BLOCKED" if failures else "INCOMPLETE" if acceptance is None
+              else acceptance["status"])
+    return {"schema": "sraf_arc_relax_pipeline_acceptance_v1",
+            "scope": "offline_frozen_builder_and_refill_only_no_live_io",
+            "status": status, "production_authorized": False,
+            "attempted_cases": len(measured_cases),
+            "unattempted_cases": len(cases) - len(measured_cases),
+            "pipeline_failure_cases": failures,
+            "replay": output,
+            "measured_resources": evaluate_resource_cases(measured_cases) if measured_cases else None,
+            "acceptance": acceptance}
+
+
+def screen_relax_pipeline_acceptance(fixture):
+    """One local run binds human labels, actual builder parity and timing.
+
+    Force the operator to explicitly turn off ARC observations for both
+    arms. Only the private candidate parameter changes selection. Never
+    treat this zero-provider-IO boundary as full report resource usage.
+    """
+    if (type(fixture) is not dict or set(fixture) != {"policy", "cases"}
+            or not _valid_policy(fixture["policy"])):
+        return None
+    if os.getenv("SRAF_ARC_MODE") != "off":
+        return {"schema": "sraf_arc_relax_pipeline_acceptance_v1",
+                "scope": "offline_frozen_builder_and_refill_only_no_live_io",
+                "status": "INCOMPLETE", "production_authorized": False,
+                "reason": "explicit_arc_off_required"}
+    return replay_relax_cases(fixture["cases"], _acceptance_policy=fixture["policy"])
