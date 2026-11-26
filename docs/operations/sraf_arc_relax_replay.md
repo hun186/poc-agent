@@ -91,3 +91,28 @@ A successful candidate preparation is not authority to activate it. The
 ordinary report integration, live authorization, compatible rescue policy,
 quality/resource acceptance and explicit rollout remain independent gates.
 No new env flag, no production builder call and no live data access.
+
+
+## Actual builder and final-selection parity check
+
+Labeled relax-replay now also executes both the existing builder baseline
+and a private, explicitly requested offline A6 candidate build, through
+the real date-refill final selection. This runs only on the previously
+eligible exhausted primary cases. No network or additional page is allowed;
+the declared result limit equals the number of returned primary hits,
+not a claim about the original production request's size. The baseline
+must exactly match the strict-only identities. Candidate output must
+retain the entire serialized baseline prefix and exactly append the
+expected weak linked-event rows, and final selection must preserve the
+builder's rows. The offline pilot is refused when rescue, legacy topic
+adaptive, a nondefault builder configuration, acceptance/capture scope,
+or missing shared budget would make the comparison unsafe.
+
+The aggregate output includes pipeline_status_counts and pipeline_comparison
+(null without verified parity). Broad counterfactual and narrow pilot
+metrics remain separate. An incompatible environment, unexpected page,
+or failed parity check does not count as a successful pipeline case.
+This is an offline explicit Python entry only; no production caller or
+environment flag activates it. It can be tested with ARC master off
+without changing normal production behavior. No live quality/resource
+approval, no full-report LLM or Word generation, and no rollout authority.
