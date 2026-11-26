@@ -13,6 +13,8 @@ from agent.es.es_client import safe_search as _safe_es_search
 from agent.es.arc_frequency_shadow import native_frequency_enabled
 from agent.es.arc_bilingual_shadow import observe_bilingual_proposal
 from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+from agent.es.evidence_core.arc_relax_shadow import StrictSliceCounts, observe_low_volume, log_low_volume
+from agent.es.arc_request_budget import current_arc_budget
 from agent.es.ordinary_scope_receipt import current_ordinary_scope_capture
 from agent.es.query_terms import compute_effective_terms
 from agent.es.evidence import build_hits_and_evidence
@@ -201,7 +203,8 @@ class ESSearchNews(Tool):
             raise
 
         pressure = None
-        if os.getenv("SRAF_ARC_TIGHTEN") == "shadow" and capture is None:
+        if (os.getenv("SRAF_ARC_TIGHTEN") == "shadow"
+                or os.getenv("SRAF_ARC_RELAX") == "shadow") and capture is None:
             from agent.external_capabilities import requirement_acceptance_active
             if not requirement_acceptance_active():
                 pressure = CandidatePressure.from_primary(res)
@@ -221,6 +224,16 @@ class ESSearchNews(Tool):
 
         # A truly empty ES date query does not call the script-free fallback.
         if not hits:
+            if (os.getenv("SRAF_ARC_RELAX") == "shadow"
+                    and type(pressure) is CandidatePressure and current_arc_budget() is not None):
+                try:
+                    log_low_volume(observe_low_volume(
+                        [], [], term_groups, counts=StrictSliceCounts(), pressure=pressure,
+                        original_question=get_original_report_question(),
+                        date_from=date_from, date_to=date_to, allowed_years=allowed_years,
+                    ))
+                except Exception:
+                    log_low_volume({"schema": "sraf_arc_relax_shadow_v1", "status": "unavailable"})
             if date_scoped:
                 query_meta = build_query_meta(
                     raw_query=raw_query,
