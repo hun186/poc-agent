@@ -848,3 +848,72 @@ def test_arc_deep_review_owner_revocation_during_model_call_blocks_main_coverage
     assert sends == [1]
     assert binding._review_sources is None
     assert c.safe_progress()["ready_for_external_report_generation"] is False
+
+
+def _deep_resource_records(caplog):
+    return [json.loads(r.getMessage().split("SRAF_ARC_DEEP_RETRIEVAL_RESOURCE=",1)[1])
+            for r in caplog.records
+            if r.getMessage().startswith("SRAF_ARC_DEEP_RETRIEVAL_RESOURCE=")]
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_arc_deep_retrieval_resource_counts_full_two_round_chain(monkeypatch,caplog,enabled):
+    monkeypatch.setenv("SRAF_ARC_DEEP_RESOURCE_METRICS", "shadow" if enabled else "off")
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY_VERIFIED_INDEX", "news_test")
+    monkeypatch.delenv("SRAF_ARC_REVIEW_DEEP",raising=False)
+    c, scope, ev, _, planner_calls, _ = _setup()
+    binding = WorkerScopeBinding(
+        job=_job(scope), constraints=scope, coordinator=c,
+        authorized_indexes=("news_test",),
+        check_index_access=lambda *_: True,
+        check_single_branch_coverage=lambda *_: True,
+        check_frequency_scope=lambda *_: True)
+    es = FakeES(_verified_page("A"),_pit_frequency_response(),
+                _verified_page("B"),_pit_frequency_response())
+    result = _run(c,scope,ev,es,binding)
+    assert len(result.rounds)==2 and planner_calls==[1]
+    assert c.safe_progress()["termination"]=="SUFFICIENT"
+    assert [kind for kind,_ in es.calls]==["open","search","search","close"]*2
+    rows = _deep_resource_records(caplog)
+    if enabled:
+        assert len(rows)==1
+        row=rows[0]
+        assert row["scope"]=="trusted_deep_retrieval_before_report_generation"
+        assert row["es_attempts_by_kind"]=={"pit_open":2,"canonical_page":2,
+                                          "optional_frequency":2,"pit_close":2}
+        m=row["measurement"]
+        assert m["status"]=="completed" and m["es_calls"]==len(es.calls)==8
+        assert m["elapsed_ms"]>=0
+        assert m["llm_calls"] is None and m["prompt_tokens"] is None and m["completion_tokens"] is None
+        assert "PRIVATE" not in repr(row) and "news_test" not in repr(row)
+    else:
+        assert not rows
+
+
+@pytest.mark.parametrize("problem", ["preflight","options","open","page","close"])
+def test_arc_deep_retrieval_resource_includes_failed_attempt_and_cleanup(monkeypatch,caplog,problem):
+    monkeypatch.setenv("SRAF_ARC_DEEP_RESOURCE_METRICS","shadow")
+    monkeypatch.delenv("SRAF_ARC_DEEP_FREQUENCY",raising=False)
+    monkeypatch.delenv("SRAF_ARC_REVIEW_DEEP",raising=False)
+    c,scope,ev,*_ = _setup()
+    binding=_binding(c,scope,index_policy=lambda *_: problem!="preflight")
+    class OptionsFailure(FakeES):
+        def options(self,**kwargs):
+            if problem=="options":
+                raise RuntimeError("PRIVATE_OPTIONS")
+            return super().options(**kwargs)
+    es=OptionsFailure(_verified_page("A"),
+                      opening=RuntimeError("PRIVATE_OPEN") if problem=="open" else None,
+                      fail=RuntimeError("PRIVATE_PAGE") if problem=="page" else None,
+                      closing=RuntimeError("PRIVATE_CLOSE") if problem=="close" else None)
+    with pytest.raises(TrustedNroundExecutionError):
+        _run(c,scope,ev,es,binding)
+    rows=_deep_resource_records(caplog)
+    assert len(rows)==1 and rows[0]["measurement"]["status"]=="failed"
+    expected={"preflight":0,"options":0,"open":1,"page":3,"close":3}[problem]
+    assert rows[0]["measurement"]["es_calls"]==len(es.calls)==expected
+    assert rows[0]["es_attempts_by_kind"]["pit_close"]==int(problem in ("page","close"))
+    assert "PRIVATE" not in repr(rows)
+    from agent.adaptive_retrieval.arc_deep_resource_metrics import _SCOPE
+    assert _SCOPE.get() is None

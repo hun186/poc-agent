@@ -29,6 +29,7 @@ from .evidence_ledger import CanonicalReportEvidence, PrivateCanonicalEvidence
 from .planner import BoundNextRoundPlan
 from .private_semantic_binding import prepare_private_semantic_grant
 from .worker_scope_binding import WorkerScopeBinding
+from .arc_deep_resource_metrics import begin_measurement, finish_measurement
 from .round_query_execution import (
     CompletedSingleQueryRound, FrozenSingleQueryPlan,
     execute_single_frozen_query,
@@ -158,6 +159,8 @@ def run_trusted_nround(
             coordinator.revoke_unpersisted_report_readiness()
             raise TrustedNroundExecutionError("nround_checkpoint_write_denied") from None
 
+    measurement_token, measurement = begin_measurement(coordinator)
+    measurement_status = "failed"
     try:
         if not coordinator.start():
             raise TrustedNroundExecutionError("first_round_not_admitted")
@@ -353,15 +356,21 @@ def run_trusted_nround(
                 or progress["completed_rounds"] != len(completed)
                 or any(not r.query_plan_complete for r in completed)):
             raise TrustedNroundExecutionError("round_execution_unverified")
-        return TrustedNroundExecutionResult(
+        result = TrustedNroundExecutionResult(
             rounds=tuple(completed), progress=progress,
             _report_rows=tuple(report_rows.values()) if progress["termination"] == "SUFFICIENT" else ())
+        measurement_status = ("completed" if progress["termination"] == "SUFFICIENT"
+                              else "cancelled" if progress["termination"] == "CANCELLED" else "failed")
+        return result
     except Exception:
         coordinator.revoke_unpersisted_report_readiness()
         coordinator.cancel()
         raise TrustedNroundExecutionError("trusted_nround_execution_failed") from None
     finally:
-        if job_scope_binding is not None and frozen is not None:
-            job_scope_binding.clear_optional_review_sources(frozen)
-        if arc_budget is not None:
-            arc_budget.seal()
+        try:
+            if job_scope_binding is not None and frozen is not None:
+                job_scope_binding.clear_optional_review_sources(frozen)
+            if arc_budget is not None:
+                arc_budget.seal()
+        finally:
+            finish_measurement(measurement_token, measurement, measurement_status)
