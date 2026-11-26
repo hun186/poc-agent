@@ -119,6 +119,7 @@ def run_trusted_nround(
     report_rows: dict[tuple[str, str], CanonicalReportEvidence] = {}
     report_chars = 0
     next_plan: BoundNextRoundPlan | None = None
+    frozen = None
     # Separate optional shadow accounting; original ES/planner admission,
     # authorization, and generation-reserved deadline remain authoritative.
     from .arc_deep_frequency_transport import deep_frequency_enabled
@@ -290,6 +291,11 @@ def run_trusted_nround(
             finally:
                 if job_scope_binding is not None:
                     job_scope_binding.clear_optional_review_sources(frozen)
+            if review_binding is not None:
+                # Independent review-egress denial alone is optional, but
+                # revocation of the underlying owner/index/branch policy
+                # during the extra callback must still block main coverage.
+                review_binding.recheck_semantic_authorization(frozen)
             remaining = coordinator._budget.snapshot()
             if remaining.remaining_seconds <= remaining.generation_reserve_seconds:
                 raise TrustedNroundExecutionError("semantic_assessment_over_deadline")
@@ -355,5 +361,7 @@ def run_trusted_nround(
         coordinator.cancel()
         raise TrustedNroundExecutionError("trusted_nround_execution_failed") from None
     finally:
+        if job_scope_binding is not None and frozen is not None:
+            job_scope_binding.clear_optional_review_sources(frozen)
         if arc_budget is not None:
             arc_budget.seal()
