@@ -636,3 +636,29 @@ def test_arc_deep_frequency_cleanup_failure_never_certifies_round(monkeypatch, c
     assert es.calls[-1][0] == "close"
     assert es.calls[-1][1]["id"] == ("PRIVATE-PIT-FREQUENCY" if case == "close_failure" else "PRIVATE-PIT-1")
     assert "PRIVATE" not in caplog.text
+
+
+def test_arc_deep_frequency_two_round_loop_uses_shared_budget_without_changing_coverage(monkeypatch, caplog):
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY_VERIFIED_INDEX", "news_test")
+    monkeypatch.delenv("SRAF_ARC_GROUP_FREQUENCY", raising=False)
+    c, scope, ev, budget, planner_calls, _ = _setup()
+    binding = WorkerScopeBinding(
+        job=_job(scope), constraints=scope, coordinator=c,
+        authorized_indexes=("news_test",),
+        check_index_access=lambda *_: True,
+        check_single_branch_coverage=lambda *_: True,
+        check_frequency_scope=lambda *_: True,
+    )
+    es = FakeES(_verified_page("A"), _pit_frequency_response(),
+                _verified_page("B"), _pit_frequency_response())
+    result = _run(c, scope, ev, es, binding)
+    assert len(result.rounds) == 2 and planner_calls == [1]
+    assert c.safe_progress()["termination"] == "SUFFICIENT"
+    assert [kind for kind, _ in es.calls] == ["open", "search", "search", "close"] * 2
+    assert len(_pit_frequency_logs(caplog)) == 2
+    assert all(row["status"] == "observed_counts" for row in _pit_frequency_logs(caplog))
+    assert budget.snapshot().remaining_es_calls <= 18
+    assert all(row.pages_completed == 1 for row in result.rounds)
+    assert all(row.request_wide_attested is False for row in result.rounds)
+    assert "PRIVATE" not in caplog.text
