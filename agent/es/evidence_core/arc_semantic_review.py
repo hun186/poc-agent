@@ -86,19 +86,21 @@ def build_semantic_review_batch(original_question, groups, evidence):
     selected = []
     sources = set()
     chars = 0
-    for offset in range(max(len(weak), len(strong))):
-        for pool in (weak, strong):
-            if offset >= len(pool):
-                continue
-            e = pool[offset]
-            if e.source_hit_ordinal in sources or chars + len(e.text) > MAX_BATCH_CHARS:
-                continue
-            selected.append(e)
-            sources.add(e.source_hit_ordinal)
-            chars += len(e.text)
+    pools = (iter(weak), iter(strong))
+    while len(selected) < MAX_BATCH:
+        before = len(selected)
+        for pool in pools:
+            # A rejected duplicate must not consume this tier's turn.
+            for e in pool:
+                if e.source_hit_ordinal in sources or chars + len(e.text) > MAX_BATCH_CHARS:
+                    continue
+                selected.append(e)
+                sources.add(e.source_hit_ordinal)
+                chars += len(e.text)
+                break
             if len(selected) == MAX_BATCH:
                 break
-        if len(selected) == MAX_BATCH:
+        if len(selected) == before:
             break
     if not selected:
         return None
