@@ -49,6 +49,19 @@ def _identity(e):
 
 def observe_low_volume(hits, strict, groups, *, counts, pressure,
                        original_question, date_from, date_to, allowed_years):
+    return _compare_low_volume(
+        hits, strict, groups, counts=counts, pressure=pressure,
+        original_question=original_question, date_from=date_from,
+        date_to=date_to, allowed_years=allowed_years,
+    )
+
+
+def _compare_low_volume(hits, strict, groups, *, counts, pressure,
+                        original_question, date_from, date_to, allowed_years,
+                        _offline_candidates=None):
+    # The public observer remains aggregate-only. Offline replay may collect
+    # the first hypothetical cap of distinct eligible identities in scan
+    # order; this is a declared counterfactual, not production selection.
     result = {
         "schema": "sraf_arc_relax_shadow_v1",
         "scope": "first_primary_strict_parser_slice",
@@ -153,6 +166,9 @@ def observe_low_volume(hits, strict, groups, *, counts, pressure,
                 continue
             seen.add(key)
             proposed += 1
+            if (type(_offline_candidates) is list
+                    and len(_offline_candidates) < min(MAX_ADD, TARGET_STRICT - len(strict))):
+                _offline_candidates.append(key)
             source_hits.add(e.source_hit_ordinal)
     result.update(status="observed_relaxation", inspected_rows=inspected,
                   text_chars=chars, sample_limited=limited,
