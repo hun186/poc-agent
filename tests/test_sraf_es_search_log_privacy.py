@@ -602,3 +602,111 @@ def test_arc_a7_receives_final_result_and_only_first_primary_diagnostics(monkeyp
     assert calls[0]["final_count"] == calls[0]["strong_count"] == 3
     assert calls[0]["refill"]["pages_fetched"] == 2
     assert "arc_strategy_diagnostics" not in repr(result)
+
+
+def test_arc_a8_scope_binds_real_primary_only(monkeypatch):
+    from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
+    client, es_client = _native_setup(monkeypatch)
+    monkeypatch.setenv("SRAF_ARC_REVIEW_SCOPE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX", "news_test")
+    body = _native_body()
+    sink = []
+    with bind_arc_budget((ArcRequestBudget(), 1)):
+        # FakeClient is not the exact configured Elasticsearch client type.
+        assert es_client.safe_search(body, index="news_test",
+                                     arc_review_receipts=sink) is client.primary
+        assert sink == []
+        monkeypatch.setattr(es_client, "Elasticsearch", type(client))
+        assert es_client.safe_search(body, index="news_test",
+                                     arc_review_receipts=sink) is client.primary
+        assert len(sink) == 1
+        assert sink[0].body is body and sink[0].response is client.primary
+        assert "PRIVATE_DOC" not in repr(sink[0])
+        for change in ("partial", "truncated", "wrong_index"):
+            primary = _native_primary()
+            if change == "partial":
+                primary["_shards"]["failed"] = 1
+            elif change == "truncated":
+                primary["hits"]["total"]["value"] = 5
+            else:
+                primary["hits"]["hits"][0]["_index"] = "other"
+            client.primary = primary
+            denied = []
+            es_client.safe_search(body, index="news_test", arc_review_receipts=denied)
+            assert denied == []
+
+
+def test_arc_a8_final_scope_excludes_unretained_and_unlinked_rows(monkeypatch, caplog):
+    import json
+    from agent.es.arc_review_scope import capture_primary_review, make_final_review_input
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    from agent.tools_es.date_refill import refill_date_filtered_evidence
+    monkeypatch.setenv("SRAF_ARC_REVIEW_SCOPE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX", "news_test")
+    primary = _native_primary()
+    primary["hits"]["hits"] = [{"_index":"news_test","_id":str(i)} for i in range(3)]
+    primary["hits"]["total"]["value"] = 3
+    body = {"size": 3}
+    origin = "__sraf_source_hit_ordinal"
+    docs = [{"uuid": "PRIVATE_UUID", origin: i} for i in range(3)]
+    def row(i, text, **overrides):
+        return dict({origin: i, "uuid": "PRIVATE_UUID", "text": text,
+                     "match_policy": "strict", "match_scope": "text",
+                     "structured_time_context": True,
+                     "matched_event_time_candidates": [{"time_iso": "2020-01-01"}]},
+                    **overrides)
+    rows = [row(0, "PRIVATE_KEEP"), row(0, "PRIVATE_LEGACY", structured_time_context=False),
+            row(1, "PRIVATE_OTHER"), row(2, "PRIVATE_DROPPED")]
+    budget = ArcRequestBudget()
+    sink = []
+    with bind_arc_budget((budget, 1)):
+        capture_primary_review(index="news_test", body=body, response=primary,
+                               real_client=True, sink=sink)
+        scope = make_final_review_input(sink[0], question="PRIVATE_QUESTION",
+                                        groups=[{"PRIVATE_TERM"}], date_from="2020-01-01",
+                                        date_to="2020-12-31", manual=False)
+        args = dict(body=body, first_response=primary, requested_size=2,
+                    search_next=lambda _: pytest.fail("unexpected ES refill"),
+                    build_evidence=lambda _: (docs, rows, 0))
+        baseline = refill_date_filtered_evidence(**args)
+        observed = refill_date_filtered_evidence(**args, arc_review_scope=scope)
+    assert observed == baseline
+    assert [r["text"] for r in observed[1]] == [
+        "PRIVATE_KEEP", "PRIVATE_LEGACY", "PRIVATE_OTHER"]
+    assert all(origin not in r for r in observed[1])
+    records = [json.loads(r.getMessage().split("SRAF_ARC_REVIEW_SCOPE=", 1)[1])
+               for r in caplog.records if r.getMessage().startswith("SRAF_ARC_REVIEW_SCOPE=")]
+    assert records == [{"schema":"sraf_arc_final_review_scope_v1",
+                       "status":"bound_local_batch","batch_count":2,
+                       "prefix_count":3,"prefix_limited":False,"skipped_rows":1}]
+    assert budget.snapshot()[0] == ArcUnits(slices=1,hits=128,rows=64,chars=96000)
+    assert "PRIVATE_" not in caplog.text
+
+
+def test_arc_a8_final_scope_rejects_cross_response_and_more_pages(monkeypatch):
+    from agent.es.arc_review_scope import capture_primary_review, make_final_review_input, prepare_final_review
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    monkeypatch.setenv("SRAF_ARC_REVIEW_SCOPE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX", "news_test")
+    primary = _native_primary()
+    raw = primary["hits"]["hits"]
+    body = {"size": 1}
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)):
+        sink = []
+        capture_primary_review(index="news_test", body=body, response=primary,
+                               real_client=True, sink=sink)
+        scope = make_final_review_input(sink[0], question="PRIVATE_QUESTION",
+                                        groups=[{"PRIVATE_TERM"}], date_from="2020-01-01",
+                                        date_to="2020-12-31", manual=False)
+        base = dict(body=body, first_response=primary, raw=raw,
+                    selected=[{"__sraf_source_hit_ordinal":0}],
+                    selected_evidence=[{"__sraf_source_hit_ordinal":0}],
+                    meta={"pages_fetched":1,"incomplete_due_to_scan_limit":False})
+        for changes in ({"first_response":dict(primary)}, {"body":dict(body)},
+                        {"raw":[dict(raw[0])]},
+                        {"meta":{"pages_fetched":2,"incomplete_due_to_scan_limit":False}},
+                        {"meta":{"pages_fetched":1,"incomplete_due_to_scan_limit":True}},
+                        {"selected":[{"__sraf_source_hit_ordinal":1}]}):
+            assert prepare_final_review(scope, **{**base, **changes}) is None
+    assert budget.snapshot()[0] == ArcUnits()
