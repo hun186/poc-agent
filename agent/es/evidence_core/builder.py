@@ -115,6 +115,7 @@ def build_hits_and_evidence(
     original_question: Optional[str] = None,
     native_rank_frequency: NativeRankFrequency | None = None,
     arc_candidate_pressure: CandidatePressure | None = None,
+    arc_strategy_diagnostics: dict | None = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int]:
     config = config or EvidenceBuildConfig()
     # Experimental, default-OFF. Use already-returned _source only; bounded
@@ -163,11 +164,14 @@ def build_hits_and_evidence(
     strict_evidence_count = len(evidence)
     if arc_counts is not None:
         try:
-            log_low_volume(observe_low_volume(
+            low_observation = observe_low_volume(
                 out_hits, evidence, term_groups, counts=arc_counts,
                 pressure=arc_candidate_pressure, original_question=original_question,
                 date_from=date_from, date_to=date_to, allowed_years=allowed_years,
-            ))
+            )
+            log_low_volume(low_observation)
+            if type(arc_strategy_diagnostics) is dict:
+                arc_strategy_diagnostics["low"] = low_observation
         except Exception:
             log_low_volume({"schema": "sraf_arc_relax_shadow_v1", "status": "unavailable"})
     # ARC A3: observation only, no ES/LLM calls or Evidence changes.
@@ -197,11 +201,14 @@ def build_hits_and_evidence(
                              "status": "unavailable"})
     if os.getenv("SRAF_ARC_TIGHTEN") == "shadow" and type(arc_candidate_pressure) is CandidatePressure:
         try:
-            log_tightening(observe_tightening(
+            high_observation = observe_tightening(
                 evidence, term_groups, original_question=original_question,
                 pressure=arc_candidate_pressure, local_frequency=observation,
                 native_frequency=native_observation,
-            ))
+            )
+            log_tightening(high_observation)
+            if type(arc_strategy_diagnostics) is dict:
+                arc_strategy_diagnostics["high"] = high_observation
         except Exception:
             log_tightening({"schema": "sraf_arc_tighten_shadow_v1", "status": "unavailable"})
     # #406: diagnostic only. The existing strict (or legacy zero-only

@@ -505,3 +505,127 @@ def test_arc_a6_diagnostic_only_abstention_and_count_certainty():
     with bind_arc_budget((limited, 1)):
         assert observe(rejected, CandidatePressure("eq", 20, 20))["status"] == "shared_budget_exhausted"
     assert limited.snapshot()[0] == ArcUnits()
+
+
+def _a7_low(**overrides):
+    return dict({"schema": "sraf_arc_relax_shadow_v1",
+                 "scope": "first_primary_strict_parser_slice",
+                 "status": "observed_relaxation",
+                 "parsed_citations": 8, "canonical_eligible": 6,
+                 "date_rejected": 2, "other_rejected": 0,
+                 "strict_count": 1, "topic_rejected": 5,
+                 "hypothetical_add_cap": 0, "sample_limited": False}, **overrides)
+
+
+def _a7_high():
+    return {"schema": "sraf_arc_tighten_shadow_v1",
+            "scope": "strict_parser_prefix_only", "status": "observed_tightening",
+            "prefix_limited": False, "prefix_count": 60, "strict_count": 60,
+            "strategies": [
+                {"strategy": "all_text_axes", "retained_prefix_rows": 25,
+                 "retained_source_hits": 10, "sample_floor_met": True},
+                {"strategy": "anchor_plus_local_discriminative_axis", "retained_prefix_rows": 40,
+                 "retained_source_hits": 12, "sample_floor_met": True},
+                {"strategy": "anchor_plus_native_discriminative_axis", "retained_prefix_rows": 60,
+                 "retained_source_hits": 20, "sample_floor_met": True}]}
+
+
+def test_arc_a7_route_abstains_for_incomplete_or_already_resolved():
+    from agent.es.arc_strategy_shadow import route_strategy
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    base = dict(pressure=CandidatePressure("eq", 100, 50), low=_a7_low(),
+                high=None, final_count=1, strong_count=1, refill=None, manual=False)
+    assert route_strategy(**base) == (
+        "semantic_low_review", ("keep_original", "review_aliases", "review_topic_scope"))
+    for change, reason in [
+        ({"final_count": 3}, "keep_original"),
+        ({"manual": True}, "unsupported_scope"),
+        ({"pressure": CandidatePressure(returned=50)}, "unconfirmed_primary"),
+        ({"refill": {"pages_fetched": 2, "incomplete_due_to_scan_limit": False}},
+         "refill_or_incomplete"),
+        ({"refill": {"pages_fetched": 1, "incomplete_due_to_scan_limit": True}},
+         "refill_or_incomplete"),
+        ({"low": _a7_low(hypothetical_add_cap=1)}, "evaluate_existing_relaxation"),
+        ({"low": _a7_low(sample_limited=True)}, "limited_low_sample"),
+        ({"low": _a7_low(parsed_citations=99)}, "missing_low_diagnostics"),
+        ({"low": _a7_low(status="shared_budget_exhausted")}, "low_diagnostics_abstained"),
+        ({"low": _a7_low(status="no_trusted_anchor")}, "semantic_anchor_review"),
+    ]:
+        actual, choices = route_strategy(**{**base, **change})
+        assert actual == reason
+        if reason != "semantic_anchor_review":
+            assert not choices
+        else:
+            assert choices == ("keep_original", "review_topic_scope")
+
+
+def test_arc_a7_high_review_requires_multiple_viable_reductions():
+    from agent.es.arc_strategy_shadow import route_strategy
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    base = dict(pressure=CandidatePressure("gte", 10000, 60), low=None,
+                high=_a7_high(), final_count=60, strong_count=60, refill=None, manual=False)
+    assert route_strategy(**base) == (
+        "semantic_high_review", ("keep_original", "review_all_axes", "review_local_discrimination"))
+    assert route_strategy(**{**base, "strong_count": 10}) == ("keep_original", ())
+    assert route_strategy(**{**base, "high": {**_a7_high(), "prefix_limited": True}}) == (
+        "missing_high_diagnostics", ())
+    high = _a7_high()
+    high["strategies"][1]["retained_source_hits"] = 2
+    assert route_strategy(**{**base, "high": high}) == ("evaluate_existing_tightening", ())
+
+
+def test_arc_a7_model_choice_is_enum_only_no_retries_and_no_private_logs(monkeypatch, caplog):
+    from agent.es import arc_strategy_shadow as shadow
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", "shadow")
+    monkeypatch.setenv("TOPIC_LLM_URL", "http://unused.invalid")
+    kw = dict(pressure=CandidatePressure("eq", 100, 50), diagnostics={"low": _a7_low()},
+              final_count=1, strong_count=1, refill=None, manual=False,
+              original_question="PRIVATE_QUESTION", groups=[{"PRIVATE_TERM"}])
+    calls = []
+    for raw, expected in [
+        ('{"choice":"review_aliases"}', "observed_advice"),
+        ('{"choice":"keep_original","choice":"review_aliases"}', "invalid_proposal"),
+        ('{"choice":"review_aliases","query":"PRIVATE_DSL"}', "invalid_proposal"),
+        ('{"choice":"DELETE_PRIVATE"}', "invalid_proposal"),
+        ('{"choice":true}', "invalid_proposal"),
+    ]:
+        caplog.clear()
+        def llm(prompt, **kwargs):
+            calls.append(json.loads(prompt))
+            assert kwargs["timeout"] == 15
+            assert kwargs["extra_params"]["options"]["num_predict"] == 128
+            return raw
+        monkeypatch.setattr(shadow, "call_llm", llm)
+        budget = ArcRequestBudget()
+        with bind_arc_budget((budget, 1)):
+            shadow.observe_strategy(**kw)
+            shadow.observe_strategy(**kw)
+        rows = [json.loads(r.getMessage().split("SRAF_ARC_STRATEGY=", 1)[1])
+                for r in caplog.records if r.getMessage().startswith("SRAF_ARC_STRATEGY=")]
+        assert [r["status"] for r in rows] == [expected, "shared_budget_exhausted"]
+        assert rows[0]["choice"] == ("review_aliases" if expected == "observed_advice" else "keep_original")
+        assert "PRIVATE_" not in caplog.text
+        assert budget.snapshot()[0] == ArcUnits(llm_calls=1)
+    assert len(calls) == 5
+    assert calls[0]["query"] == "PRIVATE_QUESTION"
+    assert calls[0]["allowed"] == ["keep_original", "review_aliases", "review_topic_scope"]
+
+
+def test_arc_a7_does_not_spend_llm_on_deterministic_routes(monkeypatch):
+    from agent.es import arc_strategy_shadow as shadow
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", "shadow")
+    monkeypatch.setenv("TOPIC_LLM_URL", "http://unused.invalid")
+    calls = []
+    monkeypatch.setattr(shadow, "call_llm", lambda *a, **k: calls.append(1))
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)):
+        for final in (0, 3, 39):
+            shadow.observe_strategy(
+                pressure=CandidatePressure("eq", 0, 0), diagnostics={},
+                final_count=final, strong_count=final, refill=None, manual=False,
+                original_question="PRIVATE_QUERY", groups=[{"PRIVATE_TERM"}])
+    assert not calls and budget.snapshot()[0] == ArcUnits()
