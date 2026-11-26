@@ -1005,3 +1005,109 @@ def test_a9_relax_annotation_cli_invalid_input_creates_nothing(tmp_path,capsys,m
     assert cli.main([str(p),str(q)]) == 2
     assert not q.exists()
     assert "PRIVATE" not in capsys.readouterr().err
+
+
+def _arc_capture_spec():
+    case = _a9_relax_case()
+    return {**{k: v for k, v in case.items() if k != "response"}, "size": 8}
+
+
+def test_arc_primary_capture_fixed_scope_and_frozen_annotation_roundtrip(monkeypatch):
+    import json
+    from agent.es.evidence_core.arc_primary_capture import capture_case
+    from agent.es.evidence_core.arc_relax_replay import prepare_relax_annotation
+    monkeypatch.setenv("SRAF_STRUCTURED_FIELD_EXPANSION", "off")
+    response = _a9_relax_case()["response"]
+    response["hits"]["hits"][0]["_index"] = "news_test"
+    calls = []
+    def request(config, method, path, payload=None, **kw):
+        calls.append((method,path,payload))
+        if path == "/_security/_authenticate":
+            return {"username":"readonly"}
+        if path == "/news_test/_mapping":
+            return {"news_test":{"mappings":{}}}
+        return response
+    spec = _arc_capture_spec()
+    case, stats = capture_case(spec,request=request,config=(None,None,None,None,"readonly"))
+    assert [(a,b) for a,b,_ in calls] == [
+        ("GET","/_security/_authenticate"), ("GET","/news_test/_mapping"),
+        ("POST","/news_test/_search?allow_partial_search_results=false")]
+    body = json.loads(calls[-1][2])
+    assert body["size"] == 8 and body["timeout"] == "5s" and body["track_total_hits"] is True
+    assert "multidim_event_json.Event.time_iso" in json.dumps(body)
+    assert "multidim_event_json.Event_Timeline.time_iso" in json.dumps(body)
+    assert "pit" not in body and "search_after" not in body
+    assert case["response"] is response and set(case) == set(_a9_relax_case())
+    assert stats["returned"] == 1 and stats["es_search_attempts"] == 1
+    assert stats["es_preflight_attempts"] == 2 and stats["search_elapsed_ms"] >= 0
+    assert prepare_relax_annotation(case) is not None
+
+
+@pytest.mark.parametrize("problem", ["invalid_spec","wrong_principal","alias","partial","other_index","duplicate","empty"])
+def test_arc_primary_capture_refuses_unsupported_scope(monkeypatch, problem):
+    from agent.es.evidence_core.arc_primary_capture import capture_case
+    monkeypatch.setenv("SRAF_STRUCTURED_FIELD_EXPANSION","off")
+    spec = _arc_capture_spec()
+    if problem == "invalid_spec":
+        spec["size"] = True
+    response = _a9_relax_case()["response"]
+    response["hits"]["hits"][0]["_index"] = "news_test"
+    if problem == "partial":
+        response["timed_out"] = True
+    elif problem == "other_index":
+        response["hits"]["hits"][0]["_index"] = "other"
+    elif problem == "duplicate":
+        response["hits"]["hits"] *= 2
+        response["hits"]["total"]["value"] = 2
+    elif problem == "empty":
+        response["hits"]["hits"] = []
+        response["hits"]["total"]["value"] = 0
+    calls = []
+    def request(config,method,path,payload=None,**kw):
+        calls.append(path)
+        if path == "/_security/_authenticate":
+            return {"username":"other" if problem == "wrong_principal" else "readonly"}
+        if path == "/news_test/_mapping":
+            return {"other" if problem == "alias" else "news_test":{"mappings":{}}}
+        return response
+    with pytest.raises(ValueError):
+        capture_case(spec,request=request,config=(None,None,None,None,"readonly"))
+    assert len(calls) == (0 if problem == "invalid_spec" else
+                          1 if problem == "wrong_principal" else 2 if problem == "alias" else 3)
+
+
+def test_arc_primary_capture_cli_explicit_opt_in_and_no_overwrite(tmp_path,monkeypatch,capsys):
+    import json
+    import os
+    from agent.es.evidence_core import arc_primary_capture as capture
+    p = tmp_path / "PRIVATE_SPEC.json"
+    q = tmp_path / "PRIVATE_CASES.json"
+    p.write_text(json.dumps(_arc_capture_spec(),ensure_ascii=False),encoding="utf-8")
+    calls = []
+    def run(spec):
+        calls.append(spec)
+        return _a9_relax_case(), {"returned":1,"search_elapsed_ms":10,
+                                   "es_search_attempts":1,"es_preflight_attempts":2}
+    monkeypatch.setattr(capture,"capture_case",run)
+    assert capture.main([str(p),str(q)]) == 2
+    assert not q.exists() and not calls
+    capsys.readouterr()
+    assert capture.main(["--run",str(p),str(q)]) == 0
+    out = capsys.readouterr()
+    assert json.loads(out.out)["status"] == "PRIVATE_PRIMARY_CAPTURED"
+    assert "PRIVATE_SPEC.json" not in out.out and "PRIVATE_CASES.json" not in out.out and "甲軸" not in out.out
+    if os.name == "posix":
+        assert q.stat().st_mode & 0o077 == 0
+    initial = q.read_bytes()
+    assert capture.main(["--run",str(p),str(q)]) == 2
+    assert q.read_bytes() == initial and len(calls) == 1
+
+
+@pytest.mark.parametrize("url", ["http://127.0.0.1:9001","https://8.8.8.8:443",
+                                  "https://user:password@127.0.0.1:9001",
+                                  "https://127.0.0.1:9001/path","https://127.0.0.1"])
+def test_arc_primary_capture_denies_unapproved_endpoint(monkeypatch,url):
+    from agent.es.evidence_core.arc_primary_capture import _connection_config
+    monkeypatch.setenv("SRAF_ARC_CAPTURE_ES_URL",url)
+    with pytest.raises(ValueError):
+        _connection_config()
