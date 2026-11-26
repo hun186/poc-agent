@@ -100,10 +100,11 @@ def observe_same_pit_frequency(*, plan, binding, fence, client, pit_id,
 def log_same_pit_frequency(record, *, plan, binding):
     """Publish counts only after cleanup and fresh owner/frequency permission."""
     if record is None:
-        return
+        return None
     if record["status"] == "observed_counts":
         if not binding.recheck_optional_frequency(plan):
             record = {"schema": record["schema"], "scope": record["scope"],
                       "status": "authorization_or_deadline_changed"}
     _LOG.warning("SRAF_ARC_DEEP_FREQUENCY=%s",
                  json.dumps(record, sort_keys=True, separators=(",", ":")))
+    return record if record["status"] == "observed_counts" else None

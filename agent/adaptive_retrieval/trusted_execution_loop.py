@@ -122,6 +122,7 @@ def run_trusted_nround(
     # Separate optional shadow accounting; original ES/planner admission,
     # authorization, and generation-reserved deadline remain authoritative.
     from .arc_deep_frequency_transport import deep_frequency_enabled
+    from .arc_deep_rank_receipt import DeepRoundRankReceipt
 
     frequency_binding = (job_scope_binding if deep_frequency_enabled()
                          and job_scope_binding is not None
@@ -174,12 +175,14 @@ def run_trusted_nround(
             # mode exists only for isolated compatibility tests.
             if job_scope_binding is not None:
                 job_scope_binding.preflight(frozen)
+            rank_receipts = []
             with bind_arc_budget((arc_budget, frozen.round_number) if arc_budget is not None else None):
                 fetched = execute_single_frozen_query(
                     plan=frozen, client=es_client, page_size=page_size,
                     max_pages=max_pages,
                     request_timeout_seconds=request_timeout_seconds,
-                    **({"frequency_binding": frequency_binding} if frequency_binding is not None else {}),
+                    **({"frequency_binding": frequency_binding,
+                        "frequency_receipts": rank_receipts} if frequency_binding is not None else {}),
                 )
             if (fetched.request_wide_attested is not False
                     or fetched.query_plan_complete is not True):
@@ -203,6 +206,11 @@ def run_trusted_nround(
             if remaining.remaining_seconds <= remaining.generation_reserve_seconds:
                 raise TrustedNroundExecutionError("retrieval_deadline_expired")
 
+            deep_rank_frequency = None
+            if len(rank_receipts) == 1 and type(rank_receipts[0]) is DeepRoundRankReceipt:
+                deep_rank_frequency = rank_receipts[0].consume(
+                    plan=frozen, binding=frequency_binding, fetched=fetched)
+            rank_receipts.clear()
             # Same original immutable scope and canonical Event/Timeline date
             # validity. The grant cannot invent passage/source pairs; it only
             # accepts a separate trusted semantic assessor's boolean verdict.
@@ -266,6 +274,7 @@ def run_trusted_nround(
                     complete=True,
                     assessor=guarded_semantic_assessor,
                     max_semantic_checks=max_semantic_checks_per_round,
+                    **({"deep_rank_frequency": deep_rank_frequency} if deep_rank_frequency is not None else {}),
                 )
             remaining = coordinator._budget.snapshot()
             if remaining.remaining_seconds <= remaining.generation_reserve_seconds:

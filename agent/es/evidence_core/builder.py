@@ -21,7 +21,7 @@ from .question_anchor import derive_explicit_question_anchor
 from .topic_adaptive import consider_low_count, log_adaptive
 from .group_frequency import log_group_frequency, observe_group_frequency
 from .arc_rank_shadow import observe_rank_shadow, log_rank_shadow
-from ..arc_native_rank_receipt import NativeRankFrequency
+from ..arc_native_rank_receipt import NativeRankFrequency, DeepNativeRankFrequency
 from .arc_tighten_shadow import CandidatePressure, observe_tightening, log_tightening
 from .arc_relax_shadow import StrictSliceCounts, observe_low_volume, log_low_volume
 from ..arc_request_budget import current_arc_budget
@@ -114,6 +114,7 @@ def build_hits_and_evidence(
     include_source_hit_ordinal: bool = False,
     original_question: Optional[str] = None,
     native_rank_frequency: NativeRankFrequency | None = None,
+    deep_rank_frequency: DeepNativeRankFrequency | None = None,
     arc_candidate_pressure: CandidatePressure | None = None,
     arc_strategy_diagnostics: dict | None = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int]:
@@ -198,6 +199,16 @@ def build_hits_and_evidence(
         except Exception:
             log_rank_shadow({"schema": "sraf_arc_rank_shadow_v1",
                              "scope": "same_search_native_df_strict_first_prefix_not_pit",
+                             "status": "unavailable"})
+    if os.getenv("SRAF_ARC_RANK_DEEP") == "shadow" and type(deep_rank_frequency) is DeepNativeRankFrequency:
+        try:
+            deep_observation = deep_rank_frequency.for_builder(
+                term_groups, date_from=date_from, date_to=date_to, allowed_years=allowed_years)
+            if deep_observation is not None:
+                log_rank_shadow(observe_rank_shadow(evidence, term_groups, deep_observation))
+        except Exception:
+            log_rank_shadow({"schema": "sraf_arc_rank_shadow_v1",
+                             "scope": "same_round_pit_native_df_strict_first_prefix",
                              "status": "unavailable"})
     if os.getenv("SRAF_ARC_TIGHTEN") == "shadow" and type(arc_candidate_pressure) is CandidatePressure:
         try:

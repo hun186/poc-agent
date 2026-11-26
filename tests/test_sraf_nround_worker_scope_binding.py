@@ -662,3 +662,60 @@ def test_arc_deep_frequency_two_round_loop_uses_shared_budget_without_changing_c
     assert all(row.pages_completed == 1 for row in result.rounds)
     assert all(row.request_wide_attested is False for row in result.rounds)
     assert "PRIVATE" not in caplog.text
+
+
+@pytest.mark.parametrize("case", ["ok", "unattested", "other_hits", "revoked", "off"])
+def test_arc_deep_rank_receipt_one_shot_and_owner_bound(monkeypatch, case):
+    from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
+    from test_sraf_nround_es_pit_adapter import _page, _hit
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY_VERIFIED_INDEX", "news_test")
+    monkeypatch.setenv("SRAF_ARC_RANK_DEEP", "off" if case == "off" else "shadow")
+    checks = []
+    def policy(*_):
+        checks.append(1)
+        return case != "revoked" or len(checks) <= 2
+    c, _, binding, plan = _pit_frequency_job(policy)
+    es = FakeES(_page([_hit(1)]), _pit_frequency_response())
+    receipts = []
+    with bind_arc_budget((ArcRequestBudget(), 1)):
+        fetched = execute_single_frozen_query(plan=plan, client=es,
+            frequency_binding=binding, frequency_receipts=receipts)
+    if case == "off":
+        assert receipts == []
+        return
+    assert len(receipts) == 1
+    if case != "unattested":
+        assert binding.attest(plan, fetched)
+    receipt = receipts.pop()
+    other = replace(fetched, hits=tuple(dict(h) for h in fetched.hits)) if case == "other_hits" else fetched
+    frequency = receipt.consume(plan=plan, binding=binding, fetched=other)
+    assert (frequency is not None) == (case == "ok")
+    assert receipt.consume(plan=plan, binding=binding, fetched=fetched) is None
+    assert "PRIVATE" not in repr(receipt)
+
+
+def test_arc_deep_rank_used_only_in_first_canonical_build_per_round(monkeypatch, caplog):
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY_VERIFIED_INDEX", "news_test")
+    monkeypatch.setenv("SRAF_ARC_RANK_DEEP", "shadow")
+    monkeypatch.delenv("SRAF_ARC_GROUP_FREQUENCY", raising=False)
+    c, scope, ev, _, planner_calls, _ = _setup()
+    binding = WorkerScopeBinding(
+        job=_job(scope), constraints=scope, coordinator=c,
+        authorized_indexes=("news_test",),
+        check_index_access=lambda *_: True,
+        check_single_branch_coverage=lambda *_: True,
+        check_frequency_scope=lambda *_: True,
+    )
+    es = FakeES(_verified_page("A"), _pit_frequency_response(),
+                _verified_page("B"), _pit_frequency_response())
+    result = _run(c, scope, ev, es, binding)
+    assert len(result.rounds) == 2 and planner_calls == [1]
+    assert c.safe_progress()["termination"] == "SUFFICIENT"
+    rows = [json.loads(row.getMessage().split("SRAF_ARC_RANK_SHADOW=",1)[1])
+            for row in caplog.records if row.getMessage().startswith("SRAF_ARC_RANK_SHADOW=")]
+    assert len(rows) == 2
+    assert all(row["scope"] == "same_round_pit_native_df_strict_first_prefix" for row in rows)
+    assert all(row["status"] == "no_top_k_pressure" for row in rows)
+    assert "PRIVATE" not in caplog.text
