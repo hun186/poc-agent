@@ -1222,3 +1222,80 @@ def test_arc_primary_capture_denies_unapproved_endpoint(monkeypatch,url):
     monkeypatch.setenv("SRAF_ARC_CAPTURE_ES_URL",url)
     with pytest.raises(ValueError):
         _connection_config()
+
+
+def _prepare_a6_pilot_for_test(case):
+    from agent.es.evidence_core.arc_relax_shadow import prepare_low_volume_pilot, StrictSliceCounts
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    from agent.es.evidence_core.builder import collect_snippets
+    from agent.es.evidence_core.parser import parse_es_hits
+    from agent.es.evidence_core.models import EvidenceBuildConfig
+    from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
+    hits, _ = parse_es_hits(case["response"]["hits"]["hits"],
+                             query_for_snippet=case["query"], config=EvidenceBuildConfig())
+    groups = [set(g) for g in case["groups"]]
+    counts = StrictSliceCounts()
+    strict = collect_snippets(hits,date_from=case["date_from"],date_to=case["date_to"],
+                              term_groups=groups,min_groups_required=None,arc_counts=counts)
+    with bind_arc_budget((ArcRequestBudget(),1)):
+        result = prepare_low_volume_pilot(
+            hits, strict, groups, counts=counts,
+            pressure=CandidatePressure.from_primary(case["response"]),
+            original_question=case["question"],date_from=case["date_from"],
+            date_to=case["date_to"],allowed_years=None)
+    return strict, result
+
+
+def test_a6_pilot_prepares_weak_linked_candidates_without_mutating_strict():
+    from agent.es.evidence_core.arc_relax_shadow import _identity
+    case = _a9_relax_case()
+    strict, (observation, identities, candidates, status) = _prepare_a6_pilot_for_test(case)
+    assert status == "pilot_candidate_prepared"
+    assert len(strict) == 1 and strict[0].match_policy == "strict"
+    assert strict[0].weak_evidence is False
+    assert len(candidates) == observation["hypothetical_add_cap"] == 2
+    assert [_identity(e) for e in candidates] == identities
+    assert not set(identities).intersection(_identity(e) for e in strict)
+    assert all(e.weak_evidence is True and e.group_hits == 2
+               and e.match_policy == "adaptive_two_axis" and e.match_scope == "text"
+               and e.structured_time_context and e.matched_event_time_candidates
+               and e.event_ids == ["E1"] for e in candidates)
+    assert candidates[0].synonym_hits == ["乙軸", "甲軸"]
+    assert all("異日" not in e.text for e in candidates)
+    assert len(_build(case["response"]["hits"]["hits"])[1]) == 1
+
+
+@pytest.mark.parametrize("relation,total", [("gte",1),("eq",2)])
+def test_a6_pilot_declines_unexhausted_primary_but_preserves_counterfactual(relation,total):
+    case = _a9_relax_case()
+    case["response"]["hits"]["total"] = {"relation":relation,"value":total}
+    strict, (obs, identities, candidates, status) = _prepare_a6_pilot_for_test(case)
+    assert len(strict)==1 and obs["hypothetical_add_cap"] == len(identities)==2
+    assert candidates == () and status=="primary_or_scan_not_exhausted"
+
+
+def test_a6_pilot_zero_strict_cannot_replace_legacy_fallback():
+    case = _a9_relax_case()
+    rows = case["response"]["hits"]["hits"][0]["_source"]["multidim_event_json"][0]["evidence_snippets"]
+    rows.pop(0)
+    strict, (obs, identities, candidates, status) = _prepare_a6_pilot_for_test(case)
+    assert not strict and obs["hypothetical_add_cap"]==len(identities)==2
+    assert candidates==() and status=="legacy_zero_or_non_low_baseline"
+    # The existing full builder has its own zero-strict fallback.
+    assert _build(case["response"]["hits"]["hits"])[1]
+
+
+def test_a9_relax_replay_reports_pilot_subset_separately():
+    from agent.es.evidence_core.arc_relax_replay import replay_relax_cases
+    eligible = _a9_relax_case()
+    unexhausted = _a9_relax_case()
+    unexhausted["response"]["hits"]["total"]["value"] = 2
+    zero = _a9_relax_case()
+    zero["response"]["hits"]["hits"][0]["_source"]["multidim_event_json"][0]["evidence_snippets"].pop(0)
+    result = replay_relax_cases([_a9_relax_labeled(case) for case in (eligible,unexhausted,zero)])
+    assert result["pilot_status_counts"] == {"pilot_candidate_prepared":1,
+        "primary_or_scan_not_exhausted":1,"legacy_zero_or_non_low_baseline":1}
+    assert result["hypothetical_added"]==6
+    assert result["pilot_comparison"]["full_selection"]["baseline"]["selected"]==1
+    assert result["pilot_comparison"]["full_selection"]["candidate"]["selected"]==3
+    assert "甲軸" not in repr(result)
