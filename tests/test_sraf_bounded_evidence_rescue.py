@@ -573,6 +573,77 @@ def test_arc_review_transport_requires_explicit_authorization_callback(monkeypat
     assert caplog.text.count("source_or_endpoint_not_authorized") == 2
 
 
+@pytest.mark.parametrize("case", ["success","missing_counts","bad_counts","bad_verdict","timeout","rejected","revoked","denied","off"])
+def test_arc_a8_measured_transport_counts_actual_attempt_and_provider_tokens(monkeypatch,caplog,case):
+    import json
+    from agent.es import arc_semantic_review_transport as transport
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    from agent.es.evidence_core.arc_semantic_review import build_semantic_review_batch
+    monkeypatch.setenv("SRAF_ARC_REVIEW","shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS","approved")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_ENDPOINT","https://review.invalid/api/chat")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_MODEL","PRIVATE_MODEL")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX","news_test")
+    monkeypatch.delenv("SRAF_ARC_REVIEW_CA_FILE",raising=False)
+    monkeypatch.setenv("SRAF_ARC_REVIEW_RESOURCE_METRICS","off" if case=="off" else "shadow")
+    batch = build_semantic_review_batch("主題：美國",[{"美國"}],[_a8_row(0,"美國私人資料")])
+    envelope = {"done":True,"message":{"role":"assistant","content":'[{"ordinal":1,"verdict":"relevant"}]'},
+                "prompt_eval_count":123,"eval_count":17}
+    if case=="missing_counts":
+        del envelope["prompt_eval_count"]
+        del envelope["eval_count"]
+    elif case=="bad_counts":
+        envelope.update(prompt_eval_count=True,eval_count=-1)
+    elif case=="bad_verdict":
+        envelope["message"]["content"]="PRIVATE_INVALID"
+    calls = []
+    class Response:
+        status_code = 302 if case=="rejected" else 200
+        headers = {}
+        def __enter__(self):
+            return self
+        def __exit__(self,*args):
+            pass
+        def iter_content(self,chunk_size):
+            yield json.dumps(envelope).encode()
+    class Session:
+        trust_env = True
+        def __enter__(self):
+            return self
+        def __exit__(self,*args):
+            pass
+        def post(self,*args,**kwargs):
+            calls.append(1)
+            if case=="timeout":
+                raise transport.requests.Timeout("PRIVATE_TIMEOUT")
+            return Response()
+    monkeypatch.setattr(transport.requests,"Session",Session)
+    checks = []
+    def authorize(_):
+        checks.append(1)
+        return case!="denied" and (case!="revoked" or len(checks)==1)
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget,1)):
+        transport.observe_semantic_review(batch,index="news_test",authorize=authorize)
+        transport.observe_semantic_review(batch,index="news_test",authorize=authorize)
+    rows = [json.loads(r.getMessage().split("SRAF_ARC_REVIEW_RESOURCE=",1)[1])
+            for r in caplog.records if r.getMessage().startswith("SRAF_ARC_REVIEW_RESOURCE=")]
+    assert len(calls)==int(case!="denied")
+    assert budget.snapshot()[0] == ArcUnits(llm_calls=int(case!="denied"))
+    if case in ("revoked","denied","off"):
+        assert not rows
+    else:
+        assert len(rows)==1
+        m=rows[0]["measurement"]
+        assert m["llm_calls"]==1 and m["es_calls"]==0 and m["elapsed_ms"]>=0
+        assert m["status"]==("timed_out" if case=="timeout" else "failed" if case in ("rejected","bad_verdict") else "completed")
+        if case in ("success","bad_verdict"):
+            assert (m["prompt_tokens"],m["completion_tokens"])==(123,17)
+        else:
+            assert m["prompt_tokens"] is None and m["completion_tokens"] is None
+    assert "PRIVATE_" not in caplog.text and "美國" not in caplog.text and "review.invalid" not in caplog.text
+
+
 def _a9_label(i, source, gold, predicted, anchor=False, strong=False):
     return {"ordinal": i, "source": source, "gold": gold, "predicted": predicted,
             "direct_anchor": anchor, "strong": strong}
