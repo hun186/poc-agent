@@ -307,7 +307,10 @@ def safe_search(
     index: Optional[IndexType] = None,
     allow_highlight_retry: bool = True,
     arc_frequency: Optional[Dict[str, Any]] = None,
+    arc_review_receipts: Optional[list] = None,
 ):
+    from agent.es.arc_review_scope import capture_primary_review
+
     es = get_es()
     ES_TIMEOUT = int(os.getenv("ES_TIMEOUT", "30"))
 
@@ -359,6 +362,10 @@ def safe_search(
         if capture is not None:
             capture.observe_transport(index=es_index, body=body,
                                       real_client=type(es) is Elasticsearch, response=response)
+        if arc_review_receipts is not None and acceptance_index is None:
+            capture_primary_review(index=es_index, body=body, response=response,
+                                   real_client=type(es) is Elasticsearch,
+                                   sink=arc_review_receipts)
         if arc_frequency is not None:
             from agent.es.arc_frequency_shadow import observe_native_frequency
             observe_native_frequency(

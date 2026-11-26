@@ -271,6 +271,7 @@ def run_data_agent(
         or os.getenv("SRAF_ARC_TIGHTEN") == "shadow"
         or os.getenv("SRAF_ARC_RELAX") == "shadow"
         or os.getenv("SRAF_ARC_STRATEGY") == "shadow"
+        or os.getenv("SRAF_ARC_REVIEW_SCOPE") == "shadow"
     )), bind_sink(topic_audit_sink):
         with bind_original_report_question(question_raw if report_mode else None):
             code_agent = build_agent(mode=mode)

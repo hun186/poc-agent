@@ -16,6 +16,7 @@ from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
 from agent.es.evidence_core.arc_relax_shadow import StrictSliceCounts, observe_low_volume, log_low_volume
 from agent.es.arc_request_budget import current_arc_budget
 from agent.es.arc_strategy_shadow import observe_strategy, strategy_enabled
+from agent.es.arc_review_scope import review_scope_enabled, make_final_review_input
 from agent.es.ordinary_scope_receipt import current_ordinary_scope_capture
 from agent.es.query_terms import compute_effective_terms
 from agent.es.evidence import build_hits_and_evidence
@@ -184,6 +185,17 @@ class ESSearchNews(Tool):
         dbg("[es_search_news] ES query body prepared (content redacted)")
 
         native_rank_receipts = []
+        review_receipts = []
+        review_kwargs = {}
+        if (review_scope_enabled(index) and capture is None
+                and is_manual_entity_query is False
+                and date_from and date_to
+                and get_original_report_question() is not None
+                and current_arc_budget() is not None):
+            from agent.external_capabilities import requirement_acceptance_active
+            if not requirement_acceptance_active():
+                review_kwargs = {"arc_review_receipts": review_receipts}
+
         # === T3: ES 查詢 ===
         try:
             with log_duration("[es_search_news][T3] _safe_es_search", extra={"size": size}):
@@ -196,9 +208,9 @@ class ESSearchNews(Tool):
                         **({"receipt_sink": native_rank_receipts}
                            if (os.getenv("SRAF_ARC_RANK_NATIVE") == "shadow"
                                or os.getenv("SRAF_ARC_TIGHTEN") == "shadow") else {}),
-                    })
+                    }, **review_kwargs)
                 else:
-                    res = _safe_es_search(body, index=index)
+                    res = _safe_es_search(body, index=index, **review_kwargs)
         except BadRequestError:
             print("[es_search_news] ES BadRequestError (details suppressed)")
             raise
@@ -299,6 +311,12 @@ class ESSearchNews(Tool):
                 )
 
             if date_scoped:
+                review_scope = make_final_review_input(
+                    review_receipts[0], question=get_original_report_question(),
+                    groups=term_groups, date_from=date_from, date_to=date_to,
+                    manual=is_manual_entity_query,
+                ) if len(review_receipts) == 1 else None
+                review_receipts.clear()
                 filtered_hits, evidence_snippets, syn_snippets, date_refill_meta = (
                     refill_date_filtered_evidence(
                         body=body,
@@ -306,6 +324,7 @@ class ESSearchNews(Tool):
                         requested_size=size,
                         search_next=lambda next_body: _safe_es_search(next_body, index=index),
                         build_evidence=_build_candidates,
+                        **({"arc_review_scope": review_scope} if review_scope is not None else {}),
                     )
                 )
             else:
