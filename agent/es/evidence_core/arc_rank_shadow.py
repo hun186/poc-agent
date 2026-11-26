@@ -27,6 +27,12 @@ TOP_K = 20
 
 def observe_rank_shadow(evidence: list[EvidenceSnippet], groups: list[set[str]],
                         frequency: dict) -> dict:
+    return _compare_rank(evidence, groups, frequency)
+
+
+def _compare_rank(evidence, groups, frequency, *, _offline_order=None):
+    # Only the offline evaluator passes a local order collector; production
+    # observe_rank_shadow always returns aggregate counters, never row ranks.
     result = {
         "schema": "sraf_arc_rank_shadow_v1",
         "scope": "same_parser_slice_ordered_sample_strict_prefix",
@@ -113,6 +119,8 @@ def observe_rank_shadow(evidence: list[EvidenceSnippet], groups: list[set[str]],
     order = sorted(range(len(prefix)), key=priorities.__getitem__, reverse=True)
     coverage_only = sorted(range(len(prefix)),
                            key=lambda i: (*priorities[i][:3], -i), reverse=True)
+    if type(_offline_order) is list and not _offline_order:
+        _offline_order.extend(order)
     baseline = set(range(TOP_K))
     selected = set(order[:TOP_K])
     result.update(
