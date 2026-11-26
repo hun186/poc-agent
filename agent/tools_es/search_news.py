@@ -16,6 +16,7 @@ from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
 from agent.es.evidence_core.arc_relax_shadow import StrictSliceCounts, observe_low_volume, log_low_volume
 from agent.es.arc_request_budget import current_arc_budget
 from agent.es.arc_strategy_shadow import observe_strategy, strategy_enabled
+from agent.es.arc_llm_priority import llm_priority_enabled, observe_allocated_llm
 from agent.es.arc_review_scope import review_scope_enabled, make_final_review_input
 from agent.es.ordinary_scope_receipt import current_ordinary_scope_capture
 from agent.es.query_terms import compute_effective_terms
@@ -218,17 +219,19 @@ class ESSearchNews(Tool):
         pressure = None
         if (os.getenv("SRAF_ARC_TIGHTEN") == "shadow"
                 or os.getenv("SRAF_ARC_RELAX") == "shadow"
-                or strategy_enabled()) and capture is None:
+                or strategy_enabled() or llm_priority_enabled()) and capture is None:
             from agent.external_capabilities import requirement_acceptance_active
             if not requirement_acceptance_active():
                 pressure = CandidatePressure.from_primary(res)
-        strategy_pressure = pressure if strategy_enabled() else None
+        priority_mode = llm_priority_enabled()
+        strategy_pressure = pressure if strategy_enabled() or priority_mode else None
         strategy_diagnostics = {}
         # Optional count-only observation; original query and groups remain authoritative.
-        observe_bilingual_proposal(
-            original_question=get_original_report_question(),
-            groups=term_groups, manual=is_manual_entity_query,
-        )
+        if not priority_mode:
+            observe_bilingual_proposal(
+                original_question=get_original_report_question(),
+                groups=term_groups, manual=is_manual_entity_query,
+            )
         hits = ((res.get("hits") or {}).get("hits") or []) if isinstance(res, dict) else []
         # Query-body years also constrain time: align Evidence-stage refill.
         allowed_years = (
@@ -252,10 +255,11 @@ class ESSearchNews(Tool):
                     log_low_volume({"schema": "sraf_arc_relax_shadow_v1", "status": "unavailable"})
             if date_scoped:
                 if strategy_pressure is not None:
-                    observe_strategy(pressure=strategy_pressure, diagnostics=strategy_diagnostics,
-                                     final_count=0, strong_count=0, refill=None,
-                                     original_question=get_original_report_question(),
-                                     groups=term_groups, manual=is_manual_entity_query)
+                    observer = observe_allocated_llm if priority_mode else observe_strategy
+                    observer(pressure=strategy_pressure, diagnostics=strategy_diagnostics,
+                             final_count=0, strong_count=0, refill=None,
+                             original_question=get_original_report_question(),
+                             groups=term_groups, manual=is_manual_entity_query)
                 query_meta = build_query_meta(
                     raw_query=raw_query,
                     es_query=es_query,
@@ -335,7 +339,8 @@ class ESSearchNews(Tool):
         weak_snippets = [ev for ev in evidence_snippets if ev.get("weak_evidence")]
 
         if strategy_pressure is not None:
-            observe_strategy(pressure=strategy_pressure, diagnostics=strategy_diagnostics,
+            observer = observe_allocated_llm if priority_mode else observe_strategy
+            observer(pressure=strategy_pressure, diagnostics=strategy_diagnostics,
                              final_count=len(evidence_snippets), strong_count=len(strong_snippets),
                              refill=date_refill_meta, original_question=get_original_report_question(),
                              groups=term_groups, manual=is_manual_entity_query)
