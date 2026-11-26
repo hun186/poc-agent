@@ -18,3 +18,12 @@ does not offset increased failures. Small-sample percentiles are descriptive
 only. This does not collect telemetry, prove pairing or quality, or authorize
 deployment; actual instrumented private A/B runs remain pending. No provider,
 ES, model or selection changes. CLI wiring may follow separately.
+
+
+## Local CLI
+
+```bash
+python -m agent.es.evidence_core.arc_eval_cli resources PRIVATE_RESOURCE_CASES.json
+```
+
+The existing 2 MiB input bound and fixed error handling apply. Output is aggregate-only; actual measurement capture is not performed by this command.
