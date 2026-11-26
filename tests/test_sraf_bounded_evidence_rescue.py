@@ -1299,3 +1299,71 @@ def test_a9_relax_replay_reports_pilot_subset_separately():
     assert result["pilot_comparison"]["full_selection"]["baseline"]["selected"]==1
     assert result["pilot_comparison"]["full_selection"]["candidate"]["selected"]==3
     assert "甲軸" not in repr(result)
+
+
+def test_a6_pipeline_pilot_actual_builder_preserves_strict_and_weak_serialization(monkeypatch):
+    from agent.es.evidence_core.arc_relax_replay import replay_relax_cases
+    monkeypatch.setenv("SRAF_ARC_MODE","off")
+    monkeypatch.setenv("SRAF_TOPIC_MATCH_ADAPTIVE","off")
+    monkeypatch.delenv("SRAF_EVIDENCE_RESCUE",raising=False)
+    monkeypatch.delenv("SRAF_EVIDENCE_SHARED_SOURCE_BUDGET",raising=False)
+    case = _a9_relax_case()
+    fixture = _a9_relax_labeled(case)
+    result = replay_relax_cases([fixture])
+    assert result["pipeline_status_counts"] == {"pipeline_parity":1}
+    assert result["pipeline_comparison"] == result["pilot_comparison"]
+    assert result["pipeline_comparison"]["full_selection"]["candidate"]["selected"]==3
+    assert len(_build(case["response"]["hits"]["hits"])[1])==1
+
+
+@pytest.mark.parametrize("flag,value", [
+    ("SRAF_EVIDENCE_RESCUE","1"),
+    ("SRAF_TOPIC_MATCH_ADAPTIVE","on"),
+    ("SRAF_TOPIC_MATCH_ADAPTIVE","shadow"),
+    ("SRAF_EVIDENCE_SHARED_SOURCE_BUDGET","1"),
+])
+def test_a6_pipeline_pilot_incompatible_legacy_selection_never_certifies_parity(monkeypatch,flag,value):
+    from agent.es.evidence_core.arc_relax_replay import replay_relax_cases
+    monkeypatch.setenv("SRAF_ARC_MODE","off")
+    monkeypatch.setenv("SRAF_TOPIC_MATCH_ADAPTIVE","off")
+    monkeypatch.delenv("SRAF_EVIDENCE_RESCUE",raising=False)
+    monkeypatch.delenv("SRAF_EVIDENCE_SHARED_SOURCE_BUDGET",raising=False)
+    fixture = _a9_relax_labeled(_a9_relax_case())
+    monkeypatch.setenv(flag,value)
+    result = replay_relax_cases([fixture])
+    assert result["pilot_status_counts"] == {"pilot_candidate_prepared":1}
+    assert result["pipeline_comparison"] is None
+    assert sum(result["pipeline_status_counts"].values())==1
+    assert "pipeline_parity" not in result["pipeline_status_counts"]
+
+
+def test_a6_pipeline_check_failure_keeps_counterfactual_without_certifying(monkeypatch):
+    from agent.es.evidence_core import arc_relax_replay as replay
+    fixture = _a9_relax_labeled(_a9_relax_case())
+    def fail(*a,**kw):
+        raise RuntimeError("PRIVATE_FAILURE")
+    monkeypatch.setattr(replay,"build_hits_and_evidence",fail)
+    result = replay.replay_relax_cases([fixture])
+    assert result["pipeline_status_counts"] == {"pipeline_unavailable":1}
+    assert result["pipeline_comparison"] is None
+    assert result["pilot_comparison"] is not None
+    assert "PRIVATE_FAILURE" not in repr(result)
+
+
+def test_a6_offline_builder_never_applies_pilot_without_shared_budget(monkeypatch):
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    monkeypatch.setenv("SRAF_ARC_MODE","off")
+    monkeypatch.setenv("SRAF_TOPIC_MATCH_ADAPTIVE","off")
+    monkeypatch.delenv("SRAF_EVIDENCE_RESCUE",raising=False)
+    monkeypatch.delenv("SRAF_EVIDENCE_SHARED_SOURCE_BUDGET",raising=False)
+    case=_a9_relax_case()
+    status={}
+    _, rows, _ = build_hits_and_evidence(
+        case["response"]["hits"]["hits"],date_from=case["date_from"],date_to=case["date_to"],
+        effective_terms=["甲軸","乙軸","丙軸"],term_groups=AXES,
+        query_for_snippet=case["query"],original_question=case["question"],
+        include_source_hit_ordinal=True,
+        arc_candidate_pressure=CandidatePressure.from_primary(case["response"]),
+        _offline_a6_pilot=True,_offline_a6_status=status)
+    assert len(rows)==1 and rows[0]["match_policy"]=="strict"
+    assert status["status"]=="incompatible_scope_or_rescue"
