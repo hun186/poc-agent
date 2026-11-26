@@ -73,6 +73,7 @@ def prepare_private_semantic_grant(
     complete: bool,
     assessor: Callable[[CoverageTarget, PrivateCanonicalEvidence], bool] | None,
     max_semantic_checks: int = 512,
+    deep_rank_frequency=None,
 ) -> CanonicalSemanticGrant:
     """Produce witnesses bound to canonical source+text, not arbitrary ES hits.
 
@@ -106,6 +107,7 @@ def prepare_private_semantic_grant(
             original_question=constraints.question,
             complete=True,
             private_evidence=captured, private_report_rows=report_rows,
+            **({"deep_rank_frequency": deep_rank_frequency} if deep_rank_frequency is not None else {}),
         )
         if set(captured) != obs.evidence_source_pairs:
             raise ValueError("incomplete_capture")
