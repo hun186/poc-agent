@@ -58,7 +58,7 @@ def _pipeline_check(case, groups, pressure, baseline, added):
     The sample is exhausted, so use its returned source count as the
     declared result limit, not a guessed original production request size.
     """
-    from agent.tools_es.date_refill import refill_date_filtered_evidence
+    from agent.es.date_refill import refill_date_filtered_evidence
 
     response = case["response"]
     raw_hits = response["hits"]["hits"]
