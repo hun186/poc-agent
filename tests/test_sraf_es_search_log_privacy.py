@@ -536,3 +536,31 @@ def test_arc_a5_no_date_fallback_does_not_reuse_primary_pressure(monkeypatch):
     monkeypatch.setattr(search_module, "build_hits_and_evidence", build)
     search_module.ESSearchNews.forward.__wrapped__(object(), query="SECRET_QUERY", size=5)
     assert calls == [None]
+
+
+def test_arc_a6_exact_empty_primary_logged_without_requery(monkeypatch, caplog):
+    import json
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    monkeypatch.setenv("SRAF_ARC_RELAX", "shadow")
+    monkeypatch.delenv("SRAF_ARC_ES_FREQUENCY", raising=False)
+    monkeypatch.delenv("SRAF_ARC_BILINGUAL", raising=False)
+    response = _native_primary("SECRET_INDEX")
+    response["hits"] = {"total": {"value": 0, "relation": "eq"}, "hits": []}
+    calls = []
+    def search(body, *, index):
+        calls.append(body)
+        return response
+    _prepare(monkeypatch, responder=search)
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)):
+        result = search_module.ESSearchNews.forward.__wrapped__(
+            object(), query="SECRET_QUERY", size=5,
+            date_from="2020-01-01", date_to="2020-12-31")
+    assert len(calls) == 1 and result["hits"] == []
+    assert result["query_meta"]["note"] == "0_hits_with_date_filter"
+    prefix = "SRAF_ARC_RELAX_SHADOW="
+    rows = [json.loads(r.getMessage().split(prefix, 1)[1])
+            for r in caplog.records if r.getMessage().startswith(prefix)]
+    assert len(rows) == 1 and rows[0]["status"] == "primary_exact_zero"
+    assert budget.snapshot()[0] == ArcUnits()
+    assert "SECRET_QUERY" not in caplog.text and "SECRET_INDEX" not in caplog.text
