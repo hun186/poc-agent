@@ -14,7 +14,7 @@ from hashlib import sha256
 import json
 
 from .arc_relax_shadow import (
-    _compare_low_volume, _identity, StrictSliceCounts, MAX_HITS, MAX_ROWS,
+    prepare_low_volume_pilot, _identity, StrictSliceCounts, MAX_HITS, MAX_ROWS,
     MAX_ROWS_PER_HIT, MAX_CHARS, MAX_ROW_CHARS, TARGET_STRICT,
 )
 from .arc_tighten_shadow import CandidatePressure
@@ -39,6 +39,7 @@ class _PreparedCase:
     digest: str = field(repr=False)
     rows: tuple[dict, ...] = field(repr=False)
     observation: dict = field(repr=False)
+    pilot_status: str
 
 
 def _date_window(start, end):
@@ -123,14 +124,12 @@ def _prepare(case):
             universe.append((key, ev))
     if len(universe) != counts.canonical_eligible or not set(baseline).issubset(seen):
         return None
-    candidates = []
     budget = ArcRequestBudget()
     try:
         with bind_arc_budget((budget, 1)):
-            observation = _compare_low_volume(
+            observation, candidates, pilot_rows, pilot_status = prepare_low_volume_pilot(
                 hits, strict, groups, counts=counts, pressure=pressure,
                 original_question=q, date_from=start, date_to=end, allowed_years=None,
-                _offline_candidates=candidates,
             )
     finally:
         budget.seal()
@@ -156,7 +155,7 @@ def _prepare(case):
     digest = sha256(raw + b"\x00" + json.dumps(
         rows, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
         allow_nan=False).encode("utf-8")).hexdigest()
-    return _PreparedCase(digest, rows, observation)
+    return _PreparedCase(digest, rows, observation, pilot_status)
 
 
 def prepare_relax_annotation(case):
@@ -181,6 +180,8 @@ def replay_relax_cases(cases):
     if type(cases) is not list or not 1 <= len(cases) <= MAX_CASES:
         return None
     paired = []
+    pilot_paired = []
+    pilot_status_counts = {}
     added = total_rows = total_bytes = 0
     for fixture in cases:
         try:
@@ -215,8 +216,12 @@ def replay_relax_cases(cases):
             total_rows += len(prepared.rows)
             if total_rows > MAX_TOTAL_ROWS:
                 return None
-            paired.append([{**{k: v for k, v in row.items() if k != "text"},
-                            "gold": gold[row["ordinal"]]} for row in prepared.rows])
+            case_rows = [{**{k: v for k, v in row.items() if k != "text"},
+                          "gold": gold[row["ordinal"]]} for row in prepared.rows]
+            paired.append(case_rows)
+            pilot_status_counts[prepared.pilot_status] = pilot_status_counts.get(prepared.pilot_status, 0) + 1
+            if prepared.pilot_status == "pilot_candidate_prepared":
+                pilot_paired.append(case_rows)
             added += prepared.observation["hypothetical_add_cap"]
         except (ValueError, TypeError, KeyError, AttributeError, OverflowError, RecursionError):
             return None
@@ -225,4 +230,7 @@ def replay_relax_cases(cases):
         return None
     return {"schema": "sraf_arc_relax_replay_v1",
             "scope": "operator_frozen_first_primary_legacy_parser_strict_vs_bounded_additions",
-            "hypothetical_added": added, "comparison": result}
+            "hypothetical_added": added, "comparison": result,
+            "pilot_scope": "exhausted_nonzero_strict_linked_event_legacy_parser_only",
+            "pilot_status_counts": pilot_status_counts,
+            "pilot_comparison": evaluate_selection_cases(pilot_paired) if pilot_paired else None}

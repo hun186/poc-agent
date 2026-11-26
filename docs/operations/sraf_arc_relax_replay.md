@@ -64,3 +64,30 @@ upload or commit it. The preparation command creates an exclusive new file
 already private directory ACL on Windows. It emits only count/status JSON
 to stdout. A failed write may leave a partial file, never treated as valid.
 Input and generated output are each limited to 2 MiB. No ES/LLM calls.
+
+
+## Narrow A6 pilot preparation (offline, not activation)
+
+The original strict-only counterfactual remains a diagnostic and includes
+zero-strict cases. It must not be used as proof that the real legacy
+zero-strict fallback is inferior. The narrower pilot candidate preparation
+reuses the same bounded A6 scan and requires 1–2 strict rows, an exact
+exhausted primary result (total equals returned), an untruncated parsed
+scan, an explicit ISO date window, and a strong strict row carrying the
+explicit required subject and a linked matched event date. Each of the
+first proposed additions must carry structured linked matched event dates;
+otherwise the whole pilot proposal is rejected rather than choosing a
+different ordering. Prepared additions are new EvidenceSnippet objects,
+marked adaptive_two_axis, text scope, two matched groups and weak evidence.
+They preserve the canonical dates, source ordinal, block and event identity.
+No mutation of existing strict rows.
+
+The existing relax-replay output retains the broad comparison and adds a
+separate pilot_status_counts and pilot_comparison (null if no eligible
+cases). Pilot comparison is only the eligible subset of operator-frozen
+legacy-parser cases. It does not compare the entire production pipeline,
+other rescue modes, final report selection or actual measured resources.
+A successful candidate preparation is not authority to activate it. The
+ordinary report integration, live authorization, compatible rescue policy,
+quality/resource acceptance and explicit rollout remain independent gates.
+No new env flag, no production builder call and no live data access.
