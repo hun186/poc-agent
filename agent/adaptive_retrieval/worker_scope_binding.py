@@ -39,6 +39,7 @@ class WorkerScopeBinding:
         check_single_branch_coverage: Callable[
             [ReportJob, QueryConstraints, tuple[str, ...]], bool
         ],
+        check_frequency_scope: Callable[[ReportJob, QueryConstraints], bool] | None = None,
     ) -> None:
         if (type(job) is not ReportJob
                 or job.status != "running"
@@ -57,7 +58,8 @@ class WorkerScopeBinding:
                 or not set(constraints.allowed_indexes).issubset(
                     set(authorized_indexes))
                 or not callable(check_index_access)
-                or not callable(check_single_branch_coverage)):
+                or not callable(check_single_branch_coverage)
+                or (check_frequency_scope is not None and not callable(check_frequency_scope))):
             raise WorkerScopeBindingError("invalid_job_scope_binding")
         self._job = job
         self._constraints = constraints
@@ -65,6 +67,7 @@ class WorkerScopeBinding:
         self._authorized_indexes = authorized_indexes
         self._check_index = check_index_access
         self._check_branches = check_single_branch_coverage
+        self._check_frequency_scope = check_frequency_scope
         self._lock = Lock()
         self._binding_token = object()
         self._attested_rounds: set[int] = set()
@@ -103,6 +106,65 @@ class WorkerScopeBinding:
             # This exact plan, not merely a matching same-round plan, was
             # explicitly authorized before any ES request was issued.
             self._preflight_plans[plan.round_number] = plan
+
+    def admit_optional_frequency(self, plan: FrozenSingleQueryPlan, fence) -> bool:
+        """Authorize/charge one optional count query, not a canonical page.
+
+        A trusted adapter must call after taking the complete same-round
+        fence results, while its PIT is still open. The independent frequency
+        policy must explicitly allow the broader date/entity denominator;
+        a canonical query permission alone is insufficient. No IO here.
+        """
+        from agent.es.arc_request_budget import ArcUnits, current_arc_budget
+        from .es_page_fence import RoundESPageFence
+
+        with self._lock:
+            if (self._check_frequency_scope is None
+                    or type(plan) is not FrozenSingleQueryPlan
+                    or type(fence) is not RoundESPageFence
+                    or plan._owner_binding_token is not self._binding_token
+                    or plan.constraints is not self._constraints
+                    or plan.coordinator is not self._coordinator
+                    or plan.authorized_indexes != self._authorized_indexes
+                    or plan.branch_code != "CANONICAL_MAIN"
+                    or self._preflight_plans.get(plan.round_number) is not plan
+                    or plan.round_number in self._attested_rounds
+                    or fence._coordinator is not self._coordinator
+                    or fence._constraints is not self._constraints
+                    or fence._round != plan.round_number
+                    or fence._execution_token is not plan._execution_token):
+                return False
+            # The completed/consumed fence is immutable for this purpose:
+            # read its completion state under the fence lock.
+            with fence._lock:
+                if (not fence._consumed or not fence._complete
+                        or fence._failed is not None or fence._pending is not None):
+                    return False
+                pages = fence._page_count
+            scope = current_arc_budget()
+            if scope is None or scope[1] != plan.round_number:
+                return False
+            budget, ordinal = scope
+            try:
+                self._check_live_policy()
+                if self._check_frequency_scope(self._job, self._constraints) is not True:
+                    return False
+            except Exception:
+                return False
+            # Authorization callbacks may block; coordinator rechecks active
+            # round, exact owner/execution identity and time on admission.
+            progress = self._coordinator.safe_progress()
+            if (progress["phase"] != "SEARCHING"
+                    or progress["round"] != plan.round_number):
+                return False
+            if not budget.reserve(ordinal, ArcUnits(es_calls=1)):
+                return False
+            # Conservative nonrefund: ARC slot remains charged if main budget
+            # subsequently denies this optional query. Never cancel the round.
+            return self._coordinator._admit_optional_frequency(
+                plan.round_number, owner_token=self._binding_token,
+                execution_token=plan._execution_token, completed_pages=pages,
+            )
 
     def attest(
         self, plan: FrozenSingleQueryPlan, receipt: CompletedSingleQueryRound,
