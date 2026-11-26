@@ -1225,3 +1225,64 @@ def test_shared_strong_first_report_selection_keeps_exact_legacy_behavior():
         assert picked == expected
         assert all(a is b for a,b in zip(picked,expected))
     assert [row["text"] for row in rows] == [str(i) for i in range(6)]
+
+
+def test_a5_report_replay_distinguishes_real_cap_from_full_prefix_loss():
+    from test_sraf_bounded_evidence_rescue import _a9_tighten_replay_case
+    from agent.es.evidence_core.arc_tighten_replay import replay_tightening_cases
+    for limit, lost, selected in ((20, 0, 20), (120, 10, 50)):
+        case = _a9_tighten_replay_case()
+        case["report_selection"] = {"scope":"complete_report_input_strong_first","limit":limit}
+        result = replay_tightening_cases([case])
+        assert result["report_selection_limit_cases"] == {str(limit):1}
+        for strategy in result["strategies"].values():
+            assert strategy["comparison"]["full_selection"]["removed"]["relevant"] == 10
+            assert strategy["report_selection_cases"] == 1
+            assert strategy["report_floor_fallback_cases"] == 0
+            comp = strategy["report_selection_comparison"]["full_selection"]
+            assert comp["baseline"]["selected"] == selected
+            assert comp["candidate"]["selected"] == 20
+            assert comp["removed"]["relevant"] == lost
+            assert comp["baseline_relevant_source_loss"]["numerator"] == lost
+        assert "美國" not in repr(result)
+
+
+def test_a5_report_replay_retains_baseline_when_candidate_floor_fails():
+    from test_sraf_bounded_evidence_rescue import _a9_tighten_replay_case
+    from agent.es.evidence_core.arc_tighten_replay import replay_tightening_cases
+    case = _a9_tighten_replay_case()
+    for row in case["rows"][:20]:
+        row["weak"] = True
+    case["report_selection"] = {"scope":"complete_report_input_strong_first","limit":120}
+    result = replay_tightening_cases([case])
+    for strategy in result["strategies"].values():
+        assert strategy["sample_floor_met_cases"] == 0
+        assert strategy["comparison"]["full_selection"]["candidate"]["selected"] == 0
+        assert strategy["report_floor_fallback_cases"] == 1
+        comp = strategy["report_selection_comparison"]["full_selection"]
+        assert comp["baseline"] == comp["candidate"]
+        assert comp["candidate"]["selected"] == 50
+        assert comp["removed"]["relevant"] == 0
+
+
+@pytest.mark.parametrize("selection", [None, {}, {"scope":"prefix","limit":20},
+    {"scope":"source_diverse","limit":20},
+    {"scope":"complete_report_input_strong_first","limit":True},
+    {"scope":"complete_report_input_strong_first","limit":0},
+    {"scope":"complete_report_input_strong_first","limit":129}])
+def test_a5_report_replay_requires_explicit_complete_report_scope(selection):
+    from test_sraf_bounded_evidence_rescue import _a9_tighten_replay_case
+    from agent.es.evidence_core.arc_tighten_replay import replay_tightening_cases
+    case = _a9_tighten_replay_case()
+    case["report_selection"] = selection
+    assert replay_tightening_cases([case]) is None
+
+
+def test_a5_report_replay_legacy_fixture_retains_counterfactual_only():
+    from test_sraf_bounded_evidence_rescue import _a9_tighten_replay_case
+    from agent.es.evidence_core.arc_tighten_replay import replay_tightening_cases
+    result = replay_tightening_cases([_a9_tighten_replay_case()])
+    assert result["report_selection_limit_cases"] == {}
+    for strategy in result["strategies"].values():
+        assert strategy["report_selection_cases"] == 0
+        assert strategy["report_selection_comparison"] is None
