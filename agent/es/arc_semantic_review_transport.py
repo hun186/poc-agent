@@ -68,6 +68,21 @@ def _approved_endpoint(index):
     return _ApprovedEndpoint(endpoint, model, index, ca if ca else True)
 
 
+class _RejectedResponse(Exception):
+    """A response rejected before Requests can buffer a redirect body."""
+
+
+def _reject_unapproved_response(response, *args, **kwargs):
+    # Session.send may prepare the next redirect even with allow_redirects=False.
+    # Response hooks run BEFORE that code path. Closing the raw stream without
+    # reading is essential for the same size/encoding bounds on rejected replies.
+    if (response.status_code != 200
+            or response.headers.get("Content-Encoding", "identity").lower() != "identity"):
+        response.close()
+        raise _RejectedResponse()
+    return response
+
+
 def _request_review(approved, batch):
     payload = {
         "model": approved.model, "stream": False,
@@ -79,22 +94,26 @@ def _request_review(approved, batch):
     # proxies/netrc, and redirects. No retry, no alternate provider.
     started = time.monotonic()
     body = bytearray()
-    with requests.Session() as session:
-        session.trust_env = False
-        with session.post(
-            approved.url, json=payload, timeout=(3, REQUEST_TIMEOUT_SECONDS),
-            allow_redirects=False, verify=approved.verify, stream=True,
-            headers={"Accept-Encoding": "identity"},
-        ) as response:
-            if (response.status_code != 200
-                    or response.headers.get("Content-Encoding", "identity").lower() != "identity"):
-                return None
-            for chunk in response.iter_content(chunk_size=4096):
-                if time.monotonic() - started > REQUEST_TIMEOUT_SECONDS:
+    try:
+        with requests.Session() as session:
+            session.trust_env = False
+            with session.post(
+                approved.url, json=payload, timeout=(3, REQUEST_TIMEOUT_SECONDS),
+                allow_redirects=False, verify=approved.verify, stream=True,
+                headers={"Accept-Encoding": "identity"},
+                hooks={"response": _reject_unapproved_response},
+            ) as response:
+                if (response.status_code != 200
+                        or response.headers.get("Content-Encoding", "identity").lower() != "identity"):
                     return None
-                if len(body) + len(chunk) > MAX_RESPONSE_BYTES:
-                    return None
-                body.extend(chunk)
+                for chunk in response.iter_content(chunk_size=4096):
+                    if time.monotonic() - started > REQUEST_TIMEOUT_SECONDS:
+                        return None
+                    if len(body) + len(chunk) > MAX_RESPONSE_BYTES:
+                        return None
+                    body.extend(chunk)
+    except _RejectedResponse:
+        return None
     if time.monotonic() - started > REQUEST_TIMEOUT_SECONDS:
         return None
     try:
