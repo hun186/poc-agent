@@ -15,6 +15,7 @@ from typing import Any
 import requests
 
 from agent.llm_utils.ollama_client import _llm_failure_category
+from agent.arc_ordinary_resource_metrics import observed_attempt
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ def observe_data_agent_model(model: Any) -> Any:
     def observed_generate(*args: Any, **kwargs: Any) -> Any:
         started = time.perf_counter()
         try:
-            result = generate(*args, **kwargs)
+            result = observed_attempt("data_agent_generate", generate, *args, **kwargs)
         except Exception as exc:
             elapsed = time.perf_counter() - started
             if not math.isfinite(elapsed):
