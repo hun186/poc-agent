@@ -11,6 +11,8 @@ page-chain completeness, not semantic request-wide coverage or Word readiness.
 """
 from __future__ import annotations
 
+from agent.arc_mode import arc_shadow_enabled
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -253,7 +255,6 @@ def search_fenced_es_round(
         from .arc_deep_frequency_transport import observe_same_pit_frequency, log_same_pit_frequency
         from .arc_deep_rank_receipt import DeepRoundRankReceipt
         from agent.es.arc_native_rank_receipt import DeepNativeRankFrequency
-        import os
 
     pit_id: str | None = None
     frequency_record = None
@@ -333,7 +334,7 @@ def search_fenced_es_round(
         verified = log_same_pit_frequency(frequency_record, plan=frequency_plan,
                                           binding=frequency_binding)
         if (verified is not None and type(frequency_receipts) is list
-                and not frequency_receipts and os.getenv("SRAF_ARC_RANK_DEEP") == "shadow"
+                and not frequency_receipts and arc_shadow_enabled("SRAF_ARC_RANK_DEEP")
                 and frequency_groups == tuple(frozenset(g) for g in coordinator._groups)):
             frequency = DeepNativeRankFrequency.from_record(
                 verified, groups=frequency_groups,
