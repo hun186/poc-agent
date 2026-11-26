@@ -6,6 +6,8 @@ egress; they are not a substitute for owner or document authorization.
 """
 from __future__ import annotations
 
+from agent.arc_mode import arc_shadow_enabled
+
 import json
 import logging
 import os
@@ -40,7 +42,7 @@ class _ApprovedEndpoint:
 
 
 def _approved_endpoint(index):
-    if (os.getenv("SRAF_ARC_REVIEW") != "shadow"
+    if (not arc_shadow_enabled("SRAF_ARC_REVIEW")
             or os.getenv("SRAF_ARC_REVIEW_EGRESS") != "approved"):
         return None
     endpoint = os.getenv("SRAF_ARC_REVIEW_ENDPOINT", "")
@@ -175,7 +177,7 @@ def observe_semantic_review(batch, *, index, authorize=None):
     resolved endpoint and their own source scope. The standalone transport
     uses explicit synthetic authorization in isolated tests; a budget reservation is not authorization.
     """
-    if os.getenv("SRAF_ARC_REVIEW") != "shadow":
+    if not arc_shadow_enabled("SRAF_ARC_REVIEW"):
         return
     from agent.external_capabilities import requirement_acceptance_active
 
@@ -207,7 +209,7 @@ def observe_semantic_review(batch, *, index, authorize=None):
             record["status"] = "shared_budget_exhausted"
             return
         measured = None
-        if os.getenv("SRAF_ARC_REVIEW_RESOURCE_METRICS") == "shadow":
+        if arc_shadow_enabled("SRAF_ARC_REVIEW_RESOURCE_METRICS"):
             summary, measured = _measured_review(approved, batch)
         else:
             summary = _request_review(approved, batch)

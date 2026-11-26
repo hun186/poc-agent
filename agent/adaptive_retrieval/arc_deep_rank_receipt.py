@@ -1,9 +1,10 @@
 """One-shot private rank observation from a verified deep PIT round."""
 from __future__ import annotations
 
+from agent.arc_mode import arc_shadow_enabled
+
 from dataclasses import dataclass, field
 from threading import Lock
-import os
 
 from agent.es.arc_native_rank_receipt import DeepNativeRankFrequency
 from .round_query_execution import FrozenSingleQueryPlan, CompletedSingleQueryRound
@@ -25,7 +26,7 @@ class DeepRoundRankReceipt:
             if self._used:
                 return None
             self._used = True
-            if (os.getenv("SRAF_ARC_RANK_DEEP") != "shadow"
+            if (not arc_shadow_enabled("SRAF_ARC_RANK_DEEP")
                     or plan is not self.plan or binding is not self.binding
                     or type(fetched) is not CompletedSingleQueryRound
                     or fetched._execution_token is not plan._execution_token

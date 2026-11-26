@@ -15,7 +15,8 @@ No production switch is provided.
 """
 from __future__ import annotations
 
-import os
+from agent.arc_mode import arc_shadow_enabled
+
 from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
 
 from dataclasses import dataclass, field
@@ -135,7 +136,7 @@ def run_trusted_nround(
                          and job_scope_binding is not None
                          and job_scope_binding._check_frequency_scope is not None else None)
     arc_budget = ArcRequestBudget() if (
-        os.getenv("SRAF_ARC_GROUP_FREQUENCY") == "shadow" or frequency_binding is not None
+        arc_shadow_enabled("SRAF_ARC_GROUP_FREQUENCY") or frequency_binding is not None
         or review_binding is not None
     ) else None
 

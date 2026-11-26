@@ -1,6 +1,8 @@
 # agent/data_agent/runtime.py
 from __future__ import annotations
 
+from agent.arc_mode import arc_shadow_enabled
+
 import re
 import os
 import time
@@ -266,13 +268,13 @@ def run_data_agent(
     report_mode = (mode or "").strip().lower() in ("report", "sra_report")
     topic_audit_sink: list[dict] = []
     with data_agent_arc_budget(enabled=report_mode and (
-        os.getenv("SRAF_ARC_GROUP_FREQUENCY") == "shadow" or native_frequency_enabled()
+        arc_shadow_enabled("SRAF_ARC_GROUP_FREQUENCY") or native_frequency_enabled()
         or bilingual_shadow_enabled()
-        or os.getenv("SRAF_ARC_TIGHTEN") == "shadow"
-        or os.getenv("SRAF_ARC_RELAX") == "shadow"
-        or os.getenv("SRAF_ARC_STRATEGY") == "shadow"
-        or os.getenv("SRAF_ARC_REVIEW_SCOPE") == "shadow"
-        or os.getenv("SRAF_ARC_LLM_PRIORITY") == "shadow"
+        or arc_shadow_enabled("SRAF_ARC_TIGHTEN")
+        or arc_shadow_enabled("SRAF_ARC_RELAX")
+        or arc_shadow_enabled("SRAF_ARC_STRATEGY")
+        or arc_shadow_enabled("SRAF_ARC_REVIEW_SCOPE")
+        or arc_shadow_enabled("SRAF_ARC_LLM_PRIORITY")
     )), bind_sink(topic_audit_sink):
         with bind_original_report_question(question_raw if report_mode else None):
             code_agent = build_agent(mode=mode)

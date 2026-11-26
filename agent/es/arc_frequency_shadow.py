@@ -7,6 +7,8 @@ runtime fence, not a substitute for tenant authorization.
 """
 from __future__ import annotations
 
+from agent.arc_mode import arc_shadow_enabled
+
 import json
 import logging
 import os
@@ -24,7 +26,7 @@ _INDEX = re.compile(r"[a-z0-9][a-z0-9_.-]{0,127}\Z")
 
 
 def native_frequency_enabled() -> bool:
-    return os.getenv("SRAF_ARC_ES_FREQUENCY") == "shadow"
+    return arc_shadow_enabled("SRAF_ARC_ES_FREQUENCY")
 
 
 def _primary_scope_verified(index, body, response, plan) -> bool:

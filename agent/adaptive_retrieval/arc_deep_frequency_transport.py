@@ -5,6 +5,8 @@ plan and owner binding. It cannot open a PIT or alter canonical Evidence.
 """
 from __future__ import annotations
 
+from agent.arc_mode import arc_shadow_enabled
+
 import logging
 import json
 import os
@@ -23,7 +25,7 @@ MAX_COUNT = 2**63 - 1
 
 
 def deep_frequency_enabled():
-    return os.getenv("SRAF_ARC_DEEP_FREQUENCY") == "shadow"
+    return arc_shadow_enabled("SRAF_ARC_DEEP_FREQUENCY")
 
 
 def observe_same_pit_frequency(*, plan, binding, fence, client, pit_id,

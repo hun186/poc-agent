@@ -6,6 +6,8 @@ A8 is not callable here until a separately authorized live caller exists.
 """
 from __future__ import annotations
 
+from agent.arc_mode import arc_shadow_enabled
+
 import json
 import logging
 import os
@@ -21,7 +23,7 @@ _LOG = logging.getLogger("sraf.arc.llm_priority")
 
 
 def llm_priority_enabled():
-    return os.getenv("SRAF_ARC_LLM_PRIORITY") == "shadow"
+    return arc_shadow_enabled("SRAF_ARC_LLM_PRIORITY")
 
 
 def choose_llm_work(*, pressure, diagnostics, final_count, strong_count, refill,

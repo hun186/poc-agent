@@ -6,6 +6,8 @@ permission. Never persist or expose the receipt or batch.
 """
 from __future__ import annotations
 
+from agent.arc_mode import arc_shadow_enabled
+
 from dataclasses import dataclass, field, replace
 from datetime import date
 import json
@@ -28,7 +30,7 @@ _ORIGIN = "__sraf_source_hit_ordinal"
 
 
 def review_scope_enabled(index):
-    return (os.getenv("SRAF_ARC_REVIEW_SCOPE") == "shadow"
+    return (arc_shadow_enabled("SRAF_ARC_REVIEW_SCOPE")
             and type(index) is str and _INDEX.fullmatch(index) is not None
             and ".." not in index
             and index == os.getenv("SRAF_ARC_REVIEW_VERIFIED_INDEX"))
