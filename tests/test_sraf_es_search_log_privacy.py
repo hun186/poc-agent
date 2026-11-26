@@ -491,3 +491,48 @@ def test_arc_native_rank_receipt_consumed_only_on_first_refill_build(monkeypatch
         date_from="2020-01-01", date_to="2020-12-31")
     assert calls == [receipt, None]
     assert "native_rank_frequency" not in repr(result)
+
+
+def test_arc_a5_pressure_consumed_only_on_first_refill_build(monkeypatch):
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    monkeypatch.setenv("SRAF_ARC_TIGHTEN", "shadow")
+    monkeypatch.delenv("SRAF_ARC_ES_FREQUENCY", raising=False)
+    monkeypatch.delenv("SRAF_ARC_BILINGUAL", raising=False)
+    primary = _native_primary("SECRET_INDEX")
+    primary["hits"]["total"] = {"value": 10000, "relation": "gte"}
+    calls = []
+    _prepare(monkeypatch, responder=lambda body, *, index: primary)
+
+    def build(hits, **kw):
+        calls.append(kw.get("arc_candidate_pressure"))
+        return [], [], 0
+
+    def refill(**kw):
+        builder = kw["build_evidence"]
+        hits = primary["hits"]["hits"]
+        builder(hits[:])
+        builder(hits[:] + hits[:])
+        return [], [], 0, {"incomplete_due_to_scan_limit": False}
+
+    monkeypatch.setattr(search_module, "build_hits_and_evidence", build)
+    monkeypatch.setattr(search_module, "refill_date_filtered_evidence", refill)
+    result = search_module.ESSearchNews.forward.__wrapped__(
+        object(), query="SECRET_QUERY", size=5,
+        date_from="2020-01-01", date_to="2020-12-31")
+    assert calls == [CandidatePressure("gte", 10000, 1), None]
+    assert "arc_candidate_pressure" not in repr(result)
+
+
+def test_arc_a5_no_date_fallback_does_not_reuse_primary_pressure(monkeypatch):
+    monkeypatch.setenv("SRAF_ARC_TIGHTEN", "shadow")
+    monkeypatch.delenv("SRAF_ARC_ES_FREQUENCY", raising=False)
+    monkeypatch.delenv("SRAF_ARC_BILINGUAL", raising=False)
+    calls = []
+    responses = iter([_response(with_hits=False), _response(with_hits=True)])
+    _prepare(monkeypatch, responder=lambda body, *, index: next(responses))
+    def build(hits, **kw):
+        calls.append(kw.get("arc_candidate_pressure"))
+        return [], [], 0
+    monkeypatch.setattr(search_module, "build_hits_and_evidence", build)
+    search_module.ESSearchNews.forward.__wrapped__(object(), query="SECRET_QUERY", size=5)
+    assert calls == [None]
