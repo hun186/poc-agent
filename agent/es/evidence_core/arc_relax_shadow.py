@@ -6,7 +6,8 @@ No model, ES calls, source refill, or modification of Evidence.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import date
 import json
 import logging
 
@@ -15,6 +16,7 @@ from .arc_tighten_shadow import CandidatePressure
 from .cross_language_alias import alias_matches, _collision_key
 from .question_anchor import derive_explicit_question_anchor
 from .snippet import build_evidence_snippet
+from .models import EvidenceSnippet
 
 _LOG = logging.getLogger("sraf.arc.relax_shadow")
 TARGET_STRICT = 3
@@ -58,7 +60,7 @@ def observe_low_volume(hits, strict, groups, *, counts, pressure,
 
 def _compare_low_volume(hits, strict, groups, *, counts, pressure,
                         original_question, date_from, date_to, allowed_years,
-                        _offline_candidates=None):
+                        _offline_candidates=None, _private_candidate_rows=None):
     # The public observer remains aggregate-only. Offline replay may collect
     # the first hypothetical cap of distinct eligible identities in scan
     # order; this is a declared counterfactual, not production selection.
@@ -169,6 +171,13 @@ def _compare_low_volume(hits, strict, groups, *, counts, pressure,
             if (type(_offline_candidates) is list
                     and len(_offline_candidates) < min(MAX_ADD, TARGET_STRICT - len(strict))):
                 _offline_candidates.append(key)
+            if (type(_private_candidate_rows) is list
+                    and len(_private_candidate_rows) < min(MAX_ADD, TARGET_STRICT - len(strict))):
+                _private_candidate_rows.append(replace(
+                    e, match_policy="adaptive_two_axis", match_scope="text",
+                    group_hits=2, weak_evidence=True,
+                    synonym_hits=sorted({t for i in matched for t in groups[i]
+                                         if alias_matches(t, text)})))
             source_hits.add(e.source_hit_ordinal)
     result.update(status="observed_relaxation", inspected_rows=inspected,
                   text_chars=chars, sample_limited=limited,
@@ -176,6 +185,58 @@ def _compare_low_volume(hits, strict, groups, *, counts, pressure,
                   candidate_source_hits=len(source_hits),
                   hypothetical_add_cap=min(proposed, MAX_ADD, TARGET_STRICT - len(strict)))
     return result
+
+
+def prepare_low_volume_pilot(hits, strict, groups, *, counts, pressure,
+                             original_question, date_from, date_to, allowed_years):
+    """Private candidate preparation, not authorization or a live selection.
+
+    Return the existing counterfactual counts and identities plus a narrower
+    candidate tuple suitable for pilot evaluation. The pilot never replaces
+    the legacy zero-strict fallback, ignores other rescue modes only in the
+    offline baseline, and requires an exhausted primary result and linked
+    event dates. Reject the entire proposed set rather than silently change
+    the counterfactual candidate order. No caller may treat this as rollout
+    permission.
+    """
+    identities, rows = [], []
+    observation = _compare_low_volume(
+        hits, strict, groups, counts=counts, pressure=pressure,
+        original_question=original_question, date_from=date_from,
+        date_to=date_to, allowed_years=allowed_years,
+        _offline_candidates=identities, _private_candidate_rows=rows)
+    if observation["status"] != "observed_relaxation":
+        return observation, identities, (), "no_observation"
+    if not 0 < len(strict) < TARGET_STRICT:
+        return observation, identities, (), "legacy_zero_or_non_low_baseline"
+    if (pressure.relation != "eq" or type(pressure.total) is not int
+            or pressure.total != pressure.returned or pressure.returned != len(hits)
+            or observation["sample_limited"] is not False):
+        return observation, identities, (), "primary_or_scan_not_exhausted"
+    try:
+        date_valid = (type(date_from) is str and type(date_to) is str
+                      and date.fromisoformat(date_from).isoformat() == date_from
+                      and date.fromisoformat(date_to).isoformat() == date_to
+                      and date_from <= date_to and allowed_years is None)
+    except ValueError:
+        date_valid = False
+    if not date_valid:
+        return observation, identities, (), "unsupported_date_scope"
+    anchor = derive_explicit_question_anchor(original_question, groups)
+    def linked(e):
+        return (type(e) is EvidenceSnippet and e.structured_time_context is True
+                and bool(e.matched_event_time_candidates) and bool(e.event_ids))
+    if (anchor is None or not any(linked(e) and e.match_policy == "strict"
+            and e.weak_evidence is False and e.match_scope in ("text", "mixed")
+            and alias_matches(anchor.literal, e.text) for e in strict)):
+        return observation, identities, (), "no_strict_linked_subject"
+    if not rows:
+        return observation, identities, (), "no_additions"
+    if (len(rows) != observation["hypothetical_add_cap"]
+            or [_identity(e) for e in rows] != identities
+            or any(not linked(e) for e in rows)):
+        return observation, identities, (), "candidate_linkage_or_identity_unverified"
+    return observation, identities, tuple(rows), "pilot_candidate_prepared"
 
 
 def log_low_volume(result):
