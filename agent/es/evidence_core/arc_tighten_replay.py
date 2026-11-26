@@ -13,6 +13,7 @@ from .arc_tighten_shadow import (
 from .arc_selection_eval import evaluate_selection_cases
 from .arc_semantic_eval import MAX_CASES, MAX_TOTAL_ROWS
 from .models import EvidenceSnippet
+from agent.utils.report_evidence_selection import select_strong_first_evidence
 from .question_anchor import derive_explicit_question_anchor
 from .cross_language_alias import alias_matches
 from ..arc_request_budget import ArcRequestBudget, bind_arc_budget
@@ -29,8 +30,17 @@ def replay_tightening_cases(cases):
     total_rows = total_chars = 0
     paired = {}
     floor_counts = {}
+    report_paired = {}
+    report_floor_fallbacks = {}
+    report_limits = {}
     for case in cases:
-        if type(case) is not dict or set(case) != _CASE_KEYS:
+        if type(case) is not dict or set(case) not in (_CASE_KEYS, _CASE_KEYS | {"report_selection"}):
+            return None
+        report = case.get("report_selection")
+        if "report_selection" in case and (
+                type(report) is not dict or set(report) != {"scope", "limit"}
+                or report["scope"] != "complete_report_input_strong_first"
+                or type(report["limit"]) is not int or not 1 <= report["limit"] <= MAX_ROWS):
             return None
         groups, question, pressure, rows = (
             case["groups"], case["question"], case["pressure"], case["rows"])
@@ -93,17 +103,40 @@ def replay_tightening_cases(cases):
             budget.seal()
         if observation["status"] != "observed_tightening" or not positions:
             return None
+        if report is not None:
+            limit = report["limit"]
+            # These are case-local identities, never invented source UUIDs.
+            tokens = [{"ordinal": i, "weak_evidence": row["weak"]}
+                      for i, row in enumerate(rows)]
+            baseline_selected = select_strong_first_evidence(tokens, limit)
+            baseline_ranks = {row["ordinal"]: j for j, row in enumerate(baseline_selected, 1)}
+            report_limits[str(limit)] = report_limits.get(str(limit), 0) + 1
         for strategy in observation["strategies"]:
             name = strategy["strategy"]
             selected = positions[name]
             ranks = {i: rank for rank, i in enumerate(selected, 1)}
-            paired.setdefault(name, []).append([
+            paired_rows = [
                 {"ordinal": i+1, "source": row["source"], "gold": row["gold"],
                  "direct_anchor": anchors[i], "strong": not row["weak"],
                  "baseline_rank": i+1, "candidate_rank": ranks.get(i)}
                 for i, row in enumerate(rows)
-            ])
+            ]
+            paired.setdefault(name, []).append(paired_rows)
             floor_counts[name] = floor_counts.get(name, 0) + int(strategy["sample_floor_met"])
+            if report is not None:
+                # Evaluate the guarded candidate, not a policy which removes
+                # almost every row just because the raw counterfactual can.
+                # The floor is necessary, not sufficient for rollout.
+                floor_met = strategy["sample_floor_met"] is True
+                picked = select_strong_first_evidence(
+                    [tokens[i] for i in selected] if floor_met else tokens, limit)
+                candidate_ranks = {row["ordinal"]: j for j, row in enumerate(picked, 1)}
+                report_paired.setdefault(name, []).append([
+                    {**row, "baseline_rank": baseline_ranks.get(i),
+                     "candidate_rank": candidate_ranks.get(i)}
+                    for i, row in enumerate(paired_rows)
+                ])
+                report_floor_fallbacks[name] = report_floor_fallbacks.get(name, 0) + int(not floor_met)
     results = {}
     for name, fixtures in paired.items():
         metrics = evaluate_selection_cases(fixtures)
@@ -111,7 +144,13 @@ def replay_tightening_cases(cases):
             return None
         results[name] = {"applicable_cases": len(fixtures),
                          "sample_floor_met_cases": floor_counts[name],
-                         "comparison": metrics}
+                         "comparison": metrics,
+                         "report_selection_cases": len(report_paired.get(name, [])),
+                         "report_floor_fallback_cases": report_floor_fallbacks.get(name, 0),
+                         "report_selection_comparison": evaluate_selection_cases(report_paired[name])
+                         if name in report_paired else None}
     return {"schema": "sraf_arc_tightening_replay_v1",
             "scope": "operator_frozen_labeled_strict_prefix_not_corpus",
-            "cases": len(cases), "strategies": results}
+            "cases": len(cases), "strategies": results,
+            "report_selection_scope": "operator_attested_complete_input_strong_first_precompression_floor_guarded",
+            "report_selection_limit_cases": report_limits}
