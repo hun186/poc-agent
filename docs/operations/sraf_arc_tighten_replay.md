@@ -1,6 +1,12 @@
 # A9 offline A5 tightening replay
 
-Private local Python entry point: agent.es.evidence_core.arc_tighten_replay.replay_tightening_cases(cases). CLI wiring follows the independent rank replay change.
+Run on the private host:
+```bash
+python -m agent.es.evidence_core.arc_eval_cli tighten-replay PRIVATE_TIGHTEN_CASES.json
+```
+The same aggregate-only CLI file-size, strict parsing and privacy bounds apply.
+The private local Python entry point is
+agent.es.evidence_core.arc_tighten_replay.replay_tightening_cases(cases).
 
 Each case contains groups (original ordered lists of aliases), question (original
 explicit subject marker), pressure ({relation: eq/gte, total: >=256, returned:

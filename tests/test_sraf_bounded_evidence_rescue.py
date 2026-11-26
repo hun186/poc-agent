@@ -816,3 +816,19 @@ def test_a9_tightening_replay_rejects_unconfirmed_pressure_and_invalid_rows():
     case = _a9_tighten_replay_case()
     case["rows"] = case["rows"][:39]
     assert replay_tightening_cases([case]) is None
+
+
+def test_a9_tightening_replay_cli_privacy(tmp_path, capsys):
+    import json
+    from agent.es.evidence_core.arc_eval_cli import main
+    p = tmp_path / "PRIVATE_TIGHTEN.json"
+    p.write_text(json.dumps([_a9_tighten_replay_case()],ensure_ascii=False),encoding="utf-8")
+    assert main(["tighten-replay",str(p)]) == 0
+    out = capsys.readouterr()
+    result = json.loads(out.out)["result"]
+    assert result["strategies"]["all_text_axes"]["comparison"]["full_selection"]["baseline_relevant_loss"]["value"] == 1/3
+    assert "PRIVATE" not in out.out and "美國" not in out.out and not out.err
+    p.write_text("[]",encoding="utf-8")
+    assert main(["tighten-replay",str(p)]) == 2
+    out = capsys.readouterr()
+    assert not out.out and json.loads(out.err)["status"] == "INVALID_OR_UNREADABLE_FIXTURE"
