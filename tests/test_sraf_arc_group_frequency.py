@@ -706,3 +706,41 @@ def test_arc_priority_real_observers_share_one_call_without_fallback(monkeypatch
         priority.observe_allocated_llm(**{**base, "manual": True})
     assert budget.snapshot()[0] == ArcUnits()
     assert calls == ["bilingual", "strategy"]
+
+
+def test_arc_deep_native_rank_scope_is_distinct_and_unchanged_output(monkeypatch, caplog):
+    from agent.es.arc_native_rank_receipt import DeepNativeRankFrequency, DEEP_SCOPE
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    from agent.es.evidence_core.builder import build_hits_and_evidence
+    groups = [{"美國"}, {"政策"}, {"出口管制"}, {"半導體"}]
+    hits = [_hit(["美國 政策 出口管制"], uuid=f"d-{i}", docid=str(i))
+            for i in range(24)]
+    hits += [_hit(["美國 政策 半導體"], uuid="d-rare", docid="rare")]
+    kw = dict(date_from="2023-08-24", date_to="2023-08-24",
+              effective_terms=["美國", "政策", "出口管制", "半導體"],
+              term_groups=groups, query_for_snippet="美國 政策 出口管制 半導體")
+    monkeypatch.delenv("SRAF_ARC_GROUP_FREQUENCY", raising=False)
+    monkeypatch.delenv("SRAF_ARC_RANK_NATIVE", raising=False)
+    monkeypatch.delenv("SRAF_ARC_RANK_DEEP", raising=False)
+    baseline = build_hits_and_evidence(hits, **kw)
+    record = {"schema":"sraf_arc_deep_frequency_shadow_v1", "scope":DEEP_SCOPE,
+              "status":"observed_counts", "eligible_documents":10000,
+              "groups":[{"group_ordinal":i, "document_frequency":df}
+                        for i, df in enumerate((8000,7000,5000,50), 1)]}
+    args = dict(groups=tuple(map(frozenset, groups)), date_from=kw["date_from"], date_to=kw["date_to"])
+    receipt = DeepNativeRankFrequency.from_record(record, **args)
+    assert receipt is not None
+    assert DeepNativeRankFrequency.from_record({**record, "scope":"wrong"}, **args) is None
+    assert DeepNativeRankFrequency.from_record({**record, "eligible_documents":True}, **args) is None
+    assert receipt.for_builder(list(reversed(groups)), date_from=kw["date_from"],
+                               date_to=kw["date_to"], allowed_years=None) is None
+    monkeypatch.setenv("SRAF_ARC_RANK_DEEP", "shadow")
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)):
+        assert build_hits_and_evidence(hits, **kw, deep_rank_frequency=receipt) == baseline
+    result = _rank_record(caplog)
+    assert result["status"] == "observed_rank"
+    assert result["scope"] == "same_round_pit_native_df_strict_first_prefix"
+    assert result["snapshot_consistency"] == "same_round_pit"
+    assert result["rarity_only_top_k_replaced"] == 1
+    assert budget.snapshot()[0] == ArcUnits(slices=1, rows=128, chars=131072)
