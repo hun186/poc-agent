@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any, Callable, Dict, List, Tuple
 
+from agent.es.arc_review_scope import FinalReviewInput, observe_final_review_scope
+
 
 MAX_DATE_CANDIDATES = 10_000  # ES default max_result_window; never cross it with from + size
 MIN_DATE_CANDIDATES = 256
@@ -52,6 +54,7 @@ def refill_date_filtered_evidence(
     build_evidence: Callable[[List[dict]], Tuple[List[dict], List[dict], int]],
     max_candidates: int = MAX_DATE_CANDIDATES,
     admit_next_page: Callable[[], bool] | None = None,
+    arc_review_scope: FinalReviewInput | None = None,
 ) -> Tuple[List[dict], List[dict], int, Dict[str, Any]]:
     """Refill eligible documents, preserving original ES score order.
 
@@ -179,4 +182,8 @@ def refill_date_filtered_evidence(
         meta["incomplete_due_to_page_admission"] = admission_incomplete
         if admission_incomplete:
             meta["note"] = "additional_page_admission_denied"
+    if type(arc_review_scope) is FinalReviewInput:
+        observe_final_review_scope(arc_review_scope, body=body, first_response=first_response,
+                                   raw=raw, selected=selected, selected_evidence=selected_evidence,
+                                   meta=meta)
     return result_hits, result_evidence, result_synonyms, meta
