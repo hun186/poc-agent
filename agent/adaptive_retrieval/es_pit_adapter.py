@@ -175,6 +175,7 @@ def search_fenced_es_round(
     execution_token: object | None = None,
     frequency_plan: Any = None,
     frequency_binding: Any = None,
+    frequency_receipts: list | None = None,
 ) -> FencedESRound:
     """Run ONE full PIT page chain after worker-owned authorization and budget.
 
@@ -249,9 +250,13 @@ def search_fenced_es_round(
     # failure may be hidden inside the optional transport exception handler.
     if frequency_binding is not None:
         from .arc_deep_frequency_transport import observe_same_pit_frequency, log_same_pit_frequency
+        from .arc_deep_rank_receipt import DeepRoundRankReceipt
+        from agent.es.arc_native_rank_receipt import DeepNativeRankFrequency
+        import os
 
     pit_id: str | None = None
     frequency_record = None
+    frequency_groups = None
     error: str | None = None
     result: FencedESRound | None = None
     try:
@@ -291,6 +296,7 @@ def search_fenced_es_round(
                 result = FencedESRound(
                     hits=fence.take_complete_hits(), audit=fence.safe_audit())
                 if frequency_binding is not None:
+                    frequency_groups = tuple(frozenset(g) for g in coordinator._groups)
                     pit_id, frequency_record = observe_same_pit_frequency(
                         plan=frequency_plan, binding=frequency_binding, fence=fence,
                         client=client, pit_id=pit_id, canonical_body=base_query,
@@ -323,6 +329,16 @@ def search_fenced_es_round(
     if error is not None or result is None:
         raise LiveRoundESFailure(error or "es_pit_page_chain_unverified")
     if frequency_record is not None:
-        log_same_pit_frequency(frequency_record, plan=frequency_plan,
-                               binding=frequency_binding)
+        verified = log_same_pit_frequency(frequency_record, plan=frequency_plan,
+                                          binding=frequency_binding)
+        if (verified is not None and type(frequency_receipts) is list
+                and not frequency_receipts and os.getenv("SRAF_ARC_RANK_DEEP") == "shadow"
+                and frequency_groups == tuple(frozenset(g) for g in coordinator._groups)):
+            frequency = DeepNativeRankFrequency.from_record(
+                verified, groups=frequency_groups,
+                date_from=constraints.event_date.start, date_to=constraints.event_date.end,
+            )
+            if frequency is not None:
+                frequency_receipts.append(DeepRoundRankReceipt(
+                    frequency_plan, frequency_binding, tuple(result.hits), frequency))
     return result
