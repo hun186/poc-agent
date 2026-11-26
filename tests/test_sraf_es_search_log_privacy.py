@@ -775,3 +775,111 @@ def test_arc_priority_default_off_preserves_existing_early_bilingual(monkeypatch
     monkeypatch.setattr(search_module, "build_hits_and_evidence", build)
     search_module.ESSearchNews.forward.__wrapped__(object(), query="SECRET_QUERY", size=5)
     assert calls == ["bilingual", "build"]
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_ordinary_resource_measurement_report_and_worker_adapter_scope(monkeypatch, caplog, enabled):
+    import json
+    from concurrent.futures import ThreadPoolExecutor
+    from agent import report_agent
+    from agent.arc_ordinary_resource_metrics import current_measurement
+    from agent.es import es_client
+    from agent.llm_utils.ollama_client import LLMClient
+    from agent.data_agent.diagnostics import observe_data_agent_model
+    from agent.tools_es.common import bind_requirement_acceptance, propagate_requirement_acceptance
+    monkeypatch.setenv("SRAF_ARC_ORDINARY_RESOURCE_METRICS", "shadow" if enabled else "off")
+    monkeypatch.setattr(es_client,"_requirement_acceptance_index",lambda:None)
+    class ES:
+        def search(self,**kwargs):
+            return {"hits":{"hits":[]}}
+    monkeypatch.setattr(es_client,"get_es",lambda:ES())
+    class Reply:
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return {"done":True,"message":{"content":"PRIVATE_ANSWER"},
+                    "response":"PRIVATE_ANSWER","prompt_eval_count":11,"eval_count":3}
+    import requests
+    monkeypatch.setattr(requests,"post",lambda *a,**kw:Reply())
+    llm=LLMClient(base_url="https://private.invalid",model="PRIVATE_MODEL")
+    class Model:
+        def generate(self,*a,**kw):
+            return "PRIVATE_MODEL_RESPONSE"
+    model=observe_data_agent_model(Model())
+    workers=[]
+    class Tool:
+        @propagate_requirement_acceptance
+        def forward(self):
+            es_client.safe_search({"query":{"match_all":{}}},index="PRIVATE_INDEX")
+            llm.chat([{"role":"user","content":"PRIVATE_TOOL"}])
+            return {}
+    def refine(question,**kw):
+        llm.generate(question)
+        return question
+    def retrieve(*a,**kw):
+        tool=bind_requirement_acceptance(Tool())
+        workers.append(tool)
+        model.generate("PRIVATE")
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            assert pool.submit(tool.forward).result()=={}
+            assert pool.submit(current_measurement).result() is None
+        return {}
+    def synthesize(*a,**kw):
+        assert llm.chat([{"role":"user","content":"PRIVATE_SYNTHESIS"}])=="PRIVATE_ANSWER"
+        return {"answer":"PRIVATE_ANSWER"}
+    monkeypatch.setattr(report_agent,"refine_question_for_data_agent",refine)
+    monkeypatch.setattr(report_agent,"run_data_agent",retrieve)
+    monkeypatch.setattr(report_agent,"_generate_report_from_payload",synthesize)
+    assert report_agent.ask_with_report("PRIVATE_QUESTION")=={"answer":"PRIVATE_ANSWER"}
+    assert current_measurement() is None
+    # Late invocation on a stale tool must not amend the sealed report.
+    workers[0].forward()
+    logs=[json.loads(x.getMessage().split("SRAF_ARC_ORDINARY_RESOURCE=",1)[1])
+          for x in caplog.records if x.getMessage().startswith("SRAF_ARC_ORDINARY_RESOURCE=")]
+    if not enabled:
+        assert not logs
+        return
+    assert len(logs)==1
+    record=logs[0]
+    assert record["outcome"]=="returned" and record["elapsed_ms"]>=0
+    assert record["adapter_attempts"]=={"es_search":1,"es_highlight_retry":0,
+        "es_optional_frequency":0,"ollama_chat":2,"ollama_generate":1,"data_agent_generate":1}
+    assert record["ollama_reported_usage"]=={
+        "prompt_eval_count":{"known_attempts":3,"observed_sum":33},
+        "eval_count":{"known_attempts":3,"observed_sum":9}}
+    assert record["complete_transport_totals"] is False
+    assert "PRIVATE" not in repr(record)
+
+
+def test_ordinary_resource_measurement_failed_and_unknown_usage(monkeypatch,caplog):
+    import json
+    import requests
+    from agent.arc_ordinary_resource_metrics import measure_ordinary_report,current_measurement
+    from agent.llm_utils.ollama_client import LLMClient
+    monkeypatch.setenv("SRAF_ARC_ORDINARY_RESOURCE_METRICS","shadow")
+    class Reply:
+        def raise_for_status(self):
+            pass
+        def json(self):
+            return {"done":True,"response":"PRIVATE","prompt_eval_count":True,"eval_count":-1}
+    calls=[]
+    def post(*a,**kw):
+        calls.append(1)
+        if len(calls)==2:
+            raise requests.Timeout("PRIVATE_TIMEOUT")
+        return Reply()
+    monkeypatch.setattr(requests,"post",post)
+    llm=LLMClient(base_url="https://private.invalid")
+    @measure_ordinary_report
+    def report():
+        assert llm.generate("PRIVATE")=="PRIVATE"
+        llm.generate("PRIVATE")
+    with pytest.raises(requests.Timeout):
+        report()
+    assert current_measurement() is None
+    row=next(json.loads(x.getMessage().split("SRAF_ARC_ORDINARY_RESOURCE=",1)[1])
+          for x in caplog.records if x.getMessage().startswith("SRAF_ARC_ORDINARY_RESOURCE="))
+    assert row["outcome"]=="raised"
+    assert row["adapter_attempts"]["ollama_generate"]==2
+    assert all(v=={"known_attempts":0,"observed_sum":None} for v in row["ollama_reported_usage"].values())
+    assert "PRIVATE" not in repr(row)
