@@ -243,11 +243,13 @@ class WorkerScopeBinding:
             # Only an explicitly configured trusted egress policy can retain
             # this bounded current-round source identity manifest. No text.
             self._review_sources = None
-            if (self._check_review_egress is not None
-                    and len(self._constraints.allowed_indexes) == 1
-                    and 1 <= len(receipt.hits) <= 128):
-                self._review_sources = (plan, self._constraints.allowed_indexes[0],
-                                        frozenset(hit["_id"] for hit in receipt.hits))
+            if self._check_review_egress is not None:
+                from .arc_deep_review import deep_review_enabled
+                if (deep_review_enabled()
+                        and len(self._constraints.allowed_indexes) == 1
+                        and 1 <= len(receipt.hits) <= 128):
+                    self._review_sources = (plan, self._constraints.allowed_indexes[0],
+                                            frozenset(hit["_id"] for hit in receipt.hits))
             return True
 
     def recheck_semantic_authorization(self, plan: FrozenSingleQueryPlan) -> None:
