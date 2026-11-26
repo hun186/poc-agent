@@ -12,6 +12,7 @@ import math
 
 from ..arc_request_budget import ArcUnits, current_arc_budget
 from ..arc_frequency_plan import SCOPE as NATIVE_SCOPE
+from ..arc_native_rank_receipt import DEEP_SCOPE
 from .models import EvidenceSnippet
 from .text_norm import normalize_for_match
 
@@ -32,12 +33,14 @@ def observe_rank_shadow(evidence: list[EvidenceSnippet], groups: list[set[str]],
         "status": "insufficient_sample",
         "strict_count": len(evidence),
     }
-    native = frequency.get("schema") == "sraf_arc_native_rank_frequency_v1"
+    deep = frequency.get("schema") == "sraf_arc_deep_rank_frequency_v1"
+    native = deep or frequency.get("schema") == "sraf_arc_native_rank_frequency_v1"
     if native:
-        result["scope"] = "same_search_native_df_strict_first_prefix_not_pit"
+        result["scope"] = ("same_round_pit_native_df_strict_first_prefix" if deep
+                           else "same_search_native_df_strict_first_prefix_not_pit")
         n = frequency.get("eligible_documents")
         df_key = "document_frequency"
-        scope_valid = (frequency.get("scope") == NATIVE_SCOPE
+        scope_valid = (frequency.get("scope") == (DEEP_SCOPE if deep else NATIVE_SCOPE)
                        and frequency.get("status") == "exact_es_query_counts"
                        and type(n) is int and MIN_SAMPLE_HITS <= n <= 2**63 - 1)
     else:
@@ -79,7 +82,7 @@ def observe_rank_shadow(evidence: list[EvidenceSnippet], groups: list[set[str]],
     if not native:
         result["frequency_sample_limited"] = frequency.get("sample_limited") is True
     else:
-        result["snapshot_consistency"] = "not_pit"
+        result["snapshot_consistency"] = "same_round_pit" if deep else "not_pit"
     # Reserve before normalizing any text. Skip oversized prefix, never silently
     # exclude a long row from comparison and treat it as a low ranking candidate.
     scope = current_arc_budget()
