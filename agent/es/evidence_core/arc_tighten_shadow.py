@@ -93,6 +93,14 @@ def _rare_axis(observation, group_count, anchor_index, *, native=False):
 
 def observe_tightening(evidence, groups, *, original_question, pressure=None,
                        local_frequency=None, native_frequency=None):
+    return _compare_tightening(evidence, groups, original_question=original_question,
+                               pressure=pressure, local_frequency=local_frequency,
+                               native_frequency=native_frequency)
+
+
+def _compare_tightening(evidence, groups, *, original_question, pressure=None,
+                        local_frequency=None, native_frequency=None,
+                        _offline_selections=None):
     pressure = pressure if type(pressure) is CandidatePressure else CandidatePressure()
     total = pressure.total
     if type(total) is int and total >= MIN_CANDIDATE_TOTAL:
@@ -144,7 +152,8 @@ def observe_tightening(evidence, groups, *, original_question, pressure=None,
         selections["anchor_plus_local_discriminative_axis"] = []
     if native_axis is not None:
         selections["anchor_plus_native_discriminative_axis"] = []
-    for e in prefix:
+    positions = {name: [] for name in selections} if type(_offline_selections) is dict and not _offline_selections else None
+    for i, e in enumerate(prefix):
         if e.weak_evidence or not alias_matches(anchor.literal, e.text):
             continue
         matched = {i for i, g in enumerate(groups)
@@ -155,10 +164,16 @@ def observe_tightening(evidence, groups, *, original_question, pressure=None,
             continue
         if len(matched) == len(groups):
             selections["all_text_axes"].append(e.source_hit_ordinal)
+            if positions is not None:
+                positions["all_text_axes"].append(i)
         if local_axis is not None and local_axis in matched:
             selections["anchor_plus_local_discriminative_axis"].append(e.source_hit_ordinal)
+            if positions is not None:
+                positions["anchor_plus_local_discriminative_axis"].append(i)
         if native_axis is not None and native_axis in matched:
             selections["anchor_plus_native_discriminative_axis"].append(e.source_hit_ordinal)
+            if positions is not None:
+                positions["anchor_plus_native_discriminative_axis"].append(i)
     result["status"] = "observed_tightening"
     result["strategies"] = [
         {"strategy": name, "retained_prefix_rows": len(ids),
@@ -166,6 +181,8 @@ def observe_tightening(evidence, groups, *, original_question, pressure=None,
          "sample_floor_met": len(ids) >= MIN_RETAINED and len(set(ids)) >= MIN_SOURCES}
         for name, ids in selections.items()
     ]
+    if positions is not None:
+        _offline_selections.update(positions)
     # These are count-only counterfactuals, never execution recommendations.
     return result
 
