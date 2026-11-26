@@ -117,6 +117,7 @@ class WorkerScopeBinding:
         """
         from agent.es.arc_request_budget import ArcUnits, current_arc_budget
         from .es_page_fence import RoundESPageFence
+        from .arc_deep_frequency_plan import build_deep_frequency_plan
 
         with self._lock:
             if (self._check_frequency_scope is None
@@ -141,6 +142,8 @@ class WorkerScopeBinding:
                         or fence._failed is not None or fence._pending is not None):
                     return False
                 pages = fence._page_count
+            if build_deep_frequency_plan(plan) is None:
+                return False
             scope = current_arc_budget()
             if scope is None or scope[1] != plan.round_number:
                 return False
