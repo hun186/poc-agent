@@ -629,3 +629,80 @@ def test_arc_a7_does_not_spend_llm_on_deterministic_routes(monkeypatch):
                 final_count=final, strong_count=final, refill=None, manual=False,
                 original_question="PRIVATE_QUERY", groups=[{"PRIVATE_TERM"}])
     assert not calls and budget.snapshot()[0] == ArcUnits()
+
+
+def test_arc_priority_selects_low_alias_or_strategy_and_abstains_for_deterministic_routes():
+    from agent.es.arc_llm_priority import choose_llm_work
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    base = dict(pressure=CandidatePressure("eq", 100, 50),
+                diagnostics={"low": _a7_low()}, final_count=1, strong_count=1,
+                refill=None, manual=False, bilingual_enabled=True, strategy_enabled=True)
+    assert choose_llm_work(**base) == ("semantic_low_review", "bilingual")
+    assert choose_llm_work(**{**base, "bilingual_enabled": False}) == (
+        "semantic_low_review", "strategy")
+    assert choose_llm_work(**{**base, "diagnostics": {"low": _a7_low(status="no_trusted_anchor")}}) == (
+        "semantic_anchor_review", "strategy")
+    assert choose_llm_work(**{**base, "diagnostics": {"high": _a7_high()},
+                              "final_count": 60, "strong_count": 60}) == (
+        "semantic_high_review", "strategy")
+    for change, expected in [
+        ({"final_count": 3}, "keep_original"),
+        ({"pressure": CandidatePressure("eq", 0, 0), "final_count": 0, "strong_count": 0},
+         "review_query_scope"),
+        ({"diagnostics": {"low": _a7_low(hypothetical_add_cap=1)}},
+         "evaluate_existing_relaxation"),
+        ({"diagnostics": {"low": _a7_low(sample_limited=True)}}, "limited_low_sample"),
+        ({"refill": {"pages_fetched": 2, "incomplete_due_to_scan_limit": False}},
+         "refill_or_incomplete"),
+        ({"pressure": CandidatePressure(returned=50)}, "unconfirmed_primary"),
+        ({"manual": True}, "unsupported_scope"),
+        ({"diagnostics": {"low": _a7_low(status="no_trusted_anchor")},
+          "strategy_enabled": False}, "semantic_anchor_review"),
+    ]:
+        assert choose_llm_work(**{**base, **change}) == (expected, "none")
+
+
+def test_arc_priority_real_observers_share_one_call_without_fallback(monkeypatch, caplog):
+    from agent.es import arc_llm_priority as priority
+    from agent.es import arc_bilingual_shadow as a2, arc_strategy_shadow as a7
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    monkeypatch.setenv("SRAF_ARC_LLM_PRIORITY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_BILINGUAL", "shadow")
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", "shadow")
+    monkeypatch.setenv("TOPIC_LLM_URL", "http://unused.invalid")
+    base = dict(pressure=CandidatePressure("eq", 100, 50),
+                diagnostics={"low": _a7_low()}, final_count=1, strong_count=1,
+                refill=None, manual=False, original_question="PRIVATE_QUERY",
+                groups=[{"PRIVATE_TERM"}])
+    calls = []
+    def alias_fail(*args, **kwargs):
+        calls.append("bilingual")
+        raise RuntimeError("PRIVATE_FAILURE")
+    def strategy(*args, **kwargs):
+        calls.append("strategy")
+        return '{"choice":"keep_original"}'
+    monkeypatch.setattr(a2, "call_llm", alias_fail)
+    monkeypatch.setattr(a7, "call_llm", strategy)
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)):
+        priority.observe_allocated_llm(**base)
+        priority.observe_allocated_llm(**{**base, "diagnostics": {"low": _a7_low(status="no_trusted_anchor")}})
+    assert calls == ["bilingual"]
+    assert budget.snapshot()[0] == ArcUnits(llm_calls=1)
+    assert "PRIVATE_" not in caplog.text
+    assert "deferred_by_priority" in caplog.text
+    assert "shared_budget_exhausted" in caplog.text
+    assert '"choice":"bilingual"' in caplog.text
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)):
+        priority.observe_allocated_llm(**{**base, "diagnostics": {"high": _a7_high()},
+                                         "final_count": 60, "strong_count": 60})
+    assert calls == ["bilingual", "strategy"]
+    assert budget.snapshot()[0] == ArcUnits(llm_calls=1)
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)):
+        priority.observe_allocated_llm(**{**base, "final_count": 3})
+        priority.observe_allocated_llm(**{**base, "manual": True})
+    assert budget.snapshot()[0] == ArcUnits()
+    assert calls == ["bilingual", "strategy"]
