@@ -85,6 +85,7 @@ class CanonicalReportEvidence:
     weak: bool
     scope: str
     group_hits: int
+    match_policy: str = field(default="", repr=False)
 
     def report_snippet(self) -> dict[str, Any]:
         # Publication dates are intentionally NOT used as event dates.
@@ -343,6 +344,7 @@ def observe_canonical_round(
                     title=optional_text("article_title"), subject=optional_text("subject"),
                     structured=bool(row.get("structured_time_context") or time_parts),
                     weak=bool(row.get("weak_evidence")), scope=scope, group_hits=groups,
+                    match_policy=policy,
                 )
                 prior = staged_report.get(pair)
                 if prior is not None and prior.doc_id != projected.doc_id:

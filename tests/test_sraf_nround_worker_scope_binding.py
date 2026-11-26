@@ -719,3 +719,132 @@ def test_arc_deep_rank_used_only_in_first_canonical_build_per_round(monkeypatch,
     assert all(row["scope"] == "same_round_pit_native_df_strict_first_prefix" for row in rows)
     assert all(row["status"] == "no_top_k_pressure" for row in rows)
     assert "PRIVATE" not in caplog.text
+
+
+def _deep_review_page():
+    from test_sraf_shared_evidence_budget import _hit as canonical_hit
+    from test_sraf_nround_es_pit_adapter import _page
+    docs = []
+    for i in range(5):
+        doc = canonical_hit(10, "PRIVATE_REVIEW_DOC_" + str(i), inner=False)
+        doc["sort"] = [5.0, 100, i]
+        doc["_source"]["communication"]["subject"] = "甲軸乙軸丙軸"
+        doc["_source"]["multidim_event_json"][0]["evidence_snippets"][0]["text"] = "PRIVATE_WEAK_TEXT"
+        docs.append(doc)
+    return _page(docs)
+
+
+@pytest.mark.parametrize("case", ["ok", "off", "no_policy", "deny", "revoked", "wrong_endpoint"])
+def test_arc_deep_review_runs_only_with_live_source_and_endpoint_permission(monkeypatch, caplog, case):
+    import json
+    from agent.es import arc_semantic_review_transport as transport
+    from agent.es.evidence_core.arc_semantic_review import summarize_semantic_review
+    monkeypatch.setenv("SRAF_ARC_REVIEW_DEEP", "off" if case == "off" else "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS", "approved")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_ENDPOINT", "https://other.invalid/api/chat" if case == "wrong_endpoint" else "https://review.invalid/api/chat")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_MODEL", "private-model")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX", "news_test")
+    monkeypatch.delenv("SRAF_ARC_REVIEW_CA_FILE", raising=False)
+    monkeypatch.delenv("SRAF_ARC_GROUP_FREQUENCY", raising=False)
+    monkeypatch.delenv("SRAF_ARC_DEEP_FREQUENCY", raising=False)
+    c, scope, ev, _, planner_calls, _ = _setup()
+    checks, sends = [], []
+    def policy(job, constraints, index, ids, endpoint, model, verify):
+        assert constraints is scope
+        assert index == "news_test"
+        assert ids == tuple("PRIVATE_REVIEW_DOC_" + str(i) for i in range(5))
+        assert model == "private-model" and verify is True
+        checks.append(endpoint)
+        return (case != "deny" and endpoint == "https://review.invalid/api/chat"
+                and (case != "revoked" or len(checks) == 1))
+    binding = WorkerScopeBinding(
+        job=_job(scope), constraints=scope, coordinator=c,
+        authorized_indexes=("news_test",),
+        check_index_access=lambda *_: True,
+        check_single_branch_coverage=lambda *_: True,
+        check_review_egress=None if case == "no_policy" else policy,
+    )
+    def review(approved, batch):
+        sends.append(approved)
+        payload = json.loads(batch.payload)
+        assert payload["query"] == scope.question
+        assert len(payload["passages"]) == batch.count == 5
+        assert all(set(p) == {"ordinal","text"} for p in payload["passages"])
+        assert "PRIVATE_REVIEW_DOC_" not in batch.payload
+        return summarize_semantic_review(json.dumps([
+            {"ordinal":i,"verdict":"unrelated"} for i in range(1,batch.count+1)]),batch)
+    monkeypatch.setattr(transport, "_request_review", review)
+    result = _run(c, scope, ev, FakeES(_deep_review_page()), binding)
+    assert c.safe_progress()["termination"] == "SUFFICIENT"
+    assert len(result.rounds) == 1 and not planner_calls
+    assert len(result._report_rows) == 50
+    assert len(sends) == int(case in ("ok","revoked"))
+    assert len(checks) == (2 if case in ("ok","revoked") else 1 if case in ("deny","wrong_endpoint") else 0)
+    assert binding._review_sources is None
+    logs = [json.loads(row.getMessage().split("SRAF_ARC_SEMANTIC_REVIEW=",1)[1])
+            for row in caplog.records if row.getMessage().startswith("SRAF_ARC_SEMANTIC_REVIEW=")]
+    if case == "ok":
+        assert logs[0]["status"] == "observed_verdicts"
+        assert logs[0]["counts"]["unrelated"] == 5
+    elif case == "revoked":
+        assert logs == [{"schema":"sraf_arc_semantic_review_shadow_v1","status":"authorization_or_deadline_changed"}]
+    elif case in ("deny","wrong_endpoint"):
+        assert logs[0]["status"] == "source_or_endpoint_not_authorized"
+    else:
+        assert not logs
+    assert "PRIVATE" not in caplog.text and "review.invalid" not in caplog.text
+
+
+def test_arc_deep_review_below_pressure_does_not_request_provider(monkeypatch, caplog):
+    from agent.es import arc_semantic_review_transport as transport
+    monkeypatch.setenv("SRAF_ARC_REVIEW_DEEP","shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW","shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS","approved")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX","news_test")
+    c, scope, ev, _, _, _ = _setup()
+    binding = WorkerScopeBinding(
+        job=_job(scope), constraints=scope, coordinator=c,
+        authorized_indexes=("news_test",),
+        check_index_access=lambda *_: True,
+        check_single_branch_coverage=lambda *_: True,
+        check_review_egress=lambda *_: pytest.fail("unexpected policy call"),
+    )
+    monkeypatch.setattr(transport,"_request_review",lambda *a: pytest.fail("unexpected model call"))
+    result = _run(c,scope,ev,FakeES(_verified_page("A"),_verified_page("B")),binding)
+    assert len(result.rounds) == 2
+    assert caplog.text.count("below_review_pressure") == 2
+    assert binding._review_sources is None
+
+
+def test_arc_deep_review_owner_revocation_during_model_call_blocks_main_coverage(monkeypatch):
+    from agent.es import arc_semantic_review_transport as transport
+    from agent.adaptive_retrieval.trusted_execution_loop import TrustedNroundExecutionError
+    monkeypatch.setenv("SRAF_ARC_REVIEW_DEEP","shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW","shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS","approved")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_ENDPOINT","https://review.invalid/api/chat")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_MODEL","private-model")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX","news_test")
+    monkeypatch.delenv("SRAF_ARC_DEEP_FREQUENCY",raising=False)
+    monkeypatch.delenv("SRAF_ARC_GROUP_FREQUENCY",raising=False)
+    c, scope, ev, _, _, _ = _setup()
+    owner_active = [True]
+    sends = []
+    def review(*_):
+        sends.append(1)
+        owner_active[0] = False
+        return None
+    binding = WorkerScopeBinding(
+        job=_job(scope), constraints=scope, coordinator=c,
+        authorized_indexes=("news_test",),
+        check_index_access=lambda *_: owner_active[0],
+        check_single_branch_coverage=lambda *_: True,
+        check_review_egress=lambda *_: True,
+    )
+    monkeypatch.setattr(transport,"_request_review",review)
+    with pytest.raises(TrustedNroundExecutionError):
+        _run(c,scope,ev,FakeES(_deep_review_page()),binding)
+    assert sends == [1]
+    assert binding._review_sources is None
+    assert c.safe_progress()["ready_for_external_report_generation"] is False

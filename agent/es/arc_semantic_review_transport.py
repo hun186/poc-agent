@@ -128,12 +128,12 @@ def _request_review(approved, batch):
     return summarize_semantic_review(message.get("content"), batch)
 
 
-def observe_semantic_review(batch, *, index):
+def observe_semantic_review(batch, *, index, authorize=None):
     """Count-only optional transport. Never returns per-passage decisions.
 
-    Not called by production retrieval yet. A later trusted integration must
-    establish source authorization, bounded preparation and final selection
-    provenance. A budget reservation is not authorization.
+    Trusted runtime callers must pass an authorization callback for the exact
+    resolved endpoint and their own source scope. The standalone transport
+    uses explicit synthetic authorization in isolated tests; a budget reservation is not authorization.
     """
     if os.getenv("SRAF_ARC_REVIEW") != "shadow":
         return
@@ -159,12 +159,17 @@ def observe_semantic_review(batch, *, index):
                 or len(batch.payload.encode("utf-8")) > MAX_INPUT_BYTES):
             record["status"] = "unsupported_batch"
             return
+        if not callable(authorize) or authorize(approved) is not True:
+            record["status"] = "source_or_endpoint_not_authorized"
+            return
         budget, ordinal = scope
         if not budget.reserve(ordinal, ArcUnits(llm_calls=1)):
             record["status"] = "shared_budget_exhausted"
             return
         summary = _request_review(approved, batch)
-        if summary is None:
+        if authorize(approved) is not True:
+            record["status"] = "authorization_or_deadline_changed"
+        elif summary is None:
             record["status"] = "invalid_or_incomplete_response"
         else:
             record = summary

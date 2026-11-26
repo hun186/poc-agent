@@ -119,16 +119,23 @@ def run_trusted_nround(
     report_rows: dict[tuple[str, str], CanonicalReportEvidence] = {}
     report_chars = 0
     next_plan: BoundNextRoundPlan | None = None
+    frozen = None
     # Separate optional shadow accounting; original ES/planner admission,
     # authorization, and generation-reserved deadline remain authoritative.
     from .arc_deep_frequency_transport import deep_frequency_enabled
     from .arc_deep_rank_receipt import DeepRoundRankReceipt
+    from .arc_deep_review import deep_review_enabled, observe_deep_review
+
+    review_binding = (job_scope_binding if deep_review_enabled()
+                      and job_scope_binding is not None
+                      and job_scope_binding._check_review_egress is not None else None)
 
     frequency_binding = (job_scope_binding if deep_frequency_enabled()
                          and job_scope_binding is not None
                          and job_scope_binding._check_frequency_scope is not None else None)
     arc_budget = ArcRequestBudget() if (
         os.getenv("SRAF_ARC_GROUP_FREQUENCY") == "shadow" or frequency_binding is not None
+        or review_binding is not None
     ) else None
 
     def _persist_checkpoint() -> None:
@@ -276,6 +283,19 @@ def run_trusted_nround(
                     max_semantic_checks=max_semantic_checks_per_round,
                     **({"deep_rank_frequency": deep_rank_frequency} if deep_rank_frequency is not None else {}),
                 )
+            try:
+                if review_binding is not None:
+                    with bind_arc_budget((arc_budget, frozen.round_number)):
+                        observe_deep_review(plan=frozen, binding=review_binding,
+                                            fetched=fetched, grant=grant)
+            finally:
+                if job_scope_binding is not None:
+                    job_scope_binding.clear_optional_review_sources(frozen)
+            if review_binding is not None:
+                # Independent review-egress denial alone is optional, but
+                # revocation of the underlying owner/index/branch policy
+                # during the extra callback must still block main coverage.
+                review_binding.recheck_semantic_authorization(frozen)
             remaining = coordinator._budget.snapshot()
             if remaining.remaining_seconds <= remaining.generation_reserve_seconds:
                 raise TrustedNroundExecutionError("semantic_assessment_over_deadline")
@@ -341,5 +361,7 @@ def run_trusted_nround(
         coordinator.cancel()
         raise TrustedNroundExecutionError("trusted_nround_execution_failed") from None
     finally:
+        if job_scope_binding is not None and frozen is not None:
+            job_scope_binding.clear_optional_review_sources(frozen)
         if arc_budget is not None:
             arc_budget.seal()
