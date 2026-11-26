@@ -551,6 +551,28 @@ def test_arc_a8_real_session_rejects_redirect_before_body_read(monkeypatch):
     assert closes
 
 
+def test_arc_review_transport_requires_explicit_authorization_callback(monkeypatch, caplog):
+    from agent.es import arc_semantic_review_transport as transport
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    from agent.es.evidence_core.arc_semantic_review import SemanticReviewBatch
+    monkeypatch.setenv("SRAF_ARC_REVIEW", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS", "approved")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_ENDPOINT", "https://review.invalid/api/chat")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_MODEL", "private-model")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX", "news_test")
+    monkeypatch.delenv("SRAF_ARC_REVIEW_CA_FILE", raising=False)
+    batch = SemanticReviewBatch("{}",1,1,False,0,(True,),(True,))
+    calls = []
+    monkeypatch.setattr(transport, "_request_review", lambda *a: calls.append(a))
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget,1)):
+        transport.observe_semantic_review(batch,index="news_test")
+        transport.observe_semantic_review(batch,index="news_test",authorize=lambda _: "true")
+    assert not calls
+    assert budget.snapshot()[0] == ArcUnits()
+    assert caplog.text.count("source_or_endpoint_not_authorized") == 2
+
+
 def _a9_label(i, source, gold, predicted, anchor=False, strong=False):
     return {"ordinal": i, "source": source, "gold": gold, "predicted": predicted,
             "direct_anchor": anchor, "strong": strong}
@@ -714,25 +736,3 @@ def test_arc_eval_cli_fails_closed_on_invalid_or_oversized_input(tmp_path, capsy
         assert json.loads(capsys.readouterr().err)["status"] == "INVALID_OR_UNREADABLE_FIXTURE"
     assert cli.main(["PRIVATE_MODE", str(p)]) == 2
     assert "PRIVATE_MODE" not in capsys.readouterr().err
-
-
-def test_arc_review_transport_requires_explicit_authorization_callback(monkeypatch, caplog):
-    from agent.es import arc_semantic_review_transport as transport
-    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
-    from agent.es.evidence_core.arc_semantic_review import SemanticReviewBatch
-    monkeypatch.setenv("SRAF_ARC_REVIEW", "shadow")
-    monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS", "approved")
-    monkeypatch.setenv("SRAF_ARC_REVIEW_ENDPOINT", "https://review.invalid/api/chat")
-    monkeypatch.setenv("SRAF_ARC_REVIEW_MODEL", "private-model")
-    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX", "news_test")
-    monkeypatch.delenv("SRAF_ARC_REVIEW_CA_FILE", raising=False)
-    batch = SemanticReviewBatch("{}",1,1,False,0,(True,),(True,))
-    calls = []
-    monkeypatch.setattr(transport, "_request_review", lambda *a: calls.append(a))
-    budget = ArcRequestBudget()
-    with bind_arc_budget((budget,1)):
-        transport.observe_semantic_review(batch,index="news_test")
-        transport.observe_semantic_review(batch,index="news_test",authorize=lambda _: "true")
-    assert not calls
-    assert budget.snapshot()[0] == ArcUnits()
-    assert caplog.text.count("source_or_endpoint_not_authorized") == 2
