@@ -84,8 +84,10 @@ def _request_review(approved, batch):
         with session.post(
             approved.url, json=payload, timeout=(3, REQUEST_TIMEOUT_SECONDS),
             allow_redirects=False, verify=approved.verify, stream=True,
+            headers={"Accept-Encoding": "identity"},
         ) as response:
-            if response.status_code != 200:
+            if (response.status_code != 200
+                    or response.headers.get("Content-Encoding", "identity").lower() != "identity"):
                 return None
             for chunk in response.iter_content(chunk_size=4096):
                 if time.monotonic() - started > REQUEST_TIMEOUT_SECONDS:
