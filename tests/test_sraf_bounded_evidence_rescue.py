@@ -963,7 +963,7 @@ def test_a9_relax_annotation_cli_direct_roundtrip_and_exclusive_output(tmp_path,
     assert prepare([str(source),str(target)]) == 0
     out = capsys.readouterr()
     assert json.loads(out.out) == {"status":"PRIVATE_ANNOTATION_CREATED","cases":1,"rows_to_label":5}
-    assert not out.err and "PRIVATE" not in out.out and "甲軸" not in out.out
+    assert not out.err and "PRIVATE_CASE.json" not in out.out and "PRIVATE_LABEL.json" not in out.out and "甲軸" not in out.out
     if os.name == "posix":
         assert target.stat().st_mode & 0o077 == 0
     initial = target.read_bytes()
