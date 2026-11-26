@@ -1165,3 +1165,60 @@ def test_arc_config_doctor_optional_dependencies_and_privacy(monkeypatch, capsys
     report = json.loads(capsys.readouterr().out)
     assert report["mode"] == "unsupported"
     assert not any(v["enabled_by_mode"] for v in report["features"].values())
+
+
+def test_a9_rank_replay_actual_report_count_cap_distinguishes_top20():
+    from agent.es.evidence_core.arc_rank_replay import replay_rank_cases
+    small = _a9_rank_replay_case()
+    small["report_selection"] = {"scope":"complete_report_input_strong_first","limit":20}
+    all_rows = _a9_rank_replay_case()
+    all_rows["report_selection"] = {"scope":"complete_report_input_strong_first","limit":120}
+    for case, expected_gain, selected in ((small,1,20),(all_rows,0,25)):
+        result = replay_rank_cases([case])
+        assert result["comparison"]["top_20"]["net_relevant_change"] == 1
+        comp = result["report_selection_comparison"]["full_selection"]
+        assert comp["baseline"]["selected"] == comp["candidate"]["selected"] == selected
+        assert comp["net_relevant_change"] == expected_gain
+        assert result["report_selection_limit_cases"] == {str(case["report_selection"]["limit"]):1}
+    assert replay_rank_cases([_a9_rank_replay_case()])["report_selection_comparison"] is None
+
+
+def test_a9_rank_report_cap_respects_legacy_strong_first():
+    from agent.es.evidence_core.arc_rank_replay import replay_rank_cases
+    case = _a9_rank_replay_case()
+    for row in case["rows"][:5]:
+        row["weak"] = True
+    # Relevant rare evidence is weak and cannot displace strong evidence.
+    case["rows"][-1]["weak"] = True
+    case["report_selection"] = {"scope":"complete_report_input_strong_first","limit":19}
+    result = replay_rank_cases([case])
+    comp = result["report_selection_comparison"]["full_selection"]
+    assert comp["baseline"]["selected"] == comp["candidate"]["selected"] == 19
+    assert comp["baseline"]["gold_counts"]["relevant"] == comp["candidate"]["gold_counts"]["relevant"] == 0
+    assert comp["net_relevant_change"] == 0
+
+
+@pytest.mark.parametrize("selection", [None, {}, {"scope":"complete_report_input_strong_first","limit":True},
+    {"scope":"complete_report_input_strong_first","limit":129},
+    {"scope":"prefix","limit":20}, {"scope":"source_diverse","limit":20},
+    {"scope":"complete_report_input_strong_first","limit":20,"private":"PRIVATE"}])
+def test_a9_rank_report_cap_requires_explicit_complete_input_scope(selection):
+    from agent.es.evidence_core.arc_rank_replay import replay_rank_cases
+    case = _a9_rank_replay_case()
+    case["report_selection"] = selection
+    assert replay_rank_cases([case]) is None
+
+
+def test_shared_strong_first_report_selection_keeps_exact_legacy_behavior():
+    from agent.utils.report_evidence_selection import select_strong_first_evidence
+    rows = [{"text":str(i), **({"weak_evidence": True} if i in (0,3) else {})} for i in range(6)]
+    for limit in (-1,0,1,3,5,6,120):
+        strong = [e for e in rows if not e.get("weak_evidence")]
+        weak = [e for e in rows if e.get("weak_evidence")]
+        expected = strong[:limit]
+        if len(expected)<limit:
+            expected += weak[:limit-len(expected)]
+        picked = select_strong_first_evidence(rows,limit)
+        assert picked == expected
+        assert all(a is b for a,b in zip(picked,expected))
+    assert [row["text"] for row in rows] == [str(i) for i in range(6)]
