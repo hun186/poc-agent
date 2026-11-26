@@ -781,7 +781,7 @@ def test_arc_deep_review_runs_only_with_live_source_and_endpoint_permission(monk
     assert len(result._report_rows) == 50
     assert len(sends) == int(case in ("ok","revoked"))
     assert len(checks) == (2 if case in ("ok","revoked") else 1 if case in ("deny","wrong_endpoint") else 0)
-    assert binding._review_sources is None or case == "off"
+    assert binding._review_sources is None
     logs = [json.loads(row.getMessage().split("SRAF_ARC_SEMANTIC_REVIEW=",1)[1])
             for row in caplog.records if row.getMessage().startswith("SRAF_ARC_SEMANTIC_REVIEW=")]
     if case == "ok":
@@ -815,3 +815,36 @@ def test_arc_deep_review_below_pressure_does_not_request_provider(monkeypatch, c
     assert len(result.rounds) == 2
     assert caplog.text.count("below_review_pressure") == 2
     assert binding._review_sources is None
+
+
+def test_arc_deep_review_owner_revocation_during_model_call_blocks_main_coverage(monkeypatch):
+    from agent.es import arc_semantic_review_transport as transport
+    from agent.adaptive_retrieval.trusted_execution_loop import TrustedNroundExecutionError
+    monkeypatch.setenv("SRAF_ARC_REVIEW_DEEP","shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW","shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS","approved")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_ENDPOINT","https://review.invalid/api/chat")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_MODEL","private-model")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX","news_test")
+    monkeypatch.delenv("SRAF_ARC_DEEP_FREQUENCY",raising=False)
+    monkeypatch.delenv("SRAF_ARC_GROUP_FREQUENCY",raising=False)
+    c, scope, ev, _, _, _ = _setup()
+    owner_active = [True]
+    sends = []
+    def review(*_):
+        sends.append(1)
+        owner_active[0] = False
+        return None
+    binding = WorkerScopeBinding(
+        job=_job(scope), constraints=scope, coordinator=c,
+        authorized_indexes=("news_test",),
+        check_index_access=lambda *_: owner_active[0],
+        check_single_branch_coverage=lambda *_: True,
+        check_review_egress=lambda *_: True,
+    )
+    monkeypatch.setattr(transport,"_request_review",review)
+    with pytest.raises(TrustedNroundExecutionError):
+        _run(c,scope,ev,FakeES(_deep_review_page()),binding)
+    assert sends == [1]
+    assert binding._review_sources is None
+    assert c.safe_progress()["ready_for_external_report_generation"] is False
