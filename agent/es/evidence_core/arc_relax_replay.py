@@ -128,7 +128,7 @@ def _pipeline_check(case, groups, pressure, baseline, added):
         return "pipeline_unavailable"
 
 
-def _prepare(case):
+def _prepare(case, *, check_pipeline=False):
     if type(case) is not dict or set(case) != _KEYS:
         return None
     # This API is for local JSON-native inputs. Bound the encoded fixture
@@ -233,7 +233,7 @@ def _prepare(case):
         rows, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
         allow_nan=False).encode("utf-8")).hexdigest()
     pipeline_status = "not_pilot_eligible"
-    if pilot_status == "pilot_candidate_prepared":
+    if check_pipeline and pilot_status == "pilot_candidate_prepared":
         pipeline_status = _pipeline_check(case, groups, pressure, baseline, added)
     return _PreparedCase(digest, rows, observation, pilot_status, pipeline_status)
 
@@ -272,7 +272,7 @@ def replay_relax_cases(cases):
             total_bytes += len(json.dumps(fixture, ensure_ascii=False, allow_nan=False).encode("utf-8"))
             if total_bytes > _MAX_TOTAL_BYTES:
                 return None
-            prepared = _prepare(fixture["case"])
+            prepared = _prepare(fixture["case"], check_pipeline=True)
             labels = fixture["labels"]
             if (prepared is None or fixture["fixture_digest"] != prepared.digest
                     or type(labels) is not list or len(labels) != len(prepared.rows)):
