@@ -6,12 +6,13 @@ provider or wire totals. No question, endpoint, source or result retention.
 """
 from __future__ import annotations
 
+from agent.arc_mode import arc_shadow_enabled
+
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import wraps
 import json
 import logging
-import os
 from threading import Lock
 import time
 
@@ -104,7 +105,7 @@ def measure_ordinary_report(func):
     def wrapped(*args, **kwargs):
         from agent.external_capabilities import requirement_acceptance_active
         measurement = (OrdinaryResourceMeasurement()
-                       if os.getenv("SRAF_ARC_ORDINARY_RESOURCE_METRICS") == "shadow"
+                       if arc_shadow_enabled("SRAF_ARC_ORDINARY_RESOURCE_METRICS")
                        and not requirement_acceptance_active() else None)
         outcome = "raised"
         with bind_measurement(measurement):
