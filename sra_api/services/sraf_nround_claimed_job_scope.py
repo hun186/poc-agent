@@ -139,8 +139,39 @@ class PersistedClaimedNroundJobScope:
         except Exception:
             raise PersistedNroundJobScopeError("export_policy_denied") from None
 
-    def make_binding(self) -> WorkerScopeBinding:
-        """Only a scoped, non-production binding; no ES/LLM/Word calls."""
+    def make_binding(
+        self, *,
+        check_frequency_scope: Callable[[ReportJob, QueryConstraints], bool] | None = None,
+        check_review_egress: Callable[[ReportJob, QueryConstraints, str, tuple[str, ...], str, str, bool | str], bool] | None = None,
+        check_active_lease: Callable[[int], bool] | None = None,
+    ) -> WorkerScopeBinding:
+        """Bind independent optional policies to the current persisted Job."""
+        if (any(p is not None and not callable(p) for p in
+                (check_frequency_scope, check_review_egress, check_active_lease))
+                or ((check_frequency_scope is not None or check_review_egress is not None)
+                    and check_active_lease is None)):
+            raise PersistedNroundJobScopeError("invalid_optional_policy_context")
+
+        def guarded_optional(policy, constraints, *args):
+            try:
+                if constraints is not self._question:
+                    return False
+                progress = self._coordinator.safe_progress()
+                number = progress["round"]
+                if (progress["phase"] != "SEARCHING"
+                        or check_active_lease(number) is not True):
+                    return False
+                live = self._assert_live()
+                if policy(live, constraints, *args) is not True:
+                    return False
+                self._assert_live()
+                progress = self._coordinator.safe_progress()
+                return (progress["phase"] == "SEARCHING"
+                        and progress["round"] == number
+                        and check_active_lease(number) is True)
+            except Exception:
+                return False
+
         live = self._assert_live()
         return WorkerScopeBinding(
             job=live,
@@ -149,6 +180,12 @@ class PersistedClaimedNroundJobScope:
             authorized_indexes=self._authorized_indexes,
             check_index_access=self._index_policy,
             check_single_branch_coverage=self._branch_policy,
+            check_frequency_scope=(lambda _job, constraints:
+                guarded_optional(check_frequency_scope, constraints))
+                if check_frequency_scope is not None else None,
+            check_review_egress=(lambda _job, constraints, *args:
+                guarded_optional(check_review_egress, constraints, *args))
+                if check_review_egress is not None else None,
         )
 
     def safe_audit(self) -> dict[str, str | bool]:
