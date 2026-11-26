@@ -7,10 +7,11 @@ from pathlib import Path
 
 from .arc_semantic_eval import evaluate_semantic_cases
 from .arc_selection_eval import evaluate_selection_cases
+from .arc_rank_replay import replay_rank_cases
 from .arc_semantic_review import _unique_pairs
 
 MAX_INPUT_BYTES = 2 * 1024 * 1024
-_USAGE = "python -m agent.es.evidence_core.arc_eval_cli {semantic|selection} PRIVATE_LABELS.json"
+_USAGE = "python -m agent.es.evidence_core.arc_eval_cli {semantic|selection|rank-replay} PRIVATE_LABELS.json"
 
 
 def _emit(result, *, stream):
@@ -23,10 +24,11 @@ def main(argv=None):
     if args == ["--help"] or args == ["-h"]:
         print(_USAGE)
         return 0
-    if len(args) != 2 or args[0] not in ("semantic", "selection"):
+    if len(args) != 2 or args[0] not in ("semantic", "selection", "rank-replay"):
         _emit({"status": "INVALID_ARGUMENTS", "usage": _USAGE}, stream=sys.stderr)
         return 2
-    evaluator = evaluate_semantic_cases if args[0] == "semantic" else evaluate_selection_cases
+    evaluator = {"semantic": evaluate_semantic_cases, "selection": evaluate_selection_cases,
+                 "rank-replay": replay_rank_cases}[args[0]]
     try:
         # Operator-owned local file; never read stdin, URL, directory or pipe.
         path = Path(args[1])
