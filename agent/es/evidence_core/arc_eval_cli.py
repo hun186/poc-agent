@@ -11,10 +11,11 @@ from .arc_rank_replay import replay_rank_cases
 from .arc_tighten_replay import replay_tightening_cases
 from .arc_relax_replay import replay_relax_cases
 from .arc_resource_eval import evaluate_resource_cases
+from .arc_acceptance_screen import screen_selection_acceptance
 from .arc_semantic_review import _unique_pairs
 
 MAX_INPUT_BYTES = 2 * 1024 * 1024
-_USAGE = "python -m agent.es.evidence_core.arc_eval_cli {semantic|selection|rank-replay|tighten-replay|relax-replay|resources} PRIVATE_LABELS.json"
+_USAGE = "python -m agent.es.evidence_core.arc_eval_cli {semantic|selection|rank-replay|tighten-replay|relax-replay|resources|acceptance} PRIVATE_LABELS.json"
 
 
 def _emit(result, *, stream):
@@ -27,12 +28,13 @@ def main(argv=None):
     if args == ["--help"] or args == ["-h"]:
         print(_USAGE)
         return 0
-    if len(args) != 2 or args[0] not in ("semantic", "selection", "rank-replay", "tighten-replay", "relax-replay", "resources"):
+    if len(args) != 2 or args[0] not in ("semantic", "selection", "rank-replay", "tighten-replay", "relax-replay", "resources", "acceptance"):
         _emit({"status": "INVALID_ARGUMENTS", "usage": _USAGE}, stream=sys.stderr)
         return 2
     evaluator = {"semantic": evaluate_semantic_cases, "selection": evaluate_selection_cases,
                  "rank-replay": replay_rank_cases, "tighten-replay": replay_tightening_cases,
-                 "relax-replay": replay_relax_cases, "resources": evaluate_resource_cases}[args[0]]
+                 "relax-replay": replay_relax_cases, "resources": evaluate_resource_cases,
+                 "acceptance": screen_selection_acceptance}[args[0]]
     try:
         # Operator-owned local file; never read stdin, URL, directory or pipe.
         path = Path(args[1])
