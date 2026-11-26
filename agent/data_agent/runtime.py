@@ -269,6 +269,7 @@ def run_data_agent(
         os.getenv("SRAF_ARC_GROUP_FREQUENCY") == "shadow" or native_frequency_enabled()
         or bilingual_shadow_enabled()
         or os.getenv("SRAF_ARC_TIGHTEN") == "shadow"
+        or os.getenv("SRAF_ARC_RELAX") == "shadow"
     )), bind_sink(topic_audit_sink):
         with bind_original_report_question(question_raw if report_mode else None):
             code_agent = build_agent(mode=mode)
