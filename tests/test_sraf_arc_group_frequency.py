@@ -814,3 +814,60 @@ def test_a9_rank_replay_cli_privacy(tmp_path, capsys):
     out = capsys.readouterr()
     assert json.loads(out.out)["result"]["comparison"]["top_20"]["net_relevant_change"] == 1
     assert "PRIVATE" not in out.out and "美國" not in out.out and not out.err
+
+
+def _a9_measured(status="completed", elapsed=100, es=1, llm=0, prompt=0, completion=0):
+    return {"status":status,"elapsed_ms":elapsed,"es_calls":es,
+            "llm_calls":llm,"prompt_tokens":prompt,"completion_tokens":completion}
+
+
+def test_arc_a9_resources_pairs_actual_observations_and_retains_failures():
+    from agent.es.evidence_core.arc_resource_eval import evaluate_resource_cases
+    cases = [
+        {"baseline":_a9_measured(elapsed=100),"candidate":_a9_measured(elapsed=120,llm=1,prompt=40,completion=10)},
+        {"baseline":_a9_measured(elapsed=200),"candidate":_a9_measured(elapsed=160)},
+        {"baseline":_a9_measured(elapsed=300),"candidate":_a9_measured(status="timed_out",elapsed=500,llm=1,prompt=None,completion=None)},
+    ]
+    result = evaluate_resource_cases(cases)
+    assert result["both_completed_cases"] == 2
+    assert result["status_transitions"]["completed"]["timed_out"] == 1
+    elapsed = result["all_attempts"]["elapsed_ms"]
+    assert elapsed["baseline_total"] == 600 and elapsed["candidate_total"] == 780
+    assert elapsed["delta_total"] == 180
+    assert elapsed["relative_delta"]["value"] == .3
+    assert elapsed["baseline_p50"] == 200 and elapsed["candidate_p95"] == 500
+    assert elapsed["paired_delta_p95"] == 200
+    assert elapsed["candidate_higher_cases"] == 2 and elapsed["candidate_lower_cases"] == 1
+    assert result["both_completed"]["elapsed_ms"]["delta_total"] == -20
+    tokens = result["all_attempts"]["prompt_tokens"]
+    assert tokens["paired_cases"] == 2 and tokens["missing_candidate"] == 1
+    assert tokens["candidate_total"] == 40 and tokens["relative_delta"]["value"] is None
+    assert result["all_attempts"]["llm_calls"]["candidate_total"] == 2
+
+
+def test_arc_a9_resources_missing_values_and_no_joint_success_are_not_zero_cost():
+    from agent.es.evidence_core.arc_resource_eval import evaluate_resource_cases
+    result = evaluate_resource_cases([
+        {"baseline":_a9_measured(status="failed",elapsed=None,prompt=None),
+         "candidate":_a9_measured(status="cancelled",elapsed=50,prompt=40)}
+    ])
+    assert result["both_completed_cases"] == 0
+    assert result["all_attempts"]["elapsed_ms"]["paired_cases"] == 0
+    assert result["all_attempts"]["elapsed_ms"]["candidate_total"] is None
+    assert result["all_attempts"]["prompt_tokens"]["baseline_p95"] is None
+    assert result["both_completed"]["llm_calls"]["baseline_total"] is None
+
+
+def test_arc_a9_resources_rejects_estimates_malformed_and_private_fields():
+    from agent.es.evidence_core.arc_resource_eval import evaluate_resource_cases
+    row = _a9_measured()
+    for invalid in ([], [{"baseline":row,"candidate":{**row,"status":"unknown"}}],
+                    [{"baseline":row,"candidate":{**row,"elapsed_ms":True}}],
+                    [{"baseline":row,"candidate":{**row,"llm_calls":-1}}],
+                    [{"baseline":row,"candidate":{**row,"prompt_tokens":1.5}}],
+                    [{"baseline":row,"candidate":{**row,"es_calls":10**12+1}}],
+                    [{"baseline":row,"candidate":{**row,"reserved":1}}],
+                    [{"baseline":row,"candidate":{**row,"private_prompt":"PRIVATE"}}],
+                    [{"baseline":row,"candidate":row,"case_id":"PRIVATE"}],
+                    [{"baseline":row,"candidate":row}]*33):
+        assert evaluate_resource_cases(invalid) is None
