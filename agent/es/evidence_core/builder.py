@@ -23,6 +23,8 @@ from .group_frequency import log_group_frequency, observe_group_frequency
 from .arc_rank_shadow import observe_rank_shadow, log_rank_shadow
 from ..arc_native_rank_receipt import NativeRankFrequency
 from .arc_tighten_shadow import CandidatePressure, observe_tightening, log_tightening
+from .arc_relax_shadow import StrictSliceCounts, observe_low_volume, log_low_volume
+from ..arc_request_budget import current_arc_budget
 from .prose_anchor import propose_prose_shadow_anchor
 from .topic_audit import record as record_topic_audit
 
@@ -40,16 +42,21 @@ def collect_snippets(
     allowed_years: Optional[Set[int]] = None,
     trace: EvidenceTrace | None = None,
     stage: str = "strict",
+    arc_counts: StrictSliceCounts | None = None,
 ) -> List[EvidenceSnippet]:
     out: List[EvidenceSnippet] = []
     for h in hits:
         for citation_ordinal, c in enumerate(h.citations):
-            reason: list[str] | None = [] if trace is not None else None
+            reason: list[str] | None = [] if trace is not None or arc_counts is not None else None
+            if arc_counts is not None:
+                arc_counts.inspected += 1
             ev = build_evidence_snippet(
                 h, c, date_from=date_from, date_to=date_to,
                 allowed_years=allowed_years, rejection_reason=reason,
             )
             if ev is None:
+                if arc_counts is not None:
+                    arc_counts.reject(reason[0] if reason else "unknown")
                 if trace is not None:
                     trace.citation(
                         stage=stage, hit_ordinal=h.source_hit_ordinal,
@@ -58,11 +65,15 @@ def collect_snippets(
                     )
                 continue
 
+            if arc_counts is not None:
+                arc_counts.canonical_eligible += 1
             ok, hit_terms, scope, gh = match_topic(
                 ev.text, h.subject, h.article_title, term_groups,
                 min_groups_required=min_groups_required
             )
             if not ok:
+                if arc_counts is not None:
+                    arc_counts.topic_rejected += 1
                 if trace is not None:
                     trace.citation(
                         stage=stage, hit_ordinal=h.source_hit_ordinal,
@@ -135,6 +146,11 @@ def build_hits_and_evidence(
     )
 
     # 1) strict
+    arc_counts = StrictSliceCounts() if (
+        os.getenv("SRAF_ARC_RELAX") == "shadow"
+        and type(arc_candidate_pressure) is CandidatePressure
+        and current_arc_budget() is not None
+    ) else None
     evidence = collect_snippets(
         out_hits,
         date_from=date_from, date_to=date_to,
@@ -142,8 +158,18 @@ def build_hits_and_evidence(
         min_groups_required=None,
         allowed_years=allowed_years,
         trace=evidence_trace, stage="strict",
+        arc_counts=arc_counts,
     )
     strict_evidence_count = len(evidence)
+    if arc_counts is not None:
+        try:
+            log_low_volume(observe_low_volume(
+                out_hits, evidence, term_groups, counts=arc_counts,
+                pressure=arc_candidate_pressure, original_question=original_question,
+                date_from=date_from, date_to=date_to, allowed_years=allowed_years,
+            ))
+        except Exception:
+            log_low_volume({"schema": "sraf_arc_relax_shadow_v1", "status": "unavailable"})
     # ARC A3: observation only, no ES/LLM calls or Evidence changes.
     observation = native_observation = None
     if os.getenv("SRAF_ARC_GROUP_FREQUENCY") == "shadow":
