@@ -7,6 +7,8 @@ approve the dedicated HTTPS endpoint and all candidate source IDs.
 """
 from __future__ import annotations
 
+from agent.arc_mode import arc_shadow_enabled
+
 import json
 import logging
 import os
@@ -29,8 +31,8 @@ MIN_ELIGIBLE = 4
 
 
 def deep_review_enabled():
-    return (os.getenv("SRAF_ARC_REVIEW_DEEP") == "shadow"
-            and os.getenv("SRAF_ARC_REVIEW") == "shadow"
+    return (arc_shadow_enabled("SRAF_ARC_REVIEW_DEEP")
+            and arc_shadow_enabled("SRAF_ARC_REVIEW")
             and os.getenv("SRAF_ARC_REVIEW_EGRESS") == "approved")
 
 
