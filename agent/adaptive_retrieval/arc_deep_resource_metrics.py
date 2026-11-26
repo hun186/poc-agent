@@ -6,10 +6,11 @@ claim, LLM inference, public API changes, or report synthesis measurement.
 """
 from __future__ import annotations
 
+from agent.arc_mode import arc_shadow_enabled
+
 from contextvars import ContextVar
 import json
 import logging
-import os
 import time
 
 _LOG = logging.getLogger("sraf.arc.deep_retrieval_resource")
@@ -38,7 +39,7 @@ class DeepRetrievalMeasurement:
 def begin_measurement(coordinator):
     # Always mask any outer measurement, including nested disabled scopes.
     measurement = (DeepRetrievalMeasurement(coordinator)
-                   if os.getenv("SRAF_ARC_DEEP_RESOURCE_METRICS") == "shadow" else None)
+                   if arc_shadow_enabled("SRAF_ARC_DEEP_RESOURCE_METRICS") else None)
     return _SCOPE.set(measurement), measurement
 
 
