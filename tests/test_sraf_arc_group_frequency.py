@@ -982,3 +982,58 @@ def test_arc_a9_acceptance_screen_explicit_precision_tolerance_and_cli(tmp_path,
     out=capsys.readouterr()
     assert json.loads(out.out)["result"]["status"]=="BLOCKED"
     assert "PRIVATE_SCREEN" not in out.out and not out.err
+
+
+def test_arc_release_env_example_covers_runtime_settings_and_safe_defaults():
+    import ast
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    text = (root / ".env.example").read_text(encoding="utf-8")
+    assignments = {}
+    for line in text.splitlines():
+        match = re.fullmatch(r"\s*(#\s*)?(SRAF_ARC_[A-Z0-9_]+)=(.*)", line)
+        if match:
+            commented, name, value = match.groups()
+            # Ignore commented alternative values, but retain documented
+            # optional settings when there is no active assignment.
+            assignments.setdefault(name, []).append((bool(commented), value))
+    required = set()
+    for folder in ("agent", "api", "sra_api"):
+        for source in (root / folder).rglob("*.py"):
+            tree = ast.parse(source.read_text(encoding="utf-8-sig"))
+            for node in ast.walk(tree):
+                key = None
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr in ("getenv", "get", "setdefault")
+                        and node.args):
+                    key = node.args[0]
+                elif (isinstance(node, ast.Subscript)
+                      and isinstance(node.value, ast.Attribute)
+                      and node.value.attr == "environ"):
+                    key = node.slice
+                if (isinstance(key, ast.Constant) and isinstance(key.value, str)
+                        and key.value.startswith("SRAF_ARC_")):
+                    required.add(key.value)
+    from dataclasses import asdict
+    from agent.es.evidence_core.group_frequency import GroupFrequencyBudget
+    for key, value in asdict(GroupFrequencyBudget()).items():
+        name = "SRAF_ARC_GROUP_FREQUENCY_MAX_" + key.upper()
+        required.add(name)
+        assert (True, str(value)) in assignments.get(name, [])
+    assert required
+    assert not required.difference(assignments), sorted(required.difference(assignments))
+    for name, entries in assignments.items():
+        active = [value for commented, value in entries if not commented]
+        if name.startswith("SRAF_ARC_GROUP_FREQUENCY_MAX_"):
+            assert not active
+        else:
+            assert len(active) == 1, name
+            if (name.endswith("_INDEX") or name.startswith("SRAF_ARC_CAPTURE_")
+                    or name in {"SRAF_ARC_REVIEW_ENDPOINT", "SRAF_ARC_REVIEW_MODEL",
+                                "SRAF_ARC_REVIEW_CA_FILE"}):
+                assert active == [""], name
+            else:
+                assert active == ["off"], name
+    assert set(assignments) == required
