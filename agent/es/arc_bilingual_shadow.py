@@ -6,6 +6,8 @@ semantic equivalence verdict or a recall/precision measurement.
 """
 from __future__ import annotations
 
+from agent.arc_mode import arc_shadow_enabled
+
 import json
 import logging
 import os
@@ -22,7 +24,7 @@ MAX_PREDICT_TOKENS = 1536
 
 
 def bilingual_shadow_enabled() -> bool:
-    return os.getenv("SRAF_ARC_BILINGUAL") == "shadow"
+    return arc_shadow_enabled("SRAF_ARC_BILINGUAL")
 
 
 def observe_bilingual_proposal(*, original_question, groups, manual) -> None:
