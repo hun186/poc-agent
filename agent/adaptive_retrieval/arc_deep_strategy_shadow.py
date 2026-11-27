@@ -83,10 +83,11 @@ def build_deep_strategy_record(*, record, observation, assessment, keyword_polic
 
 def observe_deep_strategy(**kwargs):
     """Optional local diagnostic; never changes the planner or its inputs."""
+    if not arc_shadow_enabled("SRAF_ARC_STRATEGY"):
+        return
+    from agent.external_capabilities import requirement_acceptance_active
+
     try:
-        if not arc_shadow_enabled("SRAF_ARC_STRATEGY"):
-            return
-        from agent.external_capabilities import requirement_acceptance_active
         if requirement_acceptance_active():
             return
         result = build_deep_strategy_record(**kwargs)
