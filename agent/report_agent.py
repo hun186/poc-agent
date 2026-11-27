@@ -120,7 +120,7 @@ def ask_with_report(
             route=trace.get("route"),  # 或你當下的 route 變數
             **({"_arc_review_policy": _arc_review_policy,
                 "_arc_review_deadline_monotonic": _arc_review_deadline_monotonic}
-               if _arc_review_policy is not None else {}),
+               if _arc_review_policy is not None or _arc_review_deadline_monotonic is not None else {}),
         )
         
     # ✅ 對外仍保留原問句（你原本就強調「使用者提問一定要存在」）

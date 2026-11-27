@@ -100,3 +100,5 @@ requires_runtime_scope 表示仍需實際來源／索引／模型／Worker 授�
 此工具不是正式策略啟用授權，也不是全報告的實機健康檢查。
 
 啟用 SRAF_ARC_LLM_PRIORITY=shadow 時，A8 若經最終來源綁定、批次歧義與時間/端點候選檢查而被選中，該次工具不再改派 A2/A7（即使 A8 授權拒絕或失敗）。A8 未被選中才沿用 A2/A7 策略。選中不等於授權或模型成功。A8 生產政策仍未安裝；原有旗標和預設值不變。
+
+可信 Python 報告呼叫端若已保留後續生成時間，可使用既有 `_arc_review_deadline_monotonic` 同時約束 A2/A7/A8 額外模型作業，即使未提供 A8 policy。Data Agent 共享預算在原子保留前要求至少 25 秒，逾期結果不採用且不退款。未提供 cutoff 維持既有行為；無效 cutoff 不允許額外 LLM，並不阻止本地診斷或正式報告。此為 admission fence，非硬取消、端到端 deadline 或正式生產預算政策；尚無自動計算普通報告生成保留時間的正式呼叫端，不新增 env。

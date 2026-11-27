@@ -1156,3 +1156,26 @@ def test_arc_priority_coordinates_a8_with_real_a7_observer(monkeypatch, caplog, 
     assert len(observed["evidence_snippets"]) == 40
     assert "PRIVATE_" not in caplog.text
     assert "review_selection" not in repr(observed)
+
+
+@pytest.mark.parametrize("deadline", [124, 150])
+def test_arc_report_supplies_shared_model_deadline_without_a8_policy(monkeypatch, deadline):
+    from agent import report_agent
+    from agent.data_agent import runtime
+    from agent.es import arc_request_budget as arc
+    monkeypatch.setattr(arc, "monotonic", lambda: 100)
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_BILINGUAL", "shadow")
+    monkeypatch.setattr(report_agent, "refine_question_for_data_agent", lambda question, **kw: question)
+    observed = []
+    class Agent:
+        def run(self, question):
+            budget, ordinal = arc.current_arc_budget()
+            observed.append(budget.reserve(ordinal, arc.ArcUnits(llm_calls=1)))
+            return {}
+    monkeypatch.setattr(runtime, "build_agent", lambda **kw: Agent())
+    monkeypatch.setattr(report_agent, "run_data_agent", runtime.run_data_agent)
+    monkeypatch.setattr(report_agent, "_generate_report_from_payload", lambda *a: {"answer": "unchanged"})
+    assert report_agent.ask_with_report("PRIVATE_QUESTION", _arc_review_deadline_monotonic=deadline) == {"answer": "unchanged"}
+    assert observed == [deadline == 150]
+    assert arc.current_arc_budget() is None

@@ -50,12 +50,18 @@ def observe_bilingual_proposal(*, original_question, groups, manual) -> None:
             record["status"] = "unsupported_input"
             return
         budget, ordinal = scope
+        if not budget.model_window_open():
+            record["status"] = "model_deadline_or_scope_closed"
+            return
         if not budget.reserve(ordinal, ArcUnits(llm_calls=1)):
             record["status"] = "shared_budget_exhausted"
             return
         raw = call_llm(payload, system_prompt=SYSTEM_PROMPT,
                        timeout=REQUEST_TIMEOUT_SECONDS,
                        extra_params={"options": {"num_predict": MAX_PREDICT_TOKENS}})
+        if not budget.model_window_open(admission=False):
+            record["status"] = "model_deadline_or_scope_closed"
+            return
         proposed = parse_proposal(raw, groups)
         if proposed is None:
             record["status"] = "invalid_proposal"
