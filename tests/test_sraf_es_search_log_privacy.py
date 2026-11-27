@@ -883,3 +883,86 @@ def test_ordinary_resource_measurement_failed_and_unknown_usage(monkeypatch,capl
     assert row["adapter_attempts"]["ollama_generate"]==2
     assert all(v=={"known_attempts":0,"observed_sum":None} for v in row["ollama_reported_usage"].values())
     assert "PRIVATE" not in repr(row)
+
+
+@pytest.mark.parametrize("scenario", ["allow", "deny", "revoke", "expired", "absent", "off", "no_ambiguity", "small"])
+def test_arc_a8_explicit_ordinary_policy_at_actual_final_refill(monkeypatch, caplog, scenario):
+    import json
+    import time
+    from agent.es.arc_review_scope import capture_primary_review, make_final_review_input
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, bind_arc_budget
+    from agent.es import arc_semantic_review_transport as transport
+    from agent.tools_es.date_refill import refill_date_filtered_evidence
+
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_SCOPE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW", "off" if scenario == "off" else "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS", "approved")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX", "news_test")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_ENDPOINT", "https://private.invalid/api/chat")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_MODEL", "PRIVATE_MODEL")
+    monkeypatch.delenv("SRAF_ARC_REVIEW_CA_FILE", raising=False)
+    monkeypatch.setenv("SRAF_ARC_REVIEW_RESOURCE_METRICS", "off")
+    primary = _native_primary()
+    primary["hits"]["hits"] = [{"_index": "news_test", "_id": "PRIVATE_ID_" + str(i)}
+                                for i in range(5)]
+    primary["hits"]["total"]["value"] = 5
+    body = {"size": 5}
+    origin = "__sraf_source_hit_ordinal"
+    docs = [{"uuid": "PRIVATE_UUID", origin: i} for i in range(5)]
+    rows = [{origin: i % 4, "uuid": "PRIVATE_UUID", "text": "PRIVATE_ROW_" + str(i),
+             "match_policy": "strict",
+             "match_scope": "mixed" if i == 0 and scenario != "no_ambiguity" else "text",
+             "structured_time_context": True,
+             "matched_event_time_candidates": [{"time_iso": "2020-01-01"}]}
+            for i in range(39 if scenario == "small" else 40)]
+    rows.append({**rows[0], origin: 4, "text": "PRIVATE_UNRETAINED"})
+    checks, calls = [], []
+
+    def policy(**kwargs):
+        checks.append(kwargs)
+        assert kwargs == dict(question="PRIVATE_QUESTION", groups=(frozenset({"PRIVATE_TERM"}),),
+                              date_from="2020-01-01", date_to="2020-12-31", index="news_test",
+                              source_ids=tuple("PRIVATE_ID_" + str(i) for i in range(4)),
+                              endpoint="https://private.invalid/api/chat", model="PRIVATE_MODEL",
+                              verify=True)
+        return scenario != "deny" and not (scenario == "revoke" and len(checks) == 2)
+
+    def request(approved, batch):
+        calls.append(batch.count)
+        payload = json.loads(batch.payload)
+        assert batch.count == 4 and len(payload["passages"]) == 4
+        assert all("PRIVATE_ROW_" in p["text"] for p in payload["passages"])
+        assert "PRIVATE_UNRETAINED" not in batch.payload and "PRIVATE_ID_" not in batch.payload
+        raw = json.dumps([{"ordinal": i, "verdict": "unrelated"}
+                          for i in range(1, batch.count + 1)])
+        return transport.summarize_semantic_review(raw, batch)
+
+    monkeypatch.setattr(transport, "_request_review", request)
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)):
+        sink = []
+        capture_primary_review(index="news_test", body=body, response=primary,
+                               real_client=True, sink=sink)
+        scope = make_final_review_input(sink[0], question="PRIVATE_QUESTION",
+                                        groups=[{"PRIVATE_TERM"}], date_from="2020-01-01",
+                                        date_to="2020-12-31", manual=False)
+        args = dict(body=body, first_response=primary, requested_size=4,
+                    search_next=lambda _: pytest.fail("unexpected ES refill"),
+                    build_evidence=lambda _: (docs, rows, 0))
+        baseline = refill_date_filtered_evidence(**args)
+        observed = refill_date_filtered_evidence(
+            **args, arc_review_scope=scope,
+            _arc_review_policy=None if scenario == "absent" else policy,
+            _arc_review_deadline_monotonic=time.monotonic() + (10 if scenario == "expired" else 300),
+        )
+    assert observed == baseline
+    allowed = scenario in ("allow", "revoke")
+    assert calls == ([4] if allowed else [])
+    assert len(checks) == (2 if allowed else 1 if scenario == "deny" else 0)
+    assert budget.snapshot()[0] == ArcUnits(slices=1, hits=128, rows=64, chars=96000,
+                                          llm_calls=int(allowed))
+    assert ("observed_verdicts" in caplog.text) == (scenario == "allow")
+    if scenario == "revoke":
+        assert "authorization_or_deadline_changed" in caplog.text
+    assert "PRIVATE_" not in caplog.text
