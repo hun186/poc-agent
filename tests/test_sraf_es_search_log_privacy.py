@@ -966,3 +966,101 @@ def test_arc_a8_explicit_ordinary_policy_at_actual_final_refill(monkeypatch, cap
     if scenario == "revoke":
         assert "authorization_or_deadline_changed" in caplog.text
     assert "PRIVATE_" not in caplog.text
+
+
+@pytest.mark.parametrize("scenario", ["allow", "deny", "absent", "wrong_question", "closed", "revoke"])
+def test_arc_ordinary_review_execution_real_tool_thread(monkeypatch, caplog, scenario):
+    import json
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    from agent.es.arc_ordinary_review_execution import (
+        ordinary_review_execution, current_review_execution,
+    )
+    from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
+    from agent.es.arc_review_scope import capture_primary_review
+    from agent.es import arc_semantic_review_transport as transport
+    from agent.tools_es.common import bind_requirement_acceptance
+    from agent.tools_es.question_scope import bind_original_report_question
+
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_SCOPE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS", "approved")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX", "news_test")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_ENDPOINT", "https://review.invalid/api/chat")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_MODEL", "PRIVATE_MODEL")
+    for key in ("BILINGUAL", "STRATEGY", "LLM_PRIORITY", "REVIEW_RESOURCE_METRICS",
+                "GROUP_FREQUENCY", "RANK_NATIVE", "TIGHTEN", "RELAX"):
+        monkeypatch.setenv("SRAF_ARC_" + key, "off")
+    monkeypatch.delenv("SRAF_ARC_REVIEW_CA_FILE", raising=False)
+    monkeypatch.setattr(search_module, "native_frequency_enabled", lambda: False)
+    primary = _native_primary()
+    primary["hits"]["hits"] = [{"_index": "news_test", "_id": "PRIVATE_ID_" + str(i)}
+                                for i in range(4)]
+    primary["hits"]["total"]["value"] = 4
+    origin = "__sraf_source_hit_ordinal"
+    docs = [{"uuid": "PRIVATE_UUID", origin: i} for i in range(4)]
+    rows = [{origin: i % 4, "uuid": "PRIVATE_UUID", "text": "PRIVATE_ROW_" + str(i),
+             "match_policy": "strict", "match_scope": "mixed" if i == 0 else "text",
+             "structured_time_context": True,
+             "matched_event_time_candidates": [{"time_iso": "2020-01-01"}]}
+            for i in range(40)]
+    def responder(body, *, index, arc_review_receipts=None, **kwargs):
+        if arc_review_receipts is not None:
+            capture_primary_review(index=index, body=body, response=primary,
+                                   real_client=True, sink=arc_review_receipts)
+        return primary
+    _prepare(monkeypatch, responder=responder)
+    monkeypatch.setattr(search_module, "resolve_index", lambda _: "news_test")
+    monkeypatch.setattr(search_module, "build_hits_and_evidence", lambda *a, **kw: (docs, rows, 0))
+    calls, checks = [], []
+    def policy(**kwargs):
+        checks.append(kwargs)
+        assert kwargs["question"] == "PRIVATE_QUESTION"
+        assert kwargs["source_ids"] == tuple("PRIVATE_ID_" + str(i) for i in range(4))
+        return scenario != "deny" and not (scenario == "revoke" and len(checks) == 2)
+    def request(approved, batch):
+        calls.append(batch.count)
+        return transport.summarize_semantic_review(json.dumps([
+            {"ordinal": i, "verdict": "unrelated"} for i in range(1, batch.count + 1)
+        ]), batch)
+    monkeypatch.setattr(transport, "_request_review", request)
+    kwargs = dict(query="SECRET_QUERY", size=4, date_from="2020-01-01", date_to="2020-12-31")
+    with bind_arc_budget((ArcRequestBudget(), 1)), bind_original_report_question("PRIVATE_QUESTION"):
+        baseline = bind_requirement_acceptance(search_module.ESSearchNews()).forward(**kwargs)
+    with bind_arc_budget((ArcRequestBudget(), 1)), bind_original_report_question("PRIVATE_QUESTION"):
+        with ordinary_review_execution(
+            question="OTHER" if scenario == "wrong_question" else "PRIVATE_QUESTION",
+            policy=None if scenario == "absent" else policy,
+            deadline=time.monotonic() + 300,
+        ):
+            tool = bind_requirement_acceptance(search_module.ESSearchNews())
+            if scenario != "closed":
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    observed = pool.submit(tool.forward, **kwargs).result()
+                    assert pool.submit(current_review_execution).result() is None
+        if scenario == "closed":
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                observed = pool.submit(tool.forward, **kwargs).result()
+        assert current_review_execution() is None
+    assert observed == baseline
+    assert calls == ([4] if scenario in ("allow", "revoke") else [])
+    assert len(checks) == (2 if scenario in ("allow", "revoke") else 1 if scenario == "deny" else 0)
+    assert "PRIVATE_" not in caplog.text
+
+
+def test_arc_review_execution_lifetime_denies_during_policy_and_nested_scope():
+    import time
+    from agent.es.arc_ordinary_review_execution import (
+        ordinary_review_execution, current_review_execution, bind_review_execution,
+    )
+    with ordinary_review_execution(question="q", policy=lambda **kw: scope.close() or True,
+                                   deadline=time.monotonic() + 60):
+        scope = current_review_execution()
+        assert scope.refill_kwargs("wrong") == {}
+        with bind_review_execution(None):
+            assert current_review_execution() is None
+        assert current_review_execution() is scope
+        assert scope.authorize(question="q") is False
+        assert scope.refill_kwargs("q") == {}
+    assert current_review_execution() is None

@@ -90,7 +90,9 @@ def ask_with_report(
     question: str,
     trace: Optional[Dict[str, Any]] = None,
     index_hint: str | None = None,
-    
+    *,
+    _arc_review_policy=None,
+    _arc_review_deadline_monotonic: float | None = None,
 ) -> Dict[str, Any]:
     if trace is None:
         trace = {}
@@ -115,7 +117,10 @@ def ask_with_report(
             question_raw=original_question,
             refined_question=refined_question,
             index_hint=index_hint,   # ✅ 補上
-            route=trace.get("route")  # 或你當下的 route 變數
+            route=trace.get("route"),  # 或你當下的 route 變數
+            **({"_arc_review_policy": _arc_review_policy,
+                "_arc_review_deadline_monotonic": _arc_review_deadline_monotonic}
+               if _arc_review_policy is not None else {}),
         )
         
     # ✅ 對外仍保留原問句（你原本就強調「使用者提問一定要存在」）

@@ -194,3 +194,5 @@
 
 
 - 2026-11-27 ARC: #570/#571/#572 merged, #573 merged `e56d755e75ed` after 12/12 exact-head CI and clean Codex Code Review. A6 measured offline acceptance does not establish live quality or cost. A8 ordinary explicit trusted Python final-refill admission candidate now reuses exact final-source binding, independent source/endpoint policy and monotonic generation-reserved deadline, nonrefundable shared LLM budget, count-only observations; no production caller or allocation integration yet. Synthetic tests submitted; exact-head CI/Codex review pending.
+
+- 2026-11-27 ARC: #574 merged `7b899af33b45` (8/8 Hosted, exact-head Codex clean). Candidate private ordinary report/Data Agent A8 policy and generation-reserved monotonic deadline now propagate via a per-instance request-lifetime bridge to actual ESSearchNews final refill; missing policy, mismatched question, closed lifetime and revocation deny. No HTTP/model input or new env switch, no automatic owner/ACL grant, no production caller, no selection changes. Synthetic worker-thread tests submitted; Hosted CI and independent review pending. A2/A7/A8 unified allocation and private live acceptance remain open.
