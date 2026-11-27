@@ -57,7 +57,8 @@ class ArcRequestBudget:
 
     def __init__(self, *, request_limit: ArcUnits = REQUEST_CEILING,
                  round_limit: ArcUnits = ROUND_CEILING,
-                 model_deadline_monotonic: float | None = None):
+                 model_deadline_monotonic: float | None = None,
+                 model_window_guard=None):
         if (type(request_limit) is not ArcUnits or type(round_limit) is not ArcUnits
                 or not _fits(request_limit, REQUEST_CEILING)
                 or not _fits(round_limit, ROUND_CEILING)
@@ -72,6 +73,9 @@ class ArcRequestBudget:
         # No supplied deadline preserves the legacy optional-model behavior.
         # An invalid explicitly supplied cutoff fails closed for model work,
         # without interfering with local diagnostics or the formal report.
+        # Optional trusted parent-budget time fence. Never a model/egress grant.
+        # The parent must not call back into ARC while holding its own lock.
+        self._model_window_guard = model_window_guard
         self._model_deadline = None
         if model_deadline_monotonic is not None:
             self._model_deadline = float('-inf')
@@ -85,6 +89,12 @@ class ArcRequestBudget:
     def _model_window_locked(self, *, admission: bool) -> bool:
         if self._sealed:
             return False
+        if self._model_window_guard is not None:
+            try:
+                if self._model_window_guard(admission=admission) is not True:
+                    return False
+            except Exception:
+                return False
         if self._model_deadline is None:
             return True
         remaining = self._model_deadline - monotonic()

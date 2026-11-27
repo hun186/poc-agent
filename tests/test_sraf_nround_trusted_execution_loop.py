@@ -225,12 +225,20 @@ def test_arc_shadow_budget_is_shared_between_deep_rounds_and_sealed(monkeypatch,
     from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits, current_arc_budget
     # A one-round-sized request budget deliberately exhausts before round 2.
     monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY", "shadow")
-    owned = ArcRequestBudget(
-        request_limit=ArcUnits(slices=2, hits=256, rows=512, chars=262144),
-        round_limit=ArcUnits(slices=2, hits=256, rows=512, chars=262144),
-    )
-    monkeypatch.setattr(loop, "ArcRequestBudget", lambda: owned)
+    created = []
     c, scope, evaluator, budget, planner_calls, _ = _setup()
+
+    def factory(*, model_window_guard):
+        assert model_window_guard == budget.optional_model_window_open
+        child = ArcRequestBudget(
+            request_limit=ArcUnits(slices=2, hits=256, rows=512, chars=262144),
+            round_limit=ArcUnits(slices=2, hits=256, rows=512, chars=262144),
+            model_window_guard=model_window_guard,
+        )
+        created.append(child)
+        return child
+
+    monkeypatch.setattr(loop, "ArcRequestBudget", factory)
     es = FakeES(_verified_page("A"), _verified_page("B"))
     result = _run(c, scope, evaluator, es)
     assert len(result.rounds) == 2
@@ -243,6 +251,8 @@ def test_arc_shadow_budget_is_shared_between_deep_rounds_and_sealed(monkeypatch,
     assert len(rows) == 4
     assert all(r["status"] == "observed_sample" for r in rows[:2])
     assert all(r["status"] == "shared_budget_exhausted" for r in rows[2:])
+    assert len(created) == 1
+    owned = created[0]
     total, rounds = owned.snapshot()
     assert total == ArcUnits(slices=2, hits=256, rows=512, chars=262144)
     assert set(rounds) == {1}
@@ -256,14 +266,66 @@ def test_arc_deep_scope_restored_and_sealed_on_failed_attestation(monkeypatch):
         ArcRequestBudget, ArcUnits, bind_arc_budget, current_arc_budget,
     )
     monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY", "shadow")
-    parent, owned = ArcRequestBudget(), ArcRequestBudget()
-    monkeypatch.setattr(loop, "ArcRequestBudget", lambda: owned)
-    c, scope, ev, _, _, _ = _setup()
+    parent = ArcRequestBudget()
+    created = []
+    c, scope, ev, budget, _, _ = _setup()
+
+    def factory(*, model_window_guard):
+        assert model_window_guard == budget.optional_model_window_open
+        child = ArcRequestBudget(model_window_guard=model_window_guard)
+        created.append(child)
+        return child
+
+    monkeypatch.setattr(loop, "ArcRequestBudget", factory)
     with bind_arc_budget((parent, 3)):
         with pytest.raises(TrustedNroundExecutionError):
             _run(c, scope, ev, FakeES(_verified_page("A")), attestor=lambda *_: False)
         assert current_arc_budget() == (parent, 3)
     assert parent.snapshot()[0] == ArcUnits()
+    assert len(created) == 1
+    owned = created[0]
     assert owned.snapshot()[0] == ArcUnits()
     assert not owned.reserve(1, ArcUnits(slices=1))
     assert current_arc_budget() is None
+
+
+def test_arc_deep_time_fence_uses_parent_clock_and_shared_round_slots(monkeypatch):
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits
+    _, _, _, parent, _, clock = _setup()
+    arc = ArcRequestBudget(model_window_guard=parent.optional_model_window_open)
+    assert not arc.reserve(1, ArcUnits(llm_calls=1))
+    assert parent.admit("round")
+    clock[0] = 1775
+    assert arc.reserve(1, ArcUnits(llm_calls=1))
+    assert not arc.reserve(1, ArcUnits(llm_calls=1))
+    assert parent.admit("round")
+    clock[0] = 1775.01
+    assert not arc.reserve(2, ArcUnits(llm_calls=1))
+    assert arc.model_window_open(admission=False)
+    clock[0] = 1800
+    assert not arc.model_window_open(admission=False)
+    assert arc.snapshot()[0] == ArcUnits(llm_calls=1)
+    assert arc.reserve(2, ArcUnits(slices=1))
+    arc.seal()
+    assert not arc.model_window_open(admission=False)
+
+
+@pytest.mark.parametrize("bad", [False, None, "true", 1])
+def test_arc_parent_time_fence_requires_literal_true(bad):
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits
+    arc = ArcRequestBudget(model_window_guard=lambda **kw: bad)
+    assert not arc.reserve(1, ArcUnits(llm_calls=1))
+    assert arc.reserve(1, ArcUnits(slices=1))
+
+
+def test_arc_parent_time_fence_clock_failure_and_generation_claim():
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits
+    _, _, _, parent, _, clock = _setup()
+    arc = ArcRequestBudget(model_window_guard=parent.optional_model_window_open)
+    assert parent.admit("round")
+    for value in (-1, float("nan"), float("inf"), None):
+        clock[0] = value
+        assert not arc.reserve(1, ArcUnits(llm_calls=1))
+    clock[0] = 100
+    assert parent.claim_report_generation(1) > 0
+    assert not arc.reserve(1, ArcUnits(llm_calls=1))

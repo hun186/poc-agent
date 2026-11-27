@@ -135,7 +135,11 @@ def run_trusted_nround(
     frequency_binding = (job_scope_binding if deep_frequency_enabled()
                          and job_scope_binding is not None
                          and job_scope_binding._check_frequency_scope is not None else None)
-    arc_budget = ArcRequestBudget() if (
+    # Use the parent request's own clock/deadline, never create a fresh
+    # relative deadline per round or mix a test clock with wall time.
+    arc_budget = ArcRequestBudget(
+        model_window_guard=coordinator._budget.optional_model_window_open,
+    ) if (
         arc_shadow_enabled("SRAF_ARC_GROUP_FREQUENCY") or frequency_binding is not None
         or review_binding is not None
     ) else None
