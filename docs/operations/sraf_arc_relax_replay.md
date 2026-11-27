@@ -116,3 +116,33 @@ This is an offline explicit Python entry only; no production caller or
 environment flag activates it. It can be tested with ARC master off
 without changing normal production behavior. No live quality/resource
 approval, no full-report LLM or Word generation, and no rollout authority.
+
+
+## Single-command measured offline acceptance
+
+Run on a private host in a dedicated process, with ARC observations off:
+
+```bash
+SRAF_ARC_MODE=off python -m agent.es.evidence_core.arc_eval_cli relax-acceptance PRIVATE_ACCEPTANCE.json
+```
+
+The input object contains policy (the explicit A9 acceptance policy in
+sraf_arc_acceptance_screen.md) and cases (the same independently labeled
+fixtures consumed by relax-replay). No manual rank or resource measurement
+entry is required. The program derives exact paired ranks, validates
+builder/final selection parity, and measures monotonic wall-clock elapsed
+milliseconds for each actual offline builder/refill invocation. Exact
+duplicate fixtures are rejected. Ineligible cases remain in the denominator
+and prevent acceptance; failed attempts remain in the resource comparison.
+The baseline executes first; timing is a single paired observation and
+can be affected by cache, logging and machine load. No full report latency,
+network, token budget or LLM quality is measured. ES/LLM calls and tokens
+are zero ONLY within this no-provider-IO boundary.
+
+All supplied cases must have pipeline parity before the existing
+conservative quality/resource policy is evaluated. BLOCKED indicates a
+pipeline failure or policy violation; INCOMPLETE includes missing
+eligibility or configuration. MEETS_OFFLINE_THRESHOLDS does not authorize
+production. CLI exit 0 means an evaluation was returned, not acceptance.
+Private fixtures stay local; output is aggregate only. No new environment
+setting or activation of production ARC selection.

@@ -1397,3 +1397,88 @@ def test_a9_relax_replay_cli_fresh_process_has_no_live_config_import(tmp_path):
     assert "PRIVATE_RELAX_FRESH" not in proc.stdout
     assert "PRIVATE_DOC" not in proc.stdout + proc.stderr
     assert "甲軸" not in proc.stdout + proc.stderr
+
+
+def _a6_acceptance_input(monkeypatch):
+    monkeypatch.setenv("SRAF_ARC_MODE","off")
+    monkeypatch.setenv("SRAF_TOPIC_MATCH_ADAPTIVE","off")
+    monkeypatch.delenv("SRAF_EVIDENCE_RESCUE",raising=False)
+    monkeypatch.delenv("SRAF_EVIDENCE_SHARED_SOURCE_BUDGET",raising=False)
+    return {"policy":{"minimum_cases":1,"min_full_precision_delta_bps":-4000,
+                      "min_top20_precision_delta_bps":-4000,"min_net_relevant_gain":1,
+                      "max_elapsed_increase_ms":10**6,"max_es_call_increase":0,
+                      "max_llm_call_increase":0,"max_prompt_token_increase":0,
+                      "max_completion_token_increase":0},
+            "cases":[_a9_relax_labeled(_a9_relax_case())]}
+
+
+def test_a6_measured_pipeline_acceptance_binds_real_builder_and_labels(monkeypatch):
+    from agent.es.evidence_core.arc_relax_replay import screen_relax_pipeline_acceptance
+    fixture = _a6_acceptance_input(monkeypatch)
+    result = screen_relax_pipeline_acceptance(fixture)
+    assert result["status"] == "MEETS_OFFLINE_THRESHOLDS"
+    assert result["production_authorized"] is False
+    assert result["attempted_cases"] == 1 and result["unattempted_cases"] == 0
+    assert result["replay"]["pipeline_status_counts"] == {"pipeline_parity":1}
+    assert result["acceptance"]["quality"]["full_selection"]["net_relevant_change"] == 1
+    measures = result["measured_resources"]
+    assert measures["both_completed_cases"] == 1
+    assert measures["all_attempts"]["elapsed_ms"]["paired_cases"] == 1
+    assert measures["all_attempts"]["elapsed_ms"]["baseline_total"] >= 0
+    assert measures["all_attempts"]["elapsed_ms"]["candidate_total"] >= 0
+    for key in ("es_calls","llm_calls","prompt_tokens","completion_tokens"):
+        assert measures["all_attempts"][key]["baseline_total"] == 0
+        assert measures["all_attempts"][key]["candidate_total"] == 0
+    assert "甲軸" not in repr(result) and "PRIVATE_DOC" not in repr(result)
+    fixture["policy"]["min_full_precision_delta_bps"] = 0
+    assert screen_relax_pipeline_acceptance(fixture)["status"] == "BLOCKED"
+
+
+def test_a6_measured_pipeline_acceptance_does_not_drop_ineligible_or_duplicate_cases(monkeypatch):
+    from agent.es.evidence_core.arc_relax_replay import screen_relax_pipeline_acceptance
+    fixture = _a6_acceptance_input(monkeypatch)
+    fixture["cases"].append(fixture["cases"][0])
+    assert screen_relax_pipeline_acceptance(fixture) is None
+    case = _a9_relax_case()
+    case["response"]["hits"]["total"]["value"] = 2
+    fixture["cases"][1] = _a9_relax_labeled(case)
+    result = screen_relax_pipeline_acceptance(fixture)
+    assert result["status"] == "INCOMPLETE"
+    assert result["attempted_cases"] == 1 and result["unattempted_cases"] == 1
+    assert result["acceptance"] is None
+    assert not result["production_authorized"]
+
+
+def test_a6_measured_pipeline_acceptance_retains_failed_attempt(monkeypatch):
+    from agent.es.evidence_core import arc_relax_replay as replay
+    fixture = _a6_acceptance_input(monkeypatch)
+    original = replay.build_hits_and_evidence
+    def fail_candidate(*args, **kwargs):
+        if kwargs["_offline_a6_pilot"]:
+            raise RuntimeError("PRIVATE_FAILURE")
+        return original(*args, **kwargs)
+    monkeypatch.setattr(replay,"build_hits_and_evidence",fail_candidate)
+    result = replay.screen_relax_pipeline_acceptance(fixture)
+    assert result["status"] == "BLOCKED"
+    assert result["pipeline_failure_cases"] == 1
+    assert result["acceptance"] is None
+    assert result["measured_resources"]["status_transitions"]["completed"]["failed"] == 1
+    assert result["measured_resources"]["all_attempts"]["elapsed_ms"]["paired_cases"] == 1
+    assert "PRIVATE_FAILURE" not in repr(result)
+
+
+def test_a6_measured_pipeline_acceptance_requires_explicit_off_and_cli(monkeypatch,tmp_path,capsys):
+    import json
+    from agent.es.evidence_core.arc_eval_cli import main
+    fixture = _a6_acceptance_input(monkeypatch)
+    path = tmp_path / "PRIVATE_ACCEPTANCE.json"
+    path.write_text(json.dumps(fixture,ensure_ascii=False),encoding="utf-8")
+    monkeypatch.setenv("SRAF_ARC_MODE","shadow")
+    assert main(["relax-acceptance",str(path)]) == 0
+    result = json.loads(capsys.readouterr().out)["result"]
+    assert result["status"] == "INCOMPLETE" and result["reason"] == "explicit_arc_off_required"
+    monkeypatch.setenv("SRAF_ARC_MODE","off")
+    assert main(["relax-acceptance",str(path)]) == 0
+    out = capsys.readouterr()
+    assert json.loads(out.out)["result"]["status"] == "MEETS_OFFLINE_THRESHOLDS"
+    assert "PRIVATE" not in out.out and "甲軸" not in out.out and not out.err
