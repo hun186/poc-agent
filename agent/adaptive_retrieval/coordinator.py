@@ -24,6 +24,7 @@ from .next_round_gate import NextRoundAdmission, propose_budgeted_next_round
 from .planner import BoundNextRoundPlan
 from .planner import AdaptiveRetrievalPlanner
 from .request_budget import RequestAdmissionBudget
+from .arc_deep_strategy_shadow import observe_deep_strategy
 
 
 _PHASES = frozenset((
@@ -315,7 +316,12 @@ class AdaptiveRequestCoordinator:
                     self._terminate_locked("SUFFICIENT")
                 else:
                     self._phase = "ASSESSED"
-                return record
+            # Observe only the completed canonical/evaluator-backed assessment.
+            # The legacy isolated boolean path cannot furnish an A7 signal.
+            if coverage_evaluator is not None:
+                observe_deep_strategy(record=record, observation=observation,
+                    assessment=assessed, keyword_policy=self._constraints.keyword_policy)
+            return record
         except Exception:
             with self._lock:
                 if self._phase == "ASSESSING":
