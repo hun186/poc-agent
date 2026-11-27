@@ -94,3 +94,6 @@ SRAF_ARC_STRATEGY=shadow，預設關閉。只在普通報告首次主查詢取�
 
 ## A2/A7/A8 統一額外模型選擇（普通報告 Shadow）
 SRAF_ARC_LLM_PRIORITY=shadow 時，低量別名疑慮沿用 A2、其他未解決策略歧義沿用 A7；高量且最終綁定 Evidence 具有可複查歧義時，先選 A8（至少40片段、4來源有效批次、完整單頁、可信政策入口、端點及時間候選門檻），仍由 A8  transport 執行獨立前後授權及原子不可退款預算。只在私有 tool-local sink 記錄 A8 已選擇，不記原文、來源或 verdict；拒絕、撤銷、失敗不改派 A2/A7，A7 仍可記確定性診斷。若 A8 未達候選門檻才沿用 A2/A7 分配。旗標關閉時保留原有執行順序。每輪共享 LLM ceiling 不變，不是整體跨輪資源分配或生產 ACL 安裝；未改正式 Evidence 或新增 ES 查詢。正式環境品質、成本與資料授權待獨立驗收。
+
+## 深度多輪 A7 診斷（Shadow）
+既有 SRAF_ARC_STRATEGY=shadow 同時允許深度協調器在實際 canonical ledger 與 request-wide semantic coverage evaluator 完成一輪後記錄固定計數和 advice enum。區分本輪候選、canonical 證據及新增量、累計有語意支持的證據/來源與缺少面向；依此觀察空候選、canonical attrition、語意支持不足、重複證據、低增量及高量但覆蓋不足。40片段與少於3新增片段僅為診斷候選門檻，非品質或放寬/收緊依據。未完整/未授權整體範圍不提出建議，舊版 isolated boolean 路徑不產生訊號。只記錄不執行；不改正式 planner prompt、查詢、Evidence、授權、預算或公開 progress，亦不新增模型呼叫。正式將訊號接入規劃器仍須獨立驗收。

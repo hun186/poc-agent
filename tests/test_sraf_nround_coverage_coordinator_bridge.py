@@ -227,3 +227,88 @@ def test_zero_witnesses_with_live_verifier_is_legitimate_coverage_gap():
     assert c.safe_progress()["phase"] == "ASSESSED"
     assert c.plan_next_round().approved
     assert calls == ["planner"]
+
+
+def _deep_strategy_records(caplog):
+    return [json.loads(item.getMessage().split("SRAF_ARC_DEEP_STRATEGY=", 1)[1])
+            for item in caplog.records
+            if item.getMessage().startswith("SRAF_ARC_DEEP_STRATEGY=")]
+
+
+@pytest.mark.parametrize("mode", ["off", "shadow"])
+def test_arc_deep_strategy_uses_actual_coverage_and_preserves_plan(monkeypatch, caplog, mode):
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", mode)
+    c, budget, calls = coordinator()
+    evaluator = RequestWideCoverageEvaluator(
+        constraints=c._constraints, target_aspects=("PRIVATE_TARGET",))
+    assert c.start() and c.admit_es_call()
+    a = [_hit(2, "PRIVATE_DOC_A", inner=False)]
+    first = _assess(c, evaluator, a)
+    assert not first.coverage_sufficient
+    assert calls == []
+    admitted = c.plan_next_round()
+    assert admitted.approved
+    assert admitted.plan.optional_terms == ("不同地區回應",)
+    assert admitted.plan.constraints is c._constraints
+    assert calls == ["planner"]
+    assert c.admit_es_call()
+    second = _assess(c, evaluator, [_hit(2, "PRIVATE_DOC_B", inner=False)])
+    assert second.coverage_sufficient
+    assert c.safe_progress()["termination"] == "SUFFICIENT"
+    assert budget.rounds_started == 2
+    rows = _deep_strategy_records(caplog)
+    if mode == "off":
+        assert rows == []
+    else:
+        assert [r["advice"] for r in rows] == [
+            "inspect_low_incremental_gain", "coverage_sufficient"]
+        assert rows[0]["canonical_evidence_this_round"] == 2
+        assert rows[1]["cumulative_canonical_evidence"] == 4
+        assert rows[1]["cumulative_semantically_supported_evidence"] == 4
+        assert rows[1]["missing_targets"] == 0
+        assert "PRIVATE_" not in json.dumps(rows)
+        assert "甲軸" not in json.dumps(rows, ensure_ascii=False)
+
+
+@pytest.mark.parametrize("scenario,expected", [
+    ("semantic_gap", "inspect_semantic_support_gap"),
+    ("repeated", "inspect_repeated_evidence"),
+    ("locked", "user_keywords_locked"),
+    ("unattested", "none"),
+])
+def test_arc_deep_strategy_distinguishes_observed_failure_modes(monkeypatch, caplog, scenario, expected):
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", "shadow")
+    c, _, calls = coordinator(locked=scenario == "locked")
+    evaluator = RequestWideCoverageEvaluator(
+        constraints=c._constraints, target_aspects=("PRIVATE_TARGET",))
+    a = [_hit(2, "PRIVATE_DOC_A", inner=False)]
+    assert c.start() and c.admit_es_call()
+    _assess(c, evaluator, a, attested=scenario != "unattested",
+            verifier=lambda *_: scenario != "semantic_gap")
+    if scenario == "repeated":
+        assert c.plan_next_round().approved
+        assert c.admit_es_call()
+        _assess(c, evaluator, a)
+    row = _deep_strategy_records(caplog)[-1]
+    assert row["advice"] == expected
+    if scenario == "semantic_gap":
+        assert row["canonical_evidence_this_round"] == 2
+        assert row["cumulative_semantically_supported_evidence"] == 0
+    if scenario == "unattested":
+        assert row["status"] == "unattested_or_incomplete"
+        assert "candidate_sources" not in row
+    assert len(calls) == int(scenario == "repeated")
+    assert "PRIVATE_" not in json.dumps(row)
+
+
+def test_arc_deep_strategy_legacy_boolean_path_is_not_a_signal(monkeypatch, caplog):
+    from test_sraf_nround_coordinator import finish
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    c, _, calls = coordinator()
+    assert c.start() and c.admit_es_call()
+    finish(c, [_hit(2, "PRIVATE_DOC_A", inner=False)], sufficient=True)
+    assert _deep_strategy_records(caplog) == []
+    assert calls == []
