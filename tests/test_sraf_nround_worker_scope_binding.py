@@ -917,3 +917,70 @@ def test_arc_deep_retrieval_resource_includes_failed_attempt_and_cleanup(monkeyp
     assert "PRIVATE" not in repr(rows)
     from agent.adaptive_retrieval.arc_deep_resource_metrics import _SCOPE
     assert _SCOPE.get() is None
+
+
+@pytest.mark.parametrize("timing", ["in_window", "policy_consumes_margin", "model_expires"])
+def test_arc_deep_actual_review_uses_parent_deadline(monkeypatch, caplog, timing):
+    from agent.es import arc_semantic_review_transport as transport
+    from agent.es.arc_request_budget import current_arc_budget, ArcUnits
+    from agent.es.evidence_core.arc_semantic_review import summarize_semantic_review
+
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_DEEP", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW", "shadow")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS", "approved")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_ENDPOINT", "https://review.invalid/api/chat")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_MODEL", "private-model")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX", "news_test")
+    monkeypatch.delenv("SRAF_ARC_REVIEW_CA_FILE", raising=False)
+    for key in ("GROUP_FREQUENCY", "DEEP_FREQUENCY", "REVIEW_RESOURCE_METRICS"):
+        monkeypatch.setenv("SRAF_ARC_" + key, "off")
+    c, scope, ev, _, planner_calls, clock = _setup()
+    checks, sends, captured = [], [], []
+    # 30 seconds before the existing deep retrieval cutoff (1800s).
+    clock[0] = 1770
+
+    def policy(*args):
+        checks.append(1)
+        budget, ordinal = current_arc_budget()
+        captured.append(budget)
+        assert ordinal == 1
+        if timing == "policy_consumes_margin":
+            clock[0] = 1776
+        return True
+
+    binding = WorkerScopeBinding(
+        job=_job(scope), constraints=scope, coordinator=c,
+        authorized_indexes=("news_test",),
+        check_index_access=lambda *_: True,
+        check_single_branch_coverage=lambda *_: True,
+        check_review_egress=policy,
+    )
+
+    def review(approved, batch):
+        sends.append(1)
+        assert current_arc_budget()[0].snapshot()[0].llm_calls == 1
+        if timing == "model_expires":
+            clock[0] = 1800
+        return summarize_semantic_review(json.dumps([
+            {"ordinal": i, "verdict": "unrelated"} for i in range(1, batch.count+1)
+        ]), batch)
+
+    monkeypatch.setattr(transport, "_request_review", review)
+    if timing == "model_expires":
+        with pytest.raises(TrustedNroundExecutionError):
+            _run(c, scope, ev, FakeES(_deep_review_page()), binding)
+        assert c.safe_progress()["ready_for_external_report_generation"] is False
+        assert "authorization_or_deadline_changed" in caplog.text
+    else:
+        result = _run(c, scope, ev, FakeES(_deep_review_page()), binding)
+        assert len(result._report_rows) == 50
+        assert c.safe_progress()["termination"] == "SUFFICIENT"
+    assert sends == ([] if timing == "policy_consumes_margin" else [1])
+    assert len(checks) == (1 if timing == "policy_consumes_margin" else 2)
+    assert captured
+    assert captured[0].snapshot()[0].llm_calls == len(sends)
+    assert not captured[0].model_window_open(admission=False)
+    assert current_arc_budget() is None
+    assert not planner_calls
+    assert "PRIVATE" not in caplog.text

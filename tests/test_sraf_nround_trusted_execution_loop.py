@@ -267,3 +267,45 @@ def test_arc_deep_scope_restored_and_sealed_on_failed_attestation(monkeypatch):
     assert owned.snapshot()[0] == ArcUnits()
     assert not owned.reserve(1, ArcUnits(slices=1))
     assert current_arc_budget() is None
+
+
+def test_arc_deep_time_fence_uses_parent_clock_and_shared_round_slots(monkeypatch):
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits
+    _, _, _, parent, _, clock = _setup()
+    arc = ArcRequestBudget(model_window_guard=parent.optional_model_window_open)
+    assert not arc.reserve(1, ArcUnits(llm_calls=1))
+    assert parent.admit("round")
+    clock[0] = 1775
+    assert arc.reserve(1, ArcUnits(llm_calls=1))
+    assert not arc.reserve(1, ArcUnits(llm_calls=1))
+    assert parent.admit("round")
+    clock[0] = 1775.01
+    assert not arc.reserve(2, ArcUnits(llm_calls=1))
+    assert arc.model_window_open(admission=False)
+    clock[0] = 1800
+    assert not arc.model_window_open(admission=False)
+    assert arc.snapshot()[0] == ArcUnits(llm_calls=1)
+    assert arc.reserve(2, ArcUnits(slices=1))
+    arc.seal()
+    assert not arc.model_window_open(admission=False)
+
+
+@pytest.mark.parametrize("bad", [False, None, "true", 1])
+def test_arc_parent_time_fence_requires_literal_true(bad):
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits
+    arc = ArcRequestBudget(model_window_guard=lambda **kw: bad)
+    assert not arc.reserve(1, ArcUnits(llm_calls=1))
+    assert arc.reserve(1, ArcUnits(slices=1))
+
+
+def test_arc_parent_time_fence_clock_failure_and_generation_claim():
+    from agent.es.arc_request_budget import ArcRequestBudget, ArcUnits
+    _, _, _, parent, _, clock = _setup()
+    arc = ArcRequestBudget(model_window_guard=parent.optional_model_window_open)
+    assert parent.admit("round")
+    for value in (-1, float("nan"), float("inf"), None):
+        clock[0] = value
+        assert not arc.reserve(1, ArcUnits(llm_calls=1))
+    clock[0] = 100
+    assert parent.claim_report_generation(1) > 0
+    assert not arc.reserve(1, ArcUnits(llm_calls=1))

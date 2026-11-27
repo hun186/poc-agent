@@ -105,6 +105,27 @@ class RequestAdmissionBudget:
             self._optional_es_used += 1
             return True
 
+    def optional_model_window_open(self, *, admission: bool = True) -> bool:
+        """Read-only ARC time fence, using the original request clock.
+
+        No new model slot, source authorization or extension of the existing
+        retrieval deadline. The ARC child owns its separate reservations.
+        Never call into a child budget while holding this lock.
+        """
+        from agent.es.arc_request_budget import OPTIONAL_MODEL_MIN_REMAINING_SECONDS
+
+        with self._lock:
+            try:
+                now = self._read_time()
+            except Exception:
+                return False
+            if (now < self._start or self._used["round"] == 0
+                    or self._report_generation_claimed):
+                return False
+            remaining = self._retrieval_end - now
+            return (remaining >= OPTIONAL_MODEL_MIN_REMAINING_SECONDS
+                    if admission else remaining > 0)
+
     def claim_next_strategy(self, completed_rounds: int) -> bool:
         """Atomically consume ONE planner slot for ONE completed history.
 
