@@ -28,7 +28,7 @@ def scope(*, locked=False):
     )
 
 
-def coordinator(*, llm=None, clock=None, locked=False, **budget_options):
+def coordinator(*, llm=None, clock=None, locked=False, _arc_deep_hint_enabled=False, **budget_options):
     budget = RequestAdmissionBudget(
         clock=(lambda: clock[0]) if clock is not None else lambda: 0.0,
         **budget_options,
@@ -43,7 +43,8 @@ def coordinator(*, llm=None, clock=None, locked=False, **budget_options):
         constraints=scope(locked=locked),
         term_groups=(("甲軸",), ("乙軸",), ("丙軸",)),
         effective_terms=("甲軸", "乙軸", "丙軸"),
-        budget=budget, planner=AdaptiveRetrievalPlanner(fake_llm),
+        budget=budget, planner=AdaptiveRetrievalPlanner(fake_llm,
+            _arc_deep_hint_enabled=_arc_deep_hint_enabled),
     )
     return c, budget, calls
 

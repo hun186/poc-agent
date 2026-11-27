@@ -63,6 +63,7 @@ def propose_budgeted_next_round(
     history: tuple[RoundEvidenceSummary, ...],
     budget: RequestAdmissionBudget,
     planner: AdaptiveRetrievalPlanner,
+    _arc_hint=None,
 ) -> NextRoundAdmission:
     """Charge planner admission BEFORE its callable; never submit ES here.
 
@@ -125,6 +126,7 @@ def propose_budgeted_next_round(
         return stop("RESOURCE_BUDGET_EXHAUSTED")
     decision = planner.propose_next(
         constraints=constraints, history=history, budget=snapshot,
+        **({"_arc_hint": _arc_hint} if _arc_hint is not None else {}),
     )
     if not decision.should_search:
         return stop(decision.reason_code)

@@ -10,7 +10,8 @@ import json
 import logging
 
 from agent.arc_mode import arc_shadow_enabled
-from .contracts import RoundEvidenceSummary
+from .contracts import RoundEvidenceSummary, QueryConstraints
+from .arc_deep_planner_hint import DeepPlannerHint, hint_scope_enabled
 from .coverage_evaluator import CoverageAssessment
 from .evidence_ledger import RoundObservation
 
@@ -97,3 +98,22 @@ def observe_deep_strategy(**kwargs):
     except Exception:
         # The observation is neither an authorization nor an execution gate.
         return
+
+
+def capture_deep_planner_hint(*, constraints, record, observation, assessment):
+    """Capture only the actual trusted assessment, never a log or LLM result."""
+    if type(constraints) is not QueryConstraints or not hint_scope_enabled():
+        return None
+    try:
+        result = build_deep_strategy_record(record=record, observation=observation,
+                    assessment=assessment, keyword_policy=constraints.keyword_policy)
+        if result is None or result["status"] != "observed":
+            return None
+        hint = DeepPlannerHint(
+            constraints, record, result["advice"], result["candidate_sources"],
+            result["canonical_evidence_this_round"],
+            result["cumulative_semantically_supported_evidence"],
+            result["cumulative_semantically_supported_sources"])
+        return hint if hint.payload_for(constraints, record) is not None else None
+    except Exception:
+        return None
