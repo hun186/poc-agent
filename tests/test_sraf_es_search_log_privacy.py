@@ -1064,3 +1064,95 @@ def test_arc_review_execution_lifetime_denies_during_policy_and_nested_scope():
         assert scope.authorize(question="q") is False
         assert scope.refill_kwargs("q") == {}
     assert current_review_execution() is None
+
+
+@pytest.mark.parametrize("scenario", ["allow", "deny", "revoke", "failed", "absent", "expired", "unambiguous"])
+def test_arc_priority_coordinates_a8_with_real_a7_observer(monkeypatch, caplog, scenario):
+    import json
+    import time
+    from agent.es.arc_ordinary_review_execution import ordinary_review_execution
+    from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
+    from agent.es.arc_review_scope import capture_primary_review
+    from agent.es import arc_semantic_review_transport as transport, arc_strategy_shadow as a7
+    from agent.es import arc_bilingual_shadow as a2
+    from agent.tools_es.common import bind_requirement_acceptance
+    from agent.tools_es.question_scope import bind_original_report_question
+
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    for key in ("REVIEW_SCOPE", "REVIEW", "LLM_PRIORITY", "BILINGUAL", "STRATEGY"):
+        monkeypatch.setenv("SRAF_ARC_" + key, "shadow")
+    for key in ("REVIEW_RESOURCE_METRICS", "GROUP_FREQUENCY", "RANK_NATIVE", "TIGHTEN", "RELAX"):
+        monkeypatch.setenv("SRAF_ARC_" + key, "off")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_EGRESS", "approved")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_VERIFIED_INDEX", "news_test")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_ENDPOINT", "https://review.invalid/api/chat")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_MODEL", "PRIVATE_MODEL")
+    monkeypatch.setenv("TOPIC_LLM_URL", "http://topic.invalid")
+    monkeypatch.delenv("SRAF_ARC_REVIEW_CA_FILE", raising=False)
+    monkeypatch.setattr(search_module, "native_frequency_enabled", lambda: False)
+    primary = _native_primary()
+    primary["hits"]["hits"] = [{"_index": "news_test", "_id": "PRIVATE_ID_" + str(i)}
+                                for i in range(12)]
+    primary["hits"]["total"]["value"] = 12
+    origin = "__sraf_source_hit_ordinal"
+    docs = [{"uuid": "PRIVATE_UUID", origin: i} for i in range(12)]
+    rows = [{origin: i % 12, "uuid": "PRIVATE_UUID", "text": "PRIVATE_ROW_" + str(i),
+             "match_policy": "strict",
+             "match_scope": "mixed" if i == 0 and scenario != "unambiguous" else "text",
+             "structured_time_context": True,
+             "matched_event_time_candidates": [{"time_iso": "2020-01-01"}]}
+            for i in range(40)]
+
+    def responder(body, *, index, arc_review_receipts=None, **kwargs):
+        if arc_review_receipts is not None:
+            capture_primary_review(index=index, body=body, response=primary,
+                                   real_client=True, sink=arc_review_receipts)
+        return primary
+
+    _prepare(monkeypatch, responder=responder)
+    monkeypatch.setattr(search_module, "resolve_index", lambda _: "news_test")
+    def build(*args, **kwargs):
+        kwargs["arc_strategy_diagnostics"]["high"] = {
+            "schema": "sraf_arc_tighten_shadow_v1", "scope": "strict_parser_prefix_only",
+            "status": "observed_tightening", "prefix_limited": False,
+            "prefix_count": 40, "strict_count": 40, "strategies": [
+                {"strategy": "all_text_axes", "retained_prefix_rows": 25,
+                 "retained_source_hits": 8, "sample_floor_met": True},
+                {"strategy": "anchor_plus_local_discriminative_axis", "retained_prefix_rows": 30,
+                 "retained_source_hits": 10, "sample_floor_met": True}]}
+        return docs, rows, 0
+    monkeypatch.setattr(search_module, "build_hits_and_evidence", build)
+    calls, checks = [], []
+    def policy(**kwargs):
+        checks.append(1)
+        return scenario != "deny" and not (scenario == "revoke" and len(checks) == 2)
+    def request(approved, batch):
+        calls.append("review")
+        if scenario == "failed":
+            raise RuntimeError("PRIVATE_FAILURE")
+        return transport.summarize_semantic_review(json.dumps([
+            {"ordinal": i, "verdict": "unrelated"} for i in range(1, batch.count + 1)
+        ]), batch)
+    def strategy(*args, **kwargs):
+        calls.append("strategy")
+        return '{"choice":"keep_original"}'
+    monkeypatch.setattr(transport, "_request_review", request)
+    monkeypatch.setattr(a7, "call_llm", strategy)
+    monkeypatch.setattr(a2, "call_llm", lambda *a, **kw: pytest.fail("unexpected A2"))
+    kwargs = dict(query="SECRET_QUERY", size=12, date_from="2020-01-01", date_to="2020-12-31")
+    budget = ArcRequestBudget()
+    with bind_arc_budget((budget, 1)), bind_original_report_question("PRIVATE_QUESTION"):
+        with ordinary_review_execution(
+            question="PRIVATE_QUESTION", policy=None if scenario == "absent" else policy,
+            deadline=time.monotonic() + (10 if scenario == "expired" else 300),
+        ):
+            observed = bind_requirement_acceptance(search_module.ESSearchNews()).forward(**kwargs)
+    review_selected = scenario in ("allow", "deny", "revoke", "failed")
+    expected = [] if scenario == "deny" else ["review"] if review_selected else ["strategy"]
+    assert calls == expected
+    assert budget.snapshot()[0].llm_calls == len(expected)
+    assert len(checks) == (2 if scenario in ("allow", "revoke") else 1 if scenario in ("deny", "failed") else 0)
+    assert ('"choice":"semantic_review"' in caplog.text) == review_selected
+    assert len(observed["evidence_snippets"]) == 40
+    assert "PRIVATE_" not in caplog.text
+    assert "review_selection" not in repr(observed)

@@ -228,6 +228,8 @@ class ESSearchNews(Tool):
         priority_mode = llm_priority_enabled()
         strategy_pressure = pressure if strategy_enabled() or priority_mode else None
         strategy_diagnostics = {}
+        # Private, tool-local A8 selection (not an authorization or verdict).
+        review_selection = []
         # Optional count-only observation; original query and groups remain authoritative.
         if not priority_mode:
             observe_bilingual_proposal(
@@ -326,6 +328,8 @@ class ESSearchNews(Tool):
                 review_execution = current_review_execution()
                 review_options = (review_execution.refill_kwargs(get_original_report_question())
                                   if review_scope is not None and review_execution is not None else {})
+                if priority_mode and review_options:
+                    review_options["_arc_review_selection_sink"] = review_selection
                 filtered_hits, evidence_snippets, syn_snippets, date_refill_meta = (
                     refill_date_filtered_evidence(
                         body=body,
@@ -349,7 +353,8 @@ class ESSearchNews(Tool):
             observer(pressure=strategy_pressure, diagnostics=strategy_diagnostics,
                              final_count=len(evidence_snippets), strong_count=len(strong_snippets),
                              refill=date_refill_meta, original_question=get_original_report_question(),
-                             groups=term_groups, manual=is_manual_entity_query)
+                             groups=term_groups, manual=is_manual_entity_query,
+                             **({"review_selected": True} if priority_mode and review_selection else {}))
 
         # Log timing and counts, never the raw question, ES DSL, index or terms.
         log_total("[es_search_news][TOTAL]", t_start)

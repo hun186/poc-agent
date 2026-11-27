@@ -201,7 +201,7 @@ def prepare_final_review(scope, **kwargs):
 
 
 def _observe_authorized_review(scope, prepared, *, final_count, check_review_egress,
-                               review_deadline_monotonic):
+                               review_deadline_monotonic, selection_sink=None):
     """Explicit trusted Python-only pilot, not a production grant.
 
     The caller's policy must bind the authenticated owner, original question,
@@ -243,13 +243,18 @@ def _observe_authorized_review(scope, prepared, *, final_count, check_review_egr
 
     approved = _approved_endpoint(index)
     if approved is not None and still_current(approved):
+        # Record selection before authorization/transport. This is not a
+        # success or permission receipt; denial/failure must not trigger a
+        # second model task in this tool invocation.
+        if type(selection_sink) is list:
+            selection_sink.append(True)
         # Transport owns the nonrefundable LLM reservation and performs
         # pre/post checks. No retry, no alternate provider, no row verdicts.
         observe_semantic_review(prepared.batch, index=index, authorize=authorize)
 
 
 def observe_final_review_scope(scope, *, check_review_egress=None,
-                               review_deadline_monotonic=None, **kwargs):
+                               review_deadline_monotonic=None, selection_sink=None, **kwargs):
     """Local by default; only an explicit trusted policy can request A8."""
     record = {"schema": "sraf_arc_final_review_scope_v1", "status": "unavailable"}
     try:
@@ -264,6 +269,7 @@ def observe_final_review_scope(scope, *, check_review_egress=None,
                     scope, prepared, final_count=len(kwargs["selected_evidence"]),
                     check_review_egress=check_review_egress,
                     review_deadline_monotonic=review_deadline_monotonic,
+                    selection_sink=selection_sink,
                 )
     except Exception:
         pass
