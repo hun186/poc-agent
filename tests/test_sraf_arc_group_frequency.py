@@ -1308,3 +1308,68 @@ def test_arc_priority_selected_review_never_requires_topic_provider_or_falls_bac
     assert '"choice":"semantic_review"' in caplog.text
     assert "provider_unavailable" not in caplog.text
     assert "PRIVATE_" not in caplog.text
+
+
+@pytest.mark.parametrize("deadline", [None, 125, 124.99, 100, float("nan"), float("inf"), True, "125", 10**500])
+def test_arc_shared_model_deadline_atomic_admission(monkeypatch, deadline):
+    from agent.es import arc_request_budget as arc
+    monkeypatch.setattr(arc, "monotonic", lambda: 100)
+    budget = arc.ArcRequestBudget(model_deadline_monotonic=deadline)
+    expected = deadline is None or type(deadline) is int and deadline == 125
+    assert budget.reserve(1, arc.ArcUnits(slices=1))
+    assert budget.model_window_open() is expected
+    assert budget.reserve(1, arc.ArcUnits(llm_calls=1)) is expected
+    assert budget.snapshot()[0].llm_calls == int(expected)
+
+
+def test_arc_shared_model_deadline_spans_rounds_and_is_not_refunded(monkeypatch):
+    from agent.es import arc_request_budget as arc
+    clock = [100]
+    monkeypatch.setattr(arc, "monotonic", lambda: clock[0])
+    budget = arc.ArcRequestBudget(model_deadline_monotonic=140)
+    assert budget.reserve(1, arc.ArcUnits(llm_calls=1))
+    clock[0] = 116
+    assert not budget.reserve(2, arc.ArcUnits(llm_calls=1))
+    assert budget.model_window_open(admission=False)
+    clock[0] = 140
+    assert not budget.model_window_open(admission=False)
+    assert budget.snapshot()[0].llm_calls == 1
+    assert budget.reserve(2, arc.ArcUnits(slices=1))
+    budget.seal()
+    assert not budget.model_window_open(admission=False)
+
+
+@pytest.mark.parametrize("task", ["bilingual", "strategy"])
+@pytest.mark.parametrize("timing", ["insufficient", "expires_in_call", "on_time"])
+def test_arc_topic_model_observers_share_deadline(monkeypatch, caplog, task, timing):
+    from agent.es import arc_request_budget as arc, arc_bilingual_shadow as a2, arc_strategy_shadow as a7
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    clock = [100]
+    monkeypatch.setattr(arc, "monotonic", lambda: clock[0])
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_BILINGUAL", "shadow")
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", "shadow")
+    monkeypatch.setenv("TOPIC_LLM_URL", "http://topic.invalid")
+    calls = []
+    def model(*args, **kwargs):
+        calls.append(task)
+        if timing == "expires_in_call":
+            clock[0] = 150
+        return '{"choice":"keep_original"}'
+    monkeypatch.setattr(a2, "call_llm", model)
+    monkeypatch.setattr(a7, "call_llm", model)
+    monkeypatch.setattr(a2, "parse_proposal", lambda raw, groups: groups)
+    budget = arc.ArcRequestBudget(model_deadline_monotonic=124 if timing == "insufficient" else 150)
+    with arc.bind_arc_budget((budget, 1)):
+        if task == "bilingual":
+            a2.observe_bilingual_proposal(original_question="PRIVATE_QUESTION", groups=[{"PRIVATE_TERM"}], manual=False)
+        else:
+            a7.observe_strategy(pressure=CandidatePressure("eq", 100, 50),
+                diagnostics={"low": _a7_low()}, final_count=1, strong_count=1,
+                refill=None, manual=False, original_question="PRIVATE_QUESTION",
+                groups=[{"PRIVATE_TERM"}])
+    assert calls == ([] if timing == "insufficient" else [task])
+    assert budget.snapshot()[0].llm_calls == len(calls)
+    assert ("model_deadline_or_scope_closed" in caplog.text) == (timing != "on_time")
+    assert ("observed_candidates" in caplog.text or "observed_advice" in caplog.text) == (timing == "on_time")
+    assert "PRIVATE_" not in caplog.text

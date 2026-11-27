@@ -175,11 +175,17 @@ def observe_strategy(*, pressure, diagnostics, final_count, strong_count, refill
             result["status"] = "unsupported_input"
             return
         budget, ordinal = scope
+        if not budget.model_window_open():
+            result["status"] = "model_deadline_or_scope_closed"
+            return
         if not budget.reserve(ordinal, ArcUnits(llm_calls=1)):
             result["status"] = "shared_budget_exhausted"
             return
         raw = call_llm(encoded, system_prompt=SYSTEM_PROMPT, timeout=15,
                        extra_params={"options": {"num_predict": 128}})
+        if not budget.model_window_open(admission=False):
+            result["status"] = "model_deadline_or_scope_closed"
+            return
         if type(raw) is not str or not 0 < len(raw) <= 1024:
             result["status"] = "invalid_proposal"
             return

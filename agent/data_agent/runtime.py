@@ -278,7 +278,7 @@ def run_data_agent(
         or arc_shadow_enabled("SRAF_ARC_STRATEGY")
         or arc_shadow_enabled("SRAF_ARC_REVIEW_SCOPE")
         or arc_shadow_enabled("SRAF_ARC_LLM_PRIORITY")
-    )), bind_sink(topic_audit_sink):
+    ), model_deadline_monotonic=_arc_review_deadline_monotonic if report_mode else None), bind_sink(topic_audit_sink):
         with bind_original_report_question(question_raw if report_mode else None), ordinary_review_execution(
             question=question_raw if report_mode else None,
             policy=_arc_review_policy if report_mode else None,

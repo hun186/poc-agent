@@ -205,6 +205,9 @@ def observe_semantic_review(batch, *, index, authorize=None):
             record["status"] = "source_or_endpoint_not_authorized"
             return
         budget, ordinal = scope
+        if not budget.model_window_open():
+            record["status"] = "model_deadline_or_scope_closed"
+            return
         if not budget.reserve(ordinal, ArcUnits(llm_calls=1)):
             record["status"] = "shared_budget_exhausted"
             return
@@ -213,7 +216,7 @@ def observe_semantic_review(batch, *, index, authorize=None):
             summary, measured = _measured_review(approved, batch)
         else:
             summary = _request_review(approved, batch)
-        if authorize(approved) is not True:
+        if authorize(approved) is not True or not budget.model_window_open(admission=False):
             record["status"] = "authorization_or_deadline_changed"
         else:
             if measured is not None and measured["llm_calls"] == 1:
