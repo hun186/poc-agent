@@ -19,6 +19,7 @@ from agent.es.arc_request_budget import current_arc_budget
 from agent.es.arc_strategy_shadow import observe_strategy, strategy_enabled
 from agent.es.arc_llm_priority import llm_priority_enabled, observe_allocated_llm
 from agent.es.arc_review_scope import review_scope_enabled, make_final_review_input
+from agent.es.arc_ordinary_review_execution import current_review_execution
 from agent.es.ordinary_scope_receipt import current_ordinary_scope_capture
 from agent.es.query_terms import compute_effective_terms
 from agent.es.evidence import build_hits_and_evidence
@@ -322,6 +323,9 @@ class ESSearchNews(Tool):
                     manual=is_manual_entity_query,
                 ) if len(review_receipts) == 1 else None
                 review_receipts.clear()
+                review_execution = current_review_execution()
+                review_options = (review_execution.refill_kwargs(get_original_report_question())
+                                  if review_scope is not None and review_execution is not None else {})
                 filtered_hits, evidence_snippets, syn_snippets, date_refill_meta = (
                     refill_date_filtered_evidence(
                         body=body,
@@ -330,6 +334,7 @@ class ESSearchNews(Tool):
                         search_next=lambda next_body: _safe_es_search(next_body, index=index),
                         build_evidence=_build_candidates,
                         **({"arc_review_scope": review_scope} if review_scope is not None else {}),
+                        **review_options,
                     )
                 )
             else:

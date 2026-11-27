@@ -12,6 +12,7 @@ from typing import Any, Dict, Optional, List, Tuple
 from .builder import build_agent, normalize_model_id
 from .types import ENV
 from agent.es.arc_request_budget import data_agent_arc_budget
+from agent.es.arc_ordinary_review_execution import ordinary_review_execution
 from agent.es.arc_frequency_shadow import native_frequency_enabled
 from agent.es.arc_bilingual_shadow import bilingual_shadow_enabled
 from agent.es.evidence_core.topic_audit import bind_sink, summary as topic_audit_summary
@@ -244,6 +245,8 @@ def run_data_agent(
     refined_question: Optional[str] = None,
     index_hint: Optional[str] = None,
     route: Optional[Dict[str, Any]] = None,
+    _arc_review_policy=None,
+    _arc_review_deadline_monotonic: float | None = None,
 ) -> Dict[str, Any]:
     """
     共用一個 CodeAgent 建立邏輯，只是 SYSTEM 不同：
@@ -276,7 +279,11 @@ def run_data_agent(
         or arc_shadow_enabled("SRAF_ARC_REVIEW_SCOPE")
         or arc_shadow_enabled("SRAF_ARC_LLM_PRIORITY")
     )), bind_sink(topic_audit_sink):
-        with bind_original_report_question(question_raw if report_mode else None):
+        with bind_original_report_question(question_raw if report_mode else None), ordinary_review_execution(
+            question=question_raw if report_mode else None,
+            policy=_arc_review_policy if report_mode else None,
+            deadline=_arc_review_deadline_monotonic if report_mode else None,
+        ):
             code_agent = build_agent(mode=mode)
             result = code_agent.run(question_for_agent)
     elapsed = time.time() - t0
