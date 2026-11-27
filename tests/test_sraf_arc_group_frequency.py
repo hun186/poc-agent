@@ -1286,3 +1286,25 @@ def test_a5_report_replay_legacy_fixture_retains_counterfactual_only():
     for strategy in result["strategies"].values():
         assert strategy["report_selection_cases"] == 0
         assert strategy["report_selection_comparison"] is None
+
+
+def test_arc_priority_selected_review_never_requires_topic_provider_or_falls_back(monkeypatch, caplog):
+    from agent.es import arc_llm_priority as priority
+    from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
+    from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
+    monkeypatch.setenv("SRAF_ARC_LLM_PRIORITY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_BILINGUAL", "shadow")
+    monkeypatch.delenv("TOPIC_LLM_URL", raising=False)
+    calls = []
+    monkeypatch.setattr(priority, "observe_strategy", lambda **kw: calls.append(kw["allow_model"]))
+    monkeypatch.setattr(priority, "observe_bilingual_proposal", lambda **kw: pytest.fail("unexpected A2"))
+    with bind_arc_budget((ArcRequestBudget(), 1)):
+        priority.observe_allocated_llm(
+            pressure=CandidatePressure("eq", 100, 50), diagnostics={"high": _a7_high()},
+            final_count=60, strong_count=60, refill=None, manual=False,
+            original_question="PRIVATE_QUERY", groups=[{"PRIVATE_TERM"}], review_selected=True)
+    assert calls == [False]
+    assert '"choice":"semantic_review"' in caplog.text
+    assert "provider_unavailable" not in caplog.text
+    assert "PRIVATE_" not in caplog.text

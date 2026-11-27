@@ -2,7 +2,8 @@
 
 The shared budget remains the authority for atomic consumption. This policy
 only chooses which of the currently wired observations should attempt it.
-A8 is not callable here until a separately authorized live caller exists.
+A8's final-refill observer can report a private selection marker here;
+that marker is never an authorization grant or proof of model execution.
 """
 from __future__ import annotations
 
@@ -53,12 +54,14 @@ def choose_llm_work(*, pressure, diagnostics, final_count, strong_count, refill,
 
 
 def observe_allocated_llm(*, pressure, diagnostics, final_count, strong_count, refill,
-                          original_question, groups, manual):
+                          original_question, groups, manual, review_selected=False):
     """At most one attempted existing model task; no fallback on failure.
 
     A7 may still record its deterministic decision without model access.
     A2/A7 retain their own input, scope, budget and response validation.
-    No Evidence text is passed here; no A8 call or new retrieval action.
+    A8 is selected at the actual final-refill boundary, not called here.
+    Once selected, do not fall back to A2/A7 on denied/failed review.
+    No Evidence text, verdicts, or new retrieval action is passed here.
     """
     if not llm_priority_enabled():
         return
@@ -73,13 +76,18 @@ def observe_allocated_llm(*, pressure, diagnostics, final_count, strong_count, r
             return
         a2 = bilingual_shadow_enabled()
         a7 = strategy_enabled()
-        reason, choice = choose_llm_work(
-            pressure=pressure, diagnostics=diagnostics, final_count=final_count,
-            strong_count=strong_count, refill=refill, manual=manual,
-            bilingual_enabled=a2, strategy_enabled=a7,
-        )
+        if type(review_selected) is not bool:
+            return
+        if review_selected:
+            reason, choice = "final_evidence_ambiguity", "semantic_review"
+        else:
+            reason, choice = choose_llm_work(
+                pressure=pressure, diagnostics=diagnostics, final_count=final_count,
+                strong_count=strong_count, refill=refill, manual=manual,
+                bilingual_enabled=a2, strategy_enabled=a7,
+            )
         record.update(status="observed_priority", reason=reason)
-        if choice != "none":
+        if choice in ("bilingual", "strategy"):
             if not os.getenv("TOPIC_LLM_URL"):
                 record["status"] = "provider_unavailable"
                 choice = "none"
