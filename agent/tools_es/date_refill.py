@@ -19,11 +19,16 @@ def refill_date_filtered_evidence(
     max_candidates: int = MAX_DATE_CANDIDATES,
     admit_next_page: Callable[[], bool] | None = None,
     arc_review_scope: FinalReviewInput | None = None,
+    _arc_review_policy: Callable[..., bool] | None = None,
+    _arc_review_deadline_monotonic: float | None = None,
 ) -> Tuple[List[dict], List[dict], int, Dict[str, Any]]:
     observer = None
     if type(arc_review_scope) is FinalReviewInput:
         def observer(**kwargs):
-            observe_final_review_scope(arc_review_scope, **kwargs)
+            observe_final_review_scope(
+                arc_review_scope, check_review_egress=_arc_review_policy,
+                review_deadline_monotonic=_arc_review_deadline_monotonic, **kwargs,
+            )
     return _refill(
         body=body, first_response=first_response, requested_size=requested_size,
         search_next=search_next, build_evidence=build_evidence,
