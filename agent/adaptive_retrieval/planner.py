@@ -7,12 +7,13 @@ builder and canonical Event/Timeline Evidence verifier, then checkpoint it.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 import json
 import re
 from typing import Callable
 
-from .arc_deep_planner_hint import DeepPlannerHint, hint_scope_enabled
+from .arc_deep_planner_hint import (DeepPlannerHint, hint_scope_enabled,
+                                    candidate_expansion_advised)
 from .arc_deep_resource_metrics import measured_planner_callback
 from .contracts import (
     BudgetSnapshot, QueryConstraints, RoundEvidenceSummary, _bounded_text,
@@ -52,6 +53,8 @@ class PlannerDecision:
     reason_code: str
     optional_terms: tuple[str, ...] = ()
     target_aspects: tuple[str, ...] = ()
+    # Server-generated only, never accepted from the model JSON.
+    _arc_candidate_expansion: bool = field(default=False, repr=False)
 
     @property
     def should_search(self) -> bool:
@@ -106,7 +109,7 @@ def _validate_proposal(raw: object, *, prior_terms: set[str]) -> PlannerDecision
 def _build_prompt(
     constraints: QueryConstraints,
     history: tuple[RoundEvidenceSummary, ...],
-    *, _arc_hint=None,
+    *, _arc_hint=None, _arc_candidate_expansion=False,
 ) -> str:
     # A deliberately bounded, structured summary, not raw source snippets,
     # full ES results, document IDs or arbitrary previous model messages.
@@ -152,6 +155,11 @@ def _build_prompt(
     if type(_arc_hint) is DeepPlannerHint:
         advisory = _arc_hint.payload_for(constraints, history[-1])
         if advisory is not None:
+            if _arc_candidate_expansion is True:
+                advisory["candidate_expansion_guidance"] = (
+                    "候選來源為零：優先提出與原始主題及缺少面向相符的替代寫法、"
+                    "跨語言名稱或同義查詢詞。僅作可選候選搜尋，不可改動必要實體、"
+                    "日期、核心詞或證據驗證門檻；若無合理補查，停止。")
             payload["arc_advisory_read_only"] = advisory
             expanded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
             # Never lose an otherwise admissible baseline prompt just to
@@ -170,7 +178,8 @@ class AdaptiveRetrievalPlanner:
     """
 
     def __init__(self, llm_call: Callable[..., str], *, max_rounds: int = 8,
-                 _arc_deep_hint_enabled: bool = False):
+                 _arc_deep_hint_enabled: bool = False,
+                 _arc_deep_candidate_expansion_enabled: bool = False):
         if not callable(llm_call):
             raise ValueError("invalid_adaptive_llm")
         if type(max_rounds) is not int or not 2 <= max_rounds <= 32:
@@ -180,6 +189,10 @@ class AdaptiveRetrievalPlanner:
         if type(_arc_deep_hint_enabled) is not bool:
             raise ValueError("invalid_arc_hint_pilot")
         self._arc_deep_hint_enabled = _arc_deep_hint_enabled
+        if (type(_arc_deep_candidate_expansion_enabled) is not bool
+                or (_arc_deep_candidate_expansion_enabled and not _arc_deep_hint_enabled)):
+            raise ValueError("invalid_arc_candidate_expansion_pilot")
+        self._arc_deep_candidate_expansion_enabled = _arc_deep_candidate_expansion_enabled
 
     def propose_next(
         self,
@@ -220,12 +233,24 @@ class AdaptiveRetrievalPlanner:
                 and type(_arc_hint) is DeepPlannerHint and hint_scope_enabled()
                 else None)
         try:
-            prompt = _build_prompt(constraints, history, _arc_hint=hint)
+            expand = (self._arc_deep_candidate_expansion_enabled is True
+                      and candidate_expansion_advised(hint, constraints, latest))
+            prompt = _build_prompt(constraints, history, _arc_hint=hint,
+                                   **({"_arc_candidate_expansion": True} if expand else {}))
+            # If the prompt cap discarded the advisory, never apply the
+            # expansion to an ordinary model proposal.
+            if expand:
+                advisory = json.loads(prompt.split("\n", 1)[1]).get("arc_advisory_read_only", {})
+                expand = "candidate_expansion_guidance" in advisory
             output = measured_planner_callback(self, prompt, system_prompt=ADAPTIVE_PLANNER_SYSTEM)
             prior = {
                 term.casefold() for entry in history for term in entry.search_terms
             }
-            return _validate_proposal(output, prior_terms=prior)
+            decision = _validate_proposal(output, prior_terms=prior)
+            if (expand and decision.should_search
+                    and candidate_expansion_advised(hint, constraints, latest)):
+                decision = replace(decision, _arc_candidate_expansion=True)
+            return decision
         except Exception:
             # Do not expose raw exception, provider output, or private question.
             # Failure must never cause a fallback ES/LLM re-query.
@@ -244,6 +269,7 @@ class BoundNextRoundPlan:
     constraints: QueryConstraints
     optional_terms: tuple[str, ...]
     target_aspects: tuple[str, ...]
+    _arc_candidate_expansion: bool = field(default=False, repr=False)
 
 
 def bind_next_round_plan(
@@ -266,7 +292,8 @@ def bind_next_round_plan(
             or history[-1].coverage_sufficient or history[-1].result_incomplete):
         raise ValueError("untrusted_next_round_scope")
     if (type(decision) is not PlannerDecision or not decision.should_search
-            or decision.reason_code != "COVERAGE_GAP"):
+            or decision.reason_code != "COVERAGE_GAP"
+            or type(decision._arc_candidate_expansion) is not bool):
         raise ValueError("invalid_next_round_decision")
     # Validate again at the trust boundary; manually crafted PlannerDecision
     # values must not bypass date-term, deduplication or size checks.
@@ -280,4 +307,5 @@ def bind_next_round_plan(
     return BoundNextRoundPlan(
         round_number=history[-1].number + 1, constraints=constraints,
         optional_terms=terms, target_aspects=aspects,
+        _arc_candidate_expansion=decision._arc_candidate_expansion,
     )

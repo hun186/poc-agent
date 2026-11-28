@@ -8,7 +8,7 @@ requests, persist a Report Job, or change the production single-round path.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .contracts import QueryConstraints, RoundEvidenceSummary
 from .planner import (
@@ -16,6 +16,7 @@ from .planner import (
     bind_next_round_plan,
 )
 from .request_budget import RequestAdmissionBudget
+from .arc_deep_planner_hint import candidate_expansion_advised
 
 
 _REASONS = frozenset((
@@ -131,6 +132,11 @@ def propose_budgeted_next_round(
     if not decision.should_search:
         return stop(decision.reason_code)
     try:
+        if (decision._arc_candidate_expansion is True
+                and (planner._arc_deep_candidate_expansion_enabled is not True
+                     or not candidate_expansion_advised(_arc_hint, constraints, history[-1]))):
+            # Revoked pilot: retain the ordinary validated terms only.
+            decision = replace(decision, _arc_candidate_expansion=False)
         bound = bind_next_round_plan(
             constraints=constraints, history=history, decision=decision,
         )

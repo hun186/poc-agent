@@ -415,3 +415,57 @@ def test_arc_deep_callback_resource_distinguishes_returns_from_raised(monkeypatc
         assert p["returned"] == int(problem == "invalid_planner_return")
     assert "PRIVATE" not in json.dumps(row)
     assert _SCOPE.get() is None
+
+
+@pytest.mark.parametrize("case", ["default", "flag_off", "pilot", "revoked", "nonempty"])
+def test_arc_deep_a2_candidate_expansion_requires_empty_attested_round(monkeypatch, case):
+    from agent.adaptive_retrieval.es_pit_adapter import _query
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_BILINGUAL", "off" if case == "flag_off" else "shadow")
+    for flag in ("DEEP_FREQUENCY", "REVIEW_DEEP"):
+        monkeypatch.setenv("SRAF_ARC_" + flag, "off")
+    c, scope, ev, budget, _, _ = _setup()
+    prompts, semantic = [], []
+    term = "United Nations statement"
+    def planner(prompt, *, system_prompt):
+        prompts.append(json.loads(prompt.split("\n", 1)[1]))
+        if case == "revoked":
+            monkeypatch.setenv("SRAF_ARC_BILINGUAL", "off")
+        return json.dumps({"action": "search", "reason_code": "COVERAGE_GAP",
+                           "optional_terms": [term], "target_aspects": ["外交回應"]})
+    c._planner = AdaptiveRetrievalPlanner(planner, _arc_deep_hint_enabled=True,
+        _arc_deep_candidate_expansion_enabled=case != "default")
+    first = _verified_page("C") if case == "nonempty" else _page([])
+    a, b = _verified_page("A"), _verified_page("B")
+    second = _page(a["hits"]["hits"] + b["hits"]["hits"])
+    es = FakeES(first, second)
+    def assessor(*args):
+        semantic.append(1)
+        return True
+    result = _run(c, scope, ev, es, assessor=assessor)
+    assert result.progress["termination"] == "SUFFICIENT"
+    assert len(prompts) == 1 and len(es.searches) == 2
+    assert len(semantic) == (12 if case == "nonempty" else 8)
+    advisory = prompts[0]["arc_advisory_read_only"]
+    assert ("candidate_expansion_guidance" in advisory) == (case in ("pilot", "revoked"))
+    assert [kind for kind, _ in es.calls] == ["open", "search", "close"] * 2
+    assert budget.snapshot().remaining_es_calls == 20
+    first_body, second_body = (call["body"] for call in es.searches)
+    base = _query(scope, optional_terms=(term,), page_size=50)
+    actual = second_body["query"]["function_score"]["query"]["bool"]
+    baseline = base["query"]["function_score"]["query"]["bool"]
+    assert actual["filter"] == baseline["filter"] == first_body["query"]["function_score"]["query"]["bool"]["filter"]
+    assert actual["minimum_should_match"] == baseline["minimum_should_match"]
+    if case == "pilot":
+        # Only the existing synonym OR candidate clause differs.
+        from agent.es.reference_text import get_reference_text_field
+        expected = {"match": {get_reference_text_field(): {"query": term, "operator": "or"}}}
+        changed = [i for i, (left, right) in enumerate(zip(actual["should"], baseline["should"]))
+                   if left != right]
+        assert len(actual["should"]) == len(baseline["should"]) and len(changed) == 1
+        i = changed[0]
+        assert actual["should"][i]["bool"]["should"] == baseline["should"][i]["bool"]["should"] + [expected]
+    else:
+        assert actual == baseline
+    assert "candidate_expansion_guidance" not in json.dumps(result.safe_audit())
