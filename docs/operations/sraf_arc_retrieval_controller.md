@@ -103,3 +103,6 @@ SRAF_ARC_LLM_PRIORITY=shadow 時，低量別名疑慮沿用 A2、其他未解決
 
 ### 深度報告 Worker 內部 Pilot
 可信 Python 組裝 AdaptiveJobRuntime(..., _arc_deep_hint_enabled=True) 可將 #580 私有診斷 pilot 傳給實際 claimed Job 的既有 guarded planner；預設 False，正式 startup composition、HTTP、Job options、env 不提供設定入口。仍須 SRAF_ARC_STRATEGY=shadow，既有 owner/branch、deadline、原子 planner budget、PIT、canonical Event/Timeline 與語意覆蓋驗證不變。離線整合測試用同一合成 ES/模型測試夾具對照 baseline、pilot flag off、pilot shadow：檢查規劃建議實際進入下一輪 ES body，但 hard filter 不變、ES/LLM 呼叫數不增加、SQLite Job 與實際 DOCX 產出維持正常。合成輸出不是品質或實際算力驗收；私有 provider A/B、正式 opt-in 仍未完成。
+
+### 深度 A7 分析面向缺口精進
+實際 request-wide semantic evaluator 計算每一尚缺面向相對既有 evidence/source 門檻的剩餘數量，並於已明確 opt-in 的 A7 pilot 提供依缺少面向順序的固定位置、缺少證據數、缺少獨立來源數與 focus enum；同一來源多個片段不等於多個獨立來源。每輪重新計算且仍使用既有 verified witness、去重及完整 attestation；不傳新標籤或識別碼、不改 coverage sufficiency、預算、停止規則或原始查詢限制，無效格式 abstain；缺少來源與缺少證據不直接觸發放寬/收緊或追加模型。未啟用 pilot 不改 planner prompt；公開 progress / audit schema 不變。待私有實機 A/B 確認品質效益。

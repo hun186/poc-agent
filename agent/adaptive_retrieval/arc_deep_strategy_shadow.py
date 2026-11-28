@@ -113,7 +113,8 @@ def capture_deep_planner_hint(*, constraints, record, observation, assessment):
             constraints, record, result["advice"], result["candidate_sources"],
             result["canonical_evidence_this_round"],
             result["cumulative_semantically_supported_evidence"],
-            result["cumulative_semantically_supported_sources"])
+            result["cumulative_semantically_supported_sources"],
+            missing_target_deficits=assessment.missing_target_deficits)
         return hint if hint.payload_for(constraints, record) is not None else None
     except Exception:
         return None

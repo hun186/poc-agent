@@ -12,7 +12,7 @@ into the live SRAF API or ReportJobWorker.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from threading import Lock
 from typing import Callable
 
@@ -59,6 +59,10 @@ class CoverageAssessment:
     verified_evidence: int
     verified_sources: int
     required_targets: int
+    # Private ordered deficits, aligned with missing_aspects (not target IDs).
+    # Never persisted or included in safe_audit. Legacy constructors abstain.
+    missing_target_deficits: tuple[tuple[int, int], ...] = field(
+        default=(), repr=False, compare=False)
 
     def safe_audit(self) -> dict[str, int | bool | str]:
         """Expose counts only; no target text, evidence keys or source IDs."""
@@ -190,11 +194,14 @@ class RequestWideCoverageEvaluator:
                 self._failure_reason = "SEMANTIC_OR_PROVENANCE_REJECTED"
                 raise ValueError("coverage_verification_failed") from None
             missing: list[str] = []
+            deficits: list[tuple[int, int]] = []
             for index, target in enumerate(self._targets):
                 pairs = proposed[index]
-                if (len({e for e, _ in pairs}) < self._min_evidence
-                        or len({src for _, src in pairs}) < self._min_sources):
+                evidence_gap = max(0, self._min_evidence - len({e for e, _ in pairs}))
+                source_gap = max(0, self._min_sources - len({src for _, src in pairs}))
+                if evidence_gap or source_gap:
                     missing.append(target.label)
+                    deficits.append((evidence_gap, source_gap))
             all_evidence = {
                 evid for pairs in proposed.values() for evid, _ in pairs
             }
@@ -204,6 +211,7 @@ class RequestWideCoverageEvaluator:
             assessment = CoverageAssessment(
                 round_number, tuple(missing), not missing, True, False,
                 len(all_evidence), len(all_sources), len(self._targets),
+                missing_target_deficits=tuple(deficits),
             )
             self._support = proposed
             self._last = assessment
