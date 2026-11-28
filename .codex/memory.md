@@ -48,3 +48,5 @@
 
 ## Archive-first compaction
 - Full previous active memory at main `dda06f6ebc72`, Git blob `54b02ac6d1dc90fbed1b7dba35b55ff711e5f20a`, copied unchanged to `.codex/archive/memory.md-20261127-194530.md`. Archive preserves all dated records, pending issues and earlier archive references. Current summary and active backlog/known issues/API/architecture/decisions remain authoritative; targeted archive lookup for historical specifics. Verify exact blob equality after push. No deletion of historical memory.
+
+- 2026-11-28 #580 merged `ffdf9cf97742` (8/8 Hosted workflows, exact-head Codex clean, no threads). Candidate #581: explicit private AdaptiveJobRuntime constructor opt-in passes the existing A7 hint pilot into the guarded planner of a real claimed Worker Job. Default False, no startup/config/HTTP/job-option entry, no new provider calls. Paired synthetic real SQLite/PIT-adapter/Word integration tests inspect prompt→second query and unchanged hard filters plus identical call counts; actual provider quality/cost not measured. Hosted CI/Codex pending.

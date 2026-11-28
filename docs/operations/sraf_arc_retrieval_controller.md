@@ -100,3 +100,6 @@ SRAF_ARC_LLM_PRIORITY=shadow 時，低量別名疑慮沿用 A2、其他未解決
 
 ## 深度 A7 下一輪規劃器內部 pilot（非正式啟用）
 在已啟用 SRAF_ARC_STRATEGY=shadow 且可信 Python 呼叫端明確建構 AdaptiveRetrievalPlanner(..., _arc_deep_hint_enabled=True) 時，協調器於同一輪 evaluator-backed ledger commit 鎖內取得有界固定 enum/計數，綁定原始 constraints 和該輪物件 identity，單次取用、終止清除，經原本 atomic planner gate 送入既有 planner prompt 的 arc_advisory_read_only。無新模型呼叫、無新增 env 或 HTTP option；停用/不完整/未授權整體範圍/舊布林/驗收模式或 stale/malformed hint 均不提供，接近既有 10000 字 prompt 上限時保留原 prompt。原日期、關鍵詞、實體、索引、欄位、權限、预算、輸出驗證及停止條件不變。此 pilot 尚無正式呼叫端或私人品質 A/B；shadow flag 單獨不改變正式規劃。不得將其描述為正式策略上線。
+
+### 深度報告 Worker 內部 Pilot
+可信 Python 組裝 AdaptiveJobRuntime(..., _arc_deep_hint_enabled=True) 可將 #580 私有診斷 pilot 傳給實際 claimed Job 的既有 guarded planner；預設 False，正式 startup composition、HTTP、Job options、env 不提供設定入口。仍須 SRAF_ARC_STRATEGY=shadow，既有 owner/branch、deadline、原子 planner budget、PIT、canonical Event/Timeline 與語意覆蓋驗證不變。離線整合測試用同一合成 ES/模型測試夾具對照 baseline、pilot flag off、pilot shadow：檢查規劃建議實際進入下一輪 ES body，但 hard filter 不變、ES/LLM 呼叫數不增加、SQLite Job 與實際 DOCX 產出維持正常。合成輸出不是品質或實際算力驗收；私有 provider A/B、正式 opt-in 仍未完成。
