@@ -22,6 +22,7 @@ from .coordinator import AdaptiveRequestCoordinator
 from .es_page_fence import PageFenceError, RoundESPageFence
 from .planner import BoundNextRoundPlan, _list_of_terms
 from .arc_deep_resource_metrics import measured_es_call
+from .arc_deep_planner_hint import candidate_expansion_scope_enabled
 
 
 class LiveRoundESFailure(ValueError):
@@ -112,6 +113,7 @@ def _query(
     *,
     optional_terms: tuple[str, ...],
     page_size: int,
+    _arc_candidate_expansion: bool = False,
 ) -> dict[str, Any]:
     # Do not accept a plan's own DSL, indexes, dates, or scope fields.
     # The existing query builder creates nested Event/Timeline date candidate
@@ -129,7 +131,10 @@ def _query(
         recency_boost=False, recency_field=None, recency_scale=None,
         with_date=constraints.event_date.source != "none",
         effective_terms=all_terms, core_terms=query_terms,
-        syn_terms=[], all_terms=all_terms,
+        # Reuse existing OR synonym candidate clauses. These terms are NOT
+        # verified aliases or canonical keyword-group membership.
+        syn_terms=list(optional_terms) if _arc_candidate_expansion is True else [],
+        all_terms=all_terms,
         original_question=constraints.question,
     )
     if type(body) is not dict or type(body.get("query")) is not dict:
@@ -214,6 +219,7 @@ def search_fenced_es_round(
         raise LiveRoundESFailure("unsupported_es_hard_scope")
 
     round_number = coordinator.safe_progress()["round"]
+    expand = False
     if plan is None:
         if round_number != 1:
             raise LiveRoundESFailure("missing_next_round_strategy")
@@ -223,6 +229,7 @@ def search_fenced_es_round(
                 or plan is not coordinator._approved_plan
                 or plan.constraints is not constraints
                 or plan.round_number != round_number
+                or type(plan._arc_candidate_expansion) is not bool
                 or round_number < 2):
             raise LiveRoundESFailure("untrusted_next_round_strategy")
         try:
@@ -232,6 +239,11 @@ def search_fenced_es_round(
                 list(plan.target_aspects), limit=5, max_chars=120)
             if not optional_terms or not aspects:
                 raise ValueError("missing_terms")
+            expand = (plan._arc_candidate_expansion is True
+                      and coordinator._planner._arc_deep_hint_enabled is True
+                      and coordinator._planner._arc_deep_candidate_expansion_enabled is True
+                      and constraints.keyword_policy == "flexible"
+                      and candidate_expansion_scope_enabled())
         except Exception:
             raise LiveRoundESFailure("untrusted_next_round_strategy") from None
 
@@ -245,6 +257,7 @@ def search_fenced_es_round(
         base_query = _query(
             constraints, optional_terms=optional_terms,
             page_size=page_size,
+            **({"_arc_candidate_expansion": True} if expand else {}),
         )
     except Exception:
         raise LiveRoundESFailure("invalid_es_query_builder") from None

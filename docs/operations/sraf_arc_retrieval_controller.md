@@ -109,3 +109,6 @@ SRAF_ARC_LLM_PRIORITY=shadow 時，低量別名疑慮沿用 A2、其他未解決
 
 ### A3/A4 局部鑑別力與排序診斷回饋（A7 內部 Pilot）
 由協調器的既有 canonical builder 呼叫收集已計算的 local A3/A4 診斷，無額外掃描、ES 或 LLM 呼叫，不擷取 log。原有 scan budget、樣本界限及 rank comparison 不變；至少 16 個 date-valid sample hit 才提供群組總數、80% 以上常見群組數、正值且 20% 以下群組數、零觀測群組數與 sample_limited。此為偏態局部樣本，不是全索引 DF、相關性或品質證明；零觀測不代表罕見。可用時一併提供現有 top20 shadow 比較計數、來源及 strong 差異。僅傳統計，不傳群組文字、ordinal 對詞映射、原始文件、native DF 或排序名單。未啟用 A7 pilot 或 A3/A4 flag 於使用時撤銷、樣本不足/無效即不提供相應資訊；不改查詢、排序、報告或既有授權。實際排序/收緊/放寬與私人 A/B 仍分開驗收。
+
+### 深度 A2 候選搜尋擴充 Pilot
+可信 Python runtime 同時明確設定 `_arc_deep_hint_enabled=True`、`_arc_deep_candidate_expansion_enabled=True`，且既有 STRATEGY/BILINGUAL shadow 有效、非 acceptance、上一輪真實完整 attested candidate_sources=0，才於已准入的 planner prompt 建議跨語言名稱、同義詞及替代寫法。模型仍只回傳原 schema 的 optional_terms；若 prompt cap 省略建議、模型停止或旗標失效，不使用擴充。經既有 planner/round admission 與 exact approved plan 後，ES adapter 以既有 syn_terms OR 候選子句加上該輪 optional_terms，保留全部原查詢、hard filter、PIT 及原 canonical topic/date/semantic checks。這不是經驗證的同義詞組成員或 3→2 放寬，無額外模型或 ES 呼叫。正式 startup、HTTP、Job options、env 不暴露 private pilot；未實測召回/精確率，不可正式啟用。候選過多、canonical attrition、語意缺口等均不觸發本 Pilot。
