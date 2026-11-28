@@ -329,3 +329,89 @@ def test_arc_parent_time_fence_clock_failure_and_generation_claim():
     clock[0] = 100
     assert parent.claim_report_generation(1) > 0
     assert not arc.reserve(1, ArcUnits(llm_calls=1))
+
+
+def _callback_resource_records(caplog):
+    return [json.loads(row.getMessage().split("SRAF_ARC_DEEP_CALLBACK_RESOURCE=", 1)[1])
+            for row in caplog.records
+            if row.getMessage().startswith("SRAF_ARC_DEEP_CALLBACK_RESOURCE=")]
+
+
+@pytest.mark.parametrize("mode", ["shadow", "off"])
+def test_arc_deep_callback_resource_counts_actual_planner_and_semantic_boundaries(monkeypatch, caplog, mode):
+    from agent.adaptive_retrieval.arc_deep_resource_metrics import _SCOPE
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_DEEP_RESOURCE_METRICS", mode)
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY", "off")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_DEEP", "off")
+    c, scope, ev, _, planner_calls, _ = _setup()
+    planner_lengths, semantic_lengths = [], []
+    original = c._planner.llm_call
+    def planner(prompt, *, system_prompt):
+        result = original(prompt, system_prompt=system_prompt)
+        planner_lengths.append((len(prompt) + len(system_prompt), len(result)))
+        return result
+    c._planner.llm_call = planner
+
+    def assessor(target, evidence):
+        semantic_lengths.append(len(target.label) + len(evidence.text))
+        return True
+
+    result = _run(c, scope, ev, FakeES(_verified_page("A"), _verified_page("B")),
+                  assessor=assessor)
+    assert result.progress["termination"] == "SUFFICIENT"
+    assert planner_calls == [1] and len(semantic_lengths) == 8
+    rows = _callback_resource_records(caplog)
+    if mode == "off":
+        assert rows == []
+    else:
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["status"] == "completed"
+        assert row["provider_llm_calls"] is row["prompt_tokens"] is row["completion_tokens"] is None
+        p, s = row["callbacks"]["planner"], row["callbacks"]["semantic_witness"]
+        assert (p["attempted"], p["returned"], p["raised"]) == (1, 1, 0)
+        assert (p["input_chars"], p["output_chars"]) == planner_lengths[0]
+        assert (s["attempted"], s["returned"], s["raised"]) == (8, 8, 0)
+        assert s["input_chars"] == sum(semantic_lengths) and s["output_chars"] == 0
+        assert p["elapsed_ms"] >= 0 and s["elapsed_ms"] >= 0
+        assert "PRIVATE" not in json.dumps(row) and "甲軸" not in json.dumps(row, ensure_ascii=False)
+    assert _SCOPE.get() is None
+
+
+@pytest.mark.parametrize("problem", ["semantic_error", "planner_error", "invalid_planner_return"])
+def test_arc_deep_callback_resource_distinguishes_returns_from_raised(monkeypatch, caplog, problem):
+    from agent.adaptive_retrieval.arc_deep_resource_metrics import _SCOPE
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_DEEP_RESOURCE_METRICS", "shadow")
+    monkeypatch.setenv("SRAF_ARC_DEEP_FREQUENCY", "off")
+    monkeypatch.setenv("SRAF_ARC_REVIEW_DEEP", "off")
+    c, scope, ev, _, _, _ = _setup()
+    def planner(*a, **k):
+        if problem == "planner_error":
+            raise RuntimeError("PRIVATE_PLANNER")
+        return "PRIVATE_INVALID_JSON"
+    c._planner.llm_call = planner
+    def assessor(*args):
+        if problem == "semantic_error":
+            raise RuntimeError("PRIVATE_WITNESS")
+        return True
+    if problem == "semantic_error":
+        with pytest.raises(TrustedNroundExecutionError):
+            _run(c, scope, ev, FakeES(_verified_page("A")), assessor=assessor)
+    else:
+        result = _run(c, scope, ev, FakeES(_verified_page("A")), assessor=assessor)
+        assert result.progress["termination"] == "PLANNER_FAILED_CLOSED"
+    row, = _callback_resource_records(caplog)
+    assert row["status"] == "failed"
+    p, s = row["callbacks"]["planner"], row["callbacks"]["semantic_witness"]
+    if problem == "semantic_error":
+        assert (s["attempted"], s["returned"], s["raised"]) == (1, 0, 1)
+        assert p["attempted"] == 0
+    else:
+        assert (s["attempted"], s["returned"], s["raised"]) == (4, 4, 0)
+        assert p["attempted"] == 1
+        assert p["raised"] == int(problem == "planner_error")
+        assert p["returned"] == int(problem == "invalid_planner_return")
+    assert "PRIVATE" not in json.dumps(row)
+    assert _SCOPE.get() is None
