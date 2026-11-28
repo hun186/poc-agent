@@ -35,6 +35,7 @@ class DeepPlannerHint:
     canonical_evidence_this_round: int
     cumulative_semantically_supported_evidence: int
     cumulative_semantically_supported_sources: int
+    missing_target_deficits: tuple[tuple[int, int], ...] = field(default=(), repr=False)
 
     def payload_for(self, constraints, latest):
         if (type(constraints) is not QueryConstraints
@@ -75,7 +76,15 @@ class DeepPlannerHint:
             expected = "inspect_remaining_coverage_gap"
         if self.advice != expected:
             return None
-        return {
+        deficits = self.missing_target_deficits
+        if (type(deficits) is not tuple
+                or (deficits and len(deficits) != len(latest.missing_aspects))
+                or any(type(pair) is not tuple or len(pair) != 2
+                       or type(pair[0]) is not int or type(pair[1]) is not int
+                       or not 0 <= pair[0] <= 20 or not 0 <= pair[1] <= 10
+                       or not (pair[0] or pair[1]) for pair in deficits)):
+            return None
+        result = {
             "scope": "advisory_only_no_constraint_changes",
             "round": latest.number, "advice": self.advice,
             "candidate_sources": self.candidate_sources,
@@ -83,3 +92,16 @@ class DeepPlannerHint:
             "cumulative_semantically_supported_evidence": self.cumulative_semantically_supported_evidence,
             "cumulative_semantically_supported_sources": self.cumulative_semantically_supported_sources,
         }
+        if deficits:
+            # Zero-based positions in the existing latest missing_aspects
+            # array, no extra labels or source identities.
+            result["missing_aspect_deficits"] = [
+                {"missing_aspect_position": position,
+                 "additional_evidence_needed": evidence_gap,
+                 "additional_distinct_sources_needed": source_gap,
+                 "focus": ("independent_sources" if not evidence_gap else
+                           "supporting_evidence" if not source_gap else
+                           "supporting_evidence_and_independent_sources")}
+                for position, (evidence_gap, source_gap) in enumerate(deficits)
+            ]
+        return result
