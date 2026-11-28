@@ -16,7 +16,7 @@ from .planner import (
     bind_next_round_plan,
 )
 from .request_budget import RequestAdmissionBudget
-from .arc_deep_planner_hint import candidate_expansion_advised
+from .arc_deep_planner_hint import candidate_expansion_advised, pressure_query_mode
 
 
 _REASONS = frozenset((
@@ -137,6 +137,10 @@ def propose_budgeted_next_round(
                      or not candidate_expansion_advised(_arc_hint, constraints, history[-1]))):
             # Revoked pilot: retain the ordinary validated terms only.
             decision = replace(decision, _arc_candidate_expansion=False)
+        if (decision._arc_pressure_query in ("focus", "expand")
+                and (planner._arc_deep_pressure_query_enabled is not True
+                     or pressure_query_mode(_arc_hint, constraints, history[-1]) != decision._arc_pressure_query)):
+            decision = replace(decision, _arc_pressure_query="none")
         bound = bind_next_round_plan(
             constraints=constraints, history=history, decision=decision,
         )

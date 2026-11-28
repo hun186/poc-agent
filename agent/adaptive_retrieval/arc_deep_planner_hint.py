@@ -129,3 +129,29 @@ def candidate_expansion_advised(hint, constraints, latest):
     payload = hint.payload_for(constraints, latest)
     return (payload is not None and payload["candidate_sources"] == 0
             and payload["advice"] == "inspect_empty_candidate_scope")
+
+
+PRESSURE_QUERY_MODES = ("none", "focus", "expand")
+
+
+def pressure_query_scope_enabled(mode):
+    if type(mode) is not str or mode not in ("focus", "expand"):
+        return False
+    return (hint_scope_enabled() and arc_shadow_enabled(
+        "SRAF_ARC_TIGHTEN" if mode == "focus" else "SRAF_ARC_RELAX"))
+
+
+def pressure_query_mode(hint, constraints, latest):
+    """Choose one bounded candidate strategy from the exact prior assessment."""
+    if type(hint) is not DeepPlannerHint or not hint_scope_enabled():
+        return "none"
+    data = hint.payload_for(constraints, latest)
+    if not data or not latest.missing_aspects:
+        return "none"
+    if ("local_tightening_counterfactual" in data
+            and pressure_query_scope_enabled("focus")):
+        return "focus"
+    if ("local_relaxation_counterfactual" in data
+            and pressure_query_scope_enabled("expand")):
+        return "expand"
+    return "none"

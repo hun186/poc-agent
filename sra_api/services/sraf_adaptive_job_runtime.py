@@ -124,11 +124,14 @@ class AdaptiveJobRuntime:
     # Private operator/test composition only. No Job option or env grants this.
     _arc_deep_hint_enabled: bool = False
     _arc_deep_candidate_expansion_enabled: bool = False
+    _arc_deep_pressure_query_enabled: bool = False
 
     def __post_init__(self):
         if (type(self._arc_deep_hint_enabled) is not bool
                 or type(self._arc_deep_candidate_expansion_enabled) is not bool
-                or (self._arc_deep_candidate_expansion_enabled and not self._arc_deep_hint_enabled)):
+                or type(self._arc_deep_pressure_query_enabled) is not bool
+                or ((self._arc_deep_candidate_expansion_enabled or self._arc_deep_pressure_query_enabled)
+                    and not self._arc_deep_hint_enabled)):
             raise ValueError("adaptive_runtime_arc_pilot_invalid")
         if not all(callable(v) for v in (
             self.es_client_factory, self.planner_call, self.semantic_assessor,
@@ -187,7 +190,8 @@ class AdaptiveJobRuntime:
             constraints=c, term_groups=intent.term_groups, effective_terms=intent.effective_terms,
             budget=budget, planner=AdaptiveRetrievalPlanner(
                 guarded_planner, _arc_deep_hint_enabled=self._arc_deep_hint_enabled,
-                _arc_deep_candidate_expansion_enabled=self._arc_deep_candidate_expansion_enabled),
+                _arc_deep_candidate_expansion_enabled=self._arc_deep_candidate_expansion_enabled,
+                _arc_deep_pressure_query_enabled=self._arc_deep_pressure_query_enabled),
         )
         evaluator = RequestWideCoverageEvaluator(constraints=c, target_aspects=intent.target_aspects)
         outcome = execute_claimed_nround_job(
