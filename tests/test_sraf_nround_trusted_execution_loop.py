@@ -543,8 +543,13 @@ def test_arc_deep_pressure_query_pilot_changes_only_optional_candidate_strategy(
     assert "pressure_query_guidance" not in json.dumps(result.safe_audit())
 
 
-@pytest.mark.parametrize("invalid", [True, None, "force_relax", 1])
+@pytest.mark.parametrize("invalid", ["true", None, "force_relax", 1])
 def test_arc_pressure_query_is_not_a_model_or_unvalidated_constructor_option(invalid):
     with pytest.raises(ValueError, match="invalid_arc_pressure_query_pilot"):
         AdaptiveRetrievalPlanner(lambda *a, **k: "", _arc_deep_hint_enabled=True,
                                  _arc_deep_pressure_query_enabled=invalid)
+
+
+def test_arc_pressure_query_requires_explicit_a7_opt_in():
+    with pytest.raises(ValueError, match="invalid_arc_pressure_query_pilot"):
+        AdaptiveRetrievalPlanner(lambda *a, **k: "", _arc_deep_pressure_query_enabled=True)
