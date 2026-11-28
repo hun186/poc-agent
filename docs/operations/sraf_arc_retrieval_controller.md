@@ -97,3 +97,6 @@ SRAF_ARC_LLM_PRIORITY=shadow 時，低量別名疑慮沿用 A2、其他未解決
 
 ## 深度多輪 A7 診斷（Shadow）
 既有 SRAF_ARC_STRATEGY=shadow 同時允許深度協調器在實際 canonical ledger 與 request-wide semantic coverage evaluator 完成一輪後記錄固定計數和 advice enum。區分本輪候選、canonical 證據及新增量、累計有語意支持的證據/來源與缺少面向；依此觀察空候選、canonical attrition、語意支持不足、重複證據、低增量及高量但覆蓋不足。40片段與少於3新增片段僅為診斷候選門檻，非品質或放寬/收緊依據。未完整/未授權整體範圍不提出建議，舊版 isolated boolean 路徑不產生訊號。只記錄不執行；不改正式 planner prompt、查詢、Evidence、授權、預算或公開 progress，亦不新增模型呼叫。正式將訊號接入規劃器仍須獨立驗收。
+
+## 深度 A7 下一輪規劃器內部 pilot（非正式啟用）
+在已啟用 SRAF_ARC_STRATEGY=shadow 且可信 Python 呼叫端明確建構 AdaptiveRetrievalPlanner(..., _arc_deep_hint_enabled=True) 時，協調器於同一輪 evaluator-backed ledger commit 鎖內取得有界固定 enum/計數，綁定原始 constraints 和該輪物件 identity，單次取用、終止清除，經原本 atomic planner gate 送入既有 planner prompt 的 arc_advisory_read_only。無新模型呼叫、無新增 env 或 HTTP option；停用/不完整/未授權整體範圍/舊布林/驗收模式或 stale/malformed hint 均不提供，接近既有 10000 字 prompt 上限時保留原 prompt。原日期、關鍵詞、實體、索引、欄位、權限、预算、輸出驗證及停止條件不變。此 pilot 尚無正式呼叫端或私人品質 A/B；shadow flag 單獨不改變正式規劃。不得將其描述為正式策略上線。

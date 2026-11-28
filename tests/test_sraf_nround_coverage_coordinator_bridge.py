@@ -312,3 +312,55 @@ def test_arc_deep_strategy_legacy_boolean_path_is_not_a_signal(monkeypatch, capl
     finish(c, [_hit(2, "PRIVATE_DOC_A", inner=False)], sufficient=True)
     assert _deep_strategy_records(caplog) == []
     assert calls == []
+
+
+@pytest.mark.parametrize("case", ["pilot", "shadow_only", "off", "revoked", "legacy", "expired", "locked"])
+def test_arc_deep_planner_hint_is_private_opt_in_and_reuses_existing_call(monkeypatch, caplog, case):
+    from test_sraf_nround_coordinator import finish
+    from test_sraf_adaptive_planner_contract import response
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", "off" if case == "off" else "shadow")
+    prompts, clock = [], [0.0]
+
+    def llm(prompt, **kwargs):
+        prompts.append(json.loads(prompt.split("\n", 1)[1]))
+        return response(terms=["不同地區回應"], aspects=["後續影響"])
+
+    c, budget, calls = coordinator(llm=llm, clock=clock, locked=case == "locked",
+        _arc_deep_hint_enabled=case != "shadow_only")
+    evaluator = RequestWideCoverageEvaluator(
+        constraints=c._constraints, target_aspects=("PRIVATE_TARGET",))
+    assert c.start() and c.admit_es_call()
+    hits = [_hit(2, "PRIVATE_DOC_A", inner=False)]
+    if case == "legacy":
+        finish(c, hits)
+    else:
+        _assess(c, evaluator, hits)
+    assert not calls
+    if case == "revoked":
+        monkeypatch.setenv("SRAF_ARC_STRATEGY", "off")
+    if case == "expired":
+        clock[0] = 1800
+    admitted = c.plan_next_round()
+    if case in ("expired", "locked"):
+        assert not admitted.approved
+        assert not calls
+    else:
+        assert admitted.approved and admitted.plan.constraints is c._constraints
+        assert calls == ["planner"] and len(prompts) == 1
+        hint = prompts[0].get("arc_advisory_read_only")
+        if case == "pilot":
+            assert hint == {
+                "scope": "advisory_only_no_constraint_changes", "round": 1,
+                "advice": "inspect_low_incremental_gain", "candidate_sources": 1,
+                "canonical_evidence_this_round": 2,
+                "cumulative_semantically_supported_evidence": 2,
+                "cumulative_semantically_supported_sources": 1,
+            }
+            assert "PRIVATE" not in json.dumps(hint)
+        else:
+            assert hint is None
+        assert prompts[0]["hard_constraints_read_only"]["event_date"]["start"] == c._constraints.event_date.start
+    assert c._arc_hint is None
+    assert "arc_advisory_read_only" not in json.dumps(c.safe_progress())
+    assert "PRIVATE" not in caplog.text

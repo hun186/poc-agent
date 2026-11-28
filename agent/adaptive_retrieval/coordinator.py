@@ -24,7 +24,7 @@ from .next_round_gate import NextRoundAdmission, propose_budgeted_next_round
 from .planner import BoundNextRoundPlan
 from .planner import AdaptiveRetrievalPlanner
 from .request_budget import RequestAdmissionBudget
-from .arc_deep_strategy_shadow import observe_deep_strategy
+from .arc_deep_strategy_shadow import observe_deep_strategy, capture_deep_planner_hint
 
 
 _PHASES = frozenset((
@@ -88,6 +88,7 @@ class AdaptiveRequestCoordinator:
         self._budget = budget
         self._planner = planner
         self._ledger = RequestWideEvidenceLedger()
+        self._arc_hint = None
         self._lock = Lock()
         self._phase = "CREATED"
         self._terminal_reason = "NONE"
@@ -108,6 +109,7 @@ class AdaptiveRequestCoordinator:
         self._owner_preflight_execution_token: object | None = None
 
     def _terminate_locked(self, reason: str) -> None:
+        self._arc_hint = None
         self._phase = "TERMINAL"
         self._approved_plan = None
         self._terminal_reason = (
@@ -308,6 +310,14 @@ class AdaptiveRequestCoordinator:
                     coverage_sufficient=coverage_sufficient,
                     request_wide_attested=request_wide_attested,
                 )
+                # Capture before publishing ASSESSED, from this exact ledger
+                # record and the real evaluator, not from logs or a model.
+                self._arc_hint = None
+                if (coverage_evaluator is not None
+                        and self._planner._arc_deep_hint_enabled is True):
+                    self._arc_hint = capture_deep_planner_hint(
+                        constraints=self._constraints, record=record,
+                        observation=observation, assessment=assessed)
                 if record.result_incomplete:
                     self._terminate_locked("SAME_PLAN_SEARCH_INCOMPLETE")
                 elif not record.request_wide:
@@ -340,11 +350,13 @@ class AdaptiveRequestCoordinator:
                     round_number=self._round,
                 )
             history = self._ledger.history
+            hint, self._arc_hint = self._arc_hint, None
             self._phase = "PLANNING"
         try:
             admission = propose_budgeted_next_round(
                 constraints=self._constraints, history=history,
                 budget=self._budget, planner=self._planner,
+                **({"_arc_hint": hint} if hint is not None else {}),
             )
         except Exception:
             admission = NextRoundAdmission(

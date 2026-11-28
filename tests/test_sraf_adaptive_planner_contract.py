@@ -323,3 +323,33 @@ def test_multiline_user_question_is_preserved_without_accepting_control_bytes():
             question="unsafe\x00question", event_date=DateWindow(),
             analysis_date=DateWindow(), allowed_indexes=("news_test",),
         )
+
+
+@pytest.mark.parametrize("case", ["valid", "wrong_round", "wrong_scope", "bad_enum", "bad_count", "wrong_reason", "disabled"])
+def test_arc_deep_planner_hint_validates_exact_scope_and_fixed_data(monkeypatch, case):
+    from dataclasses import replace
+    from agent.adaptive_retrieval.arc_deep_planner_hint import DeepPlannerHint
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", "shadow")
+    scope, latest = make_scope(), round1()
+    hint = DeepPlannerHint(scope, latest, "inspect_low_incremental_gain", 1, 2, 2, 1)
+    if case == "wrong_round":
+        hint = replace(hint, _record=replace(latest))
+    elif case == "wrong_scope":
+        hint = replace(hint, _constraints=make_scope())
+    elif case == "bad_enum":
+        hint = replace(hint, advice="PRIVATE_INJECTION")
+    elif case == "bad_count":
+        hint = replace(hint, candidate_sources=True)
+    elif case == "wrong_reason":
+        hint = replace(hint, advice="inspect_empty_candidate_scope")
+    seen = []
+    def llm(prompt, **kwargs):
+        seen.append(json.loads(prompt.split("\n", 1)[1]))
+        return response()
+    planner = AdaptiveRetrievalPlanner(llm, _arc_deep_hint_enabled=case != "disabled")
+    result = planner.propose_next(constraints=scope, history=(latest,),
+                                  budget=budget(), _arc_hint=hint)
+    assert result.should_search
+    assert ("arc_advisory_read_only" in seen[0]) == (case == "valid")
+    assert "PRIVATE_INJECTION" not in json.dumps(seen)
