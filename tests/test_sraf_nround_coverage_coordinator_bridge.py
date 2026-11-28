@@ -356,6 +356,13 @@ def test_arc_deep_planner_hint_is_private_opt_in_and_reuses_existing_call(monkey
                 "canonical_evidence_this_round": 2,
                 "cumulative_semantically_supported_evidence": 2,
                 "cumulative_semantically_supported_sources": 1,
+                "missing_aspect_deficits": [
+                    {"missing_aspect_position": position,
+                     "additional_evidence_needed": 0,
+                     "additional_distinct_sources_needed": 1,
+                     "focus": "independent_sources"}
+                    for position in range(2)
+                ],
             }
             assert "PRIVATE" not in json.dumps(hint)
         else:
@@ -363,4 +370,44 @@ def test_arc_deep_planner_hint_is_private_opt_in_and_reuses_existing_call(monkey
         assert prompts[0]["hard_constraints_read_only"]["event_date"]["start"] == c._constraints.event_date.start
     assert c._arc_hint is None
     assert "arc_advisory_read_only" not in json.dumps(c.safe_progress())
+    assert "PRIVATE" not in caplog.text
+
+
+def test_arc_pilot_missing_facets_distinguish_sources_from_evidence_and_update(monkeypatch, caplog):
+    from test_sraf_adaptive_planner_contract import response
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", "shadow")
+    prompts = []
+
+    def llm(prompt, **kwargs):
+        prompts.append(json.loads(prompt.split("\n", 1)[1]))
+        return response(terms=["不同地區回應" if len(prompts) == 1 else "其他外交資料"],
+                        aspects=["後續影響"])
+
+    c, _, calls = coordinator(llm=llm, _arc_deep_hint_enabled=True)
+    evaluator = RequestWideCoverageEvaluator(
+        constraints=c._constraints, target_aspects=("PRIVATE_TARGET",))
+    assert c.start() and c.admit_es_call()
+    a = [_hit(2, "PRIVATE_DOC_A", inner=False)]
+    first = _assess(c, evaluator, a, witnesses=_witnesses(c, a, target_indexes=(0,)))
+    assert len(first.missing_aspects) == 2
+    assert c.plan_next_round().approved
+    first_hint = prompts[0]["arc_advisory_read_only"]["missing_aspect_deficits"]
+    assert [(d["additional_evidence_needed"], d["additional_distinct_sources_needed"], d["focus"])
+            for d in first_hint] == [(0, 1, "independent_sources"),
+                                    (2, 2, "supporting_evidence_and_independent_sources")]
+    assert c.admit_es_call()
+    b = [_hit(1, "PRIVATE_DOC_B", inner=False)]
+    second = _assess(c, evaluator, b, witnesses=_witnesses(c, b, target_indexes=(0, 1)))
+    assert second.missing_aspects == ("PRIVATE_TARGET",)
+    assert c.plan_next_round().approved
+    second_hint = prompts[1]["arc_advisory_read_only"]["missing_aspect_deficits"]
+    assert second_hint == [{"missing_aspect_position": 0,
+                            "additional_evidence_needed": 1,
+                            "additional_distinct_sources_needed": 1,
+                            "focus": "supporting_evidence_and_independent_sources"}]
+    assert len(calls) == 2
+    assert "PRIVATE" not in json.dumps(first_hint + second_hint)
+    assert "missing_aspect_deficits" not in json.dumps(c.safe_progress())
+    assert "missing_aspect_deficits" not in json.dumps(evaluator.safe_audit())
     assert "PRIVATE" not in caplog.text

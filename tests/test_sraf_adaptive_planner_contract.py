@@ -353,3 +353,24 @@ def test_arc_deep_planner_hint_validates_exact_scope_and_fixed_data(monkeypatch,
     assert result.should_search
     assert ("arc_advisory_read_only" in seen[0]) == (case == "valid")
     assert "PRIVATE_INJECTION" not in json.dumps(seen)
+
+
+@pytest.mark.parametrize("bad", [
+    ((0, 0),), ((21, 1),), ((1, 11),), ((True, 1),),
+    ((1, 1), (1, 1)), [(1, 1)], ((1,),),
+])
+def test_arc_pilot_malformed_facet_deficits_abstain_without_extra_call(monkeypatch, bad):
+    from agent.adaptive_retrieval.arc_deep_planner_hint import DeepPlannerHint
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", "shadow")
+    scope, latest = make_scope(), round1()
+    hint = DeepPlannerHint(scope, latest, "inspect_low_incremental_gain", 1, 2, 2, 1,
+                           missing_target_deficits=bad)
+    calls = []
+    def llm(prompt, **kwargs):
+        calls.append(json.loads(prompt.split("\n", 1)[1]))
+        return response()
+    result = AdaptiveRetrievalPlanner(llm, _arc_deep_hint_enabled=True).propose_next(
+        constraints=scope, history=(latest,), budget=budget(), _arc_hint=hint)
+    assert result.should_search
+    assert len(calls) == 1 and "arc_advisory_read_only" not in calls[0]
