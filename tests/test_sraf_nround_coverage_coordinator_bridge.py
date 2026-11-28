@@ -411,3 +411,82 @@ def test_arc_pilot_missing_facets_distinguish_sources_from_evidence_and_update(m
     assert "missing_aspect_deficits" not in json.dumps(c.safe_progress())
     assert "missing_aspect_deficits" not in json.dumps(evaluator.safe_audit())
     assert "PRIVATE" not in caplog.text
+
+
+@pytest.mark.parametrize("mode", ["pilot", "shadow_only", "revoked", "small_sample"])
+def test_arc_deep_local_group_advisory_uses_actual_parser_sample(monkeypatch, caplog, mode):
+    from test_sraf_adaptive_planner_contract import response
+    from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_RANK", "shadow")
+    prompts = []
+    def llm(prompt, **kwargs):
+        prompts.append(json.loads(prompt.split("\n", 1)[1]))
+        return response(terms=["不同地區回應"], aspects=["後續影響"])
+    c, _, calls = coordinator(llm=llm, _arc_deep_hint_enabled=mode != "shadow_only")
+    ev = RequestWideCoverageEvaluator(constraints=c._constraints, target_aspects=("PRIVATE_TARGET",))
+    assert c.start() and c.admit_es_call()
+    hits = [_hit(2, "PRIVATE_DOC_" + str(i), inner=False)
+            for i in range(4 if mode == "small_sample" else 24)]
+    with bind_arc_budget((ArcRequestBudget(), 1)):
+        record = _assess(c, ev, hits, witnesses=())
+    assert not record.coverage_sufficient
+    if mode == "revoked":
+        monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY", "off")
+    assert c.plan_next_round().approved
+    assert calls == ["planner"]
+    advisory = prompts[0].get("arc_advisory_read_only", {})
+    if mode == "pilot":
+        assert advisory["local_group_discrimination"] == {
+            "scope": "ordered_date_valid_parser_sample_not_corpus_df",
+            "eligible_hits": 24, "group_count": 3,
+            "common_groups_at_least_80pct": 3,
+            "uncommon_groups_positive_at_most_20pct": 0,
+            "unobserved_groups_not_rarity": 0, "sample_limited": False}
+        assert "PRIVATE" not in json.dumps(advisory)
+    else:
+        assert "local_group_discrimination" not in advisory
+        assert "local_rank_comparison" not in advisory
+    assert "local_group_discrimination" not in json.dumps(c.safe_progress())
+    assert "PRIVATE" not in caplog.text
+
+
+@pytest.mark.parametrize("case", ["valid", "bad_count", "bad_ordinal", "native", "small", "bad_rank"])
+def test_arc_deep_local_summary_does_not_misrepresent_unobserved_or_native_counts(monkeypatch, case):
+    from agent.adaptive_retrieval.arc_deep_local_advisory import summarize_local_advisory
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    freq = {"schema": "sraf_arc_group_frequency_v1",
+            "scope": "ordered_parser_slice_date_valid_sample_text_only",
+            "status": "observed_sample", "eligible_hits": 20, "sample_limited": True,
+            "groups": [{"group_ordinal": i, "sample_hit_frequency": n}
+                       for i, n in enumerate((18, 2, 0, 9), 1)]}
+    rank = {"schema": "sraf_arc_rank_shadow_v1",
+            "scope": "same_parser_slice_ordered_sample_strict_prefix",
+            "status": "observed_rank", "top_k": 20, "prefix_count": 40,
+            "prefix_limited": False, "frequency_sample_limited": True,
+            "top_k_replaced": 3, "rarity_only_top_k_replaced": 1,
+            "original_source_hits": 8, "shadow_source_hits": 10,
+            "original_strong": 18, "shadow_strong": 19}
+    if case == "bad_count":
+        freq["groups"][0]["sample_hit_frequency"] = 21
+    elif case == "bad_ordinal":
+        freq["groups"][0]["group_ordinal"] = True
+    elif case == "native":
+        freq["schema"] = "sraf_arc_deep_rank_frequency_v1"
+    elif case == "small":
+        freq["eligible_hits"] = 10
+    elif case == "bad_rank":
+        rank["top_k_replaced"] = 21
+    result = summarize_local_advisory({"frequency": freq, "rank": rank})
+    if case not in ("valid", "bad_rank"):
+        assert result is None
+    else:
+        payload = result.payload()
+        group = payload["local_group_discrimination"]
+        assert (group["common_groups_at_least_80pct"],
+                group["uncommon_groups_positive_at_most_20pct"],
+                group["unobserved_groups_not_rarity"]) == (1, 1, 1)
+        assert group["sample_limited"] is True
+        assert ("local_rank_comparison" in payload) is (case == "valid")

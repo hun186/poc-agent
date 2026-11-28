@@ -161,6 +161,7 @@ def observe_canonical_round(
     private_evidence: dict[tuple[str, str], PrivateCanonicalEvidence] | None = None,
     private_report_rows: dict[tuple[str, str], CanonicalReportEvidence] | None = None,
     deep_rank_frequency=None,
+    _arc_deep_local_diagnostics=None,
 ) -> RoundObservation:
     """Validate a *single* page/round with the current canonical parser.
 
@@ -198,6 +199,8 @@ def observe_canonical_round(
         original_question=original_question,
         include_source_hit_ordinal=True,
         **({"deep_rank_frequency": deep_rank_frequency} if deep_rank_frequency is not None else {}),
+        **({"_arc_deep_local_diagnostics": _arc_deep_local_diagnostics}
+           if type(_arc_deep_local_diagnostics) is dict else {}),
     )
     if len(evidence) > MAX_EVIDENCE:
         raise ValueError("round_evidence_over_cap")

@@ -6,6 +6,7 @@ on:
       - 'agent/adaptive_retrieval/coordinator.py'
       - 'agent/adaptive_retrieval/arc_deep_resource_metrics.py'
       - 'agent/adaptive_retrieval/arc_deep_strategy_shadow.py'
+      - 'agent/adaptive_retrieval/arc_deep_local_advisory.py'
       - 'agent/adaptive_retrieval/next_round_gate.py'
       - 'agent/adaptive_retrieval/evidence_ledger.py'
       - 'agent/adaptive_retrieval/private_semantic_binding.py'

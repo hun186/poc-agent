@@ -12,6 +12,7 @@ import logging
 from agent.arc_mode import arc_shadow_enabled
 from .contracts import RoundEvidenceSummary, QueryConstraints
 from .arc_deep_planner_hint import DeepPlannerHint, hint_scope_enabled
+from .arc_deep_local_advisory import summarize_local_advisory
 from .coverage_evaluator import CoverageAssessment
 from .evidence_ledger import RoundObservation
 
@@ -100,7 +101,8 @@ def observe_deep_strategy(**kwargs):
         return
 
 
-def capture_deep_planner_hint(*, constraints, record, observation, assessment):
+def capture_deep_planner_hint(*, constraints, record, observation, assessment,
+                              local_diagnostics=None):
     """Capture only the actual trusted assessment, never a log or LLM result."""
     if type(constraints) is not QueryConstraints or not hint_scope_enabled():
         return None
@@ -114,7 +116,8 @@ def capture_deep_planner_hint(*, constraints, record, observation, assessment):
             result["canonical_evidence_this_round"],
             result["cumulative_semantically_supported_evidence"],
             result["cumulative_semantically_supported_sources"],
-            missing_target_deficits=assessment.missing_target_deficits)
+            missing_target_deficits=assessment.missing_target_deficits,
+            local_advisory=summarize_local_advisory(local_diagnostics))
         return hint if hint.payload_for(constraints, record) is not None else None
     except Exception:
         return None
