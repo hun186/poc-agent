@@ -106,3 +106,6 @@ SRAF_ARC_LLM_PRIORITY=shadow 時，低量別名疑慮沿用 A2、其他未解決
 
 ### 深度 A7 分析面向缺口精進
 實際 request-wide semantic evaluator 計算每一尚缺面向相對既有 evidence/source 門檻的剩餘數量，並於已明確 opt-in 的 A7 pilot 提供依缺少面向順序的固定位置、缺少證據數、缺少獨立來源數與 focus enum；同一來源多個片段不等於多個獨立來源。每輪重新計算且仍使用既有 verified witness、去重及完整 attestation；不傳新標籤或識別碼、不改 coverage sufficiency、預算、停止規則或原始查詢限制，無效格式 abstain；缺少來源與缺少證據不直接觸發放寬/收緊或追加模型。未啟用 pilot 不改 planner prompt；公開 progress / audit schema 不變。待私有實機 A/B 確認品質效益。
+
+### 深度 A2 候選搜尋擴充 Pilot
+可信 Python runtime 同時明確設定 `_arc_deep_hint_enabled=True`、`_arc_deep_candidate_expansion_enabled=True`，且既有 STRATEGY/BILINGUAL shadow 有效、非 acceptance、上一輪真實完整 attested candidate_sources=0，才於已准入的 planner prompt 建議跨語言名稱、同義詞及替代寫法。模型仍只回傳原 schema 的 optional_terms；若 prompt cap 省略建議、模型停止或旗標失效，不使用擴充。經既有 planner/round admission 與 exact approved plan 後，ES adapter 以既有 syn_terms OR 候選子句加上該輪 optional_terms，保留全部原查詢、hard filter、PIT 及原 canonical topic/date/semantic checks。這不是經驗證的同義詞組成員或 3→2 放寬，無額外模型或 ES 呼叫。正式 startup、HTTP、Job options、env 不暴露 private pilot；未實測召回/精確率，不可正式啟用。候選過多、canonical attrition、語意缺口等均不觸發本 Pilot。

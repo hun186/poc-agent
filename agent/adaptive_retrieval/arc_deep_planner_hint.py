@@ -105,3 +105,18 @@ class DeepPlannerHint:
                 for position, (evidence_gap, source_gap) in enumerate(deficits)
             ]
         return result
+
+
+def candidate_expansion_scope_enabled():
+    """Separate private pilot still needs both existing shadow scopes."""
+    return (arc_shadow_enabled("SRAF_ARC_BILINGUAL") and hint_scope_enabled())
+
+
+def candidate_expansion_advised(hint, constraints, latest):
+    # Empty *candidate* scope, not just rejected or semantically weak hits.
+    # Counts never authorize looser canonical topic/date verification.
+    if type(hint) is not DeepPlannerHint or not candidate_expansion_scope_enabled():
+        return False
+    payload = hint.payload_for(constraints, latest)
+    return (payload is not None and payload["candidate_sources"] == 0
+            and payload["advice"] == "inspect_empty_candidate_scope")
