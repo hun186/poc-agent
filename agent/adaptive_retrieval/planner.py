@@ -13,6 +13,7 @@ import re
 from typing import Callable
 
 from .arc_deep_planner_hint import DeepPlannerHint, hint_scope_enabled
+from .arc_deep_resource_metrics import measured_planner_callback
 from .contracts import (
     BudgetSnapshot, QueryConstraints, RoundEvidenceSummary, _bounded_text,
 )
@@ -220,7 +221,7 @@ class AdaptiveRetrievalPlanner:
                 else None)
         try:
             prompt = _build_prompt(constraints, history, _arc_hint=hint)
-            output = self.llm_call(prompt, system_prompt=ADAPTIVE_PLANNER_SYSTEM)
+            output = measured_planner_callback(self, prompt, system_prompt=ADAPTIVE_PLANNER_SYSTEM)
             prior = {
                 term.casefold() for entry in history for term in entry.search_terms
             }

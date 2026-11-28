@@ -104,3 +104,5 @@ requires_runtime_scope 表示仍需實際來源／索引／模型／Worker 授�
 可信 Python 報告呼叫端若已保留後續生成時間，可使用既有 `_arc_review_deadline_monotonic` 同時約束 A2/A7/A8 額外模型作業，即使未提供 A8 policy。Data Agent 共享預算在原子保留前要求至少 25 秒，逾期結果不採用且不退款。未提供 cutoff 維持既有行為；無效 cutoff 不允許額外 LLM，並不阻止本地診斷或正式報告。此為 admission fence，非硬取消、端到端 deadline 或正式生產預算政策；尚無自動計算普通報告生成保留時間的正式呼叫端，不新增 env。
 
 深度報告的 trusted N-round 執行器沿用既有 RequestAdmissionBudget 的原始 clock 與 retrieval cutoff，將同一時間 fence 綁給 request-shared ARC budget；每輪不重設時間。25 秒額外模型准入與逾期拒絕同時適用於深度 A8，正式 planner／semantic witness／報告生成仍使用原有主預算。無新增環境變數、硬取消或正式 A8 資料授權。
+
+深度檢索既有 SRAF_ARC_DEEP_RESOURCE_METRICS=shadow 另記 `SRAF_ARC_DEEP_CALLBACK_RESOURCE`：已實際進入 planner 與 semantic witness callback 的次數、返回/拋錯次數、累計耗時及輸入字元（planner prompt+system；witness 原有標籤+文本）與字串輸出字元。不是傳輸層 LLM 次數、有效模型結果、token 或 GPU 時間；callback 內的 policy denial 仍可能計為 attempted。原 ES resource v1 schema 不變，provider_llm_calls/tokens 保持 null，不包含 A8 額外呼叫或正式報告生成，不新增旗標或 IO。只輸出固定計數，不保存原文、模型回應、識別碼或例外。
