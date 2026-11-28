@@ -48,3 +48,5 @@
 
 ## Archive-first compaction
 - Full previous active memory at main `dda06f6ebc72`, Git blob `54b02ac6d1dc90fbed1b7dba35b55ff711e5f20a`, copied unchanged to `.codex/archive/memory.md-20261127-194530.md`. Archive preserves all dated records, pending issues and earlier archive references. Current summary and active backlog/known issues/API/architecture/decisions remain authoritative; targeted archive lookup for historical specifics. Verify exact blob equality after push. No deletion of historical memory.
+
+- 2026-11-28 #580 merged `ffdf9cf97742` (8/8 Hosted workflows, clean exact-head Codex). Independent candidate adds separate count-only deep planner/semantic callback resource observations under existing deep metrics flag. Actual callback entries/returns/exceptions, argument string chars and duration, not wire LLM attempts, valid output, token or GPU measurements. Legacy ES resource schema untouched; no extra provider, new env, report or selection change. Synthetic trusted loop success/off/failure regressions submitted; Hosted CI/review pending. Private paired quality/cost acceptance remains open.

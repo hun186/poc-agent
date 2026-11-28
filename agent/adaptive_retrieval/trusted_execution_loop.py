@@ -30,7 +30,8 @@ from .evidence_ledger import CanonicalReportEvidence, PrivateCanonicalEvidence
 from .planner import BoundNextRoundPlan
 from .private_semantic_binding import prepare_private_semantic_grant
 from .worker_scope_binding import WorkerScopeBinding
-from .arc_deep_resource_metrics import begin_measurement, finish_measurement
+from .arc_deep_resource_metrics import (begin_measurement, finish_measurement,
+                                        measured_semantic_callback)
 from .round_query_execution import (
     CompletedSingleQueryRound, FrozenSingleQueryPlan,
     execute_single_frozen_query,
@@ -260,7 +261,8 @@ def run_trusted_nround(
                                budget.generation_reserve_seconds):
                         raise TrustedNroundExecutionError(
                             "semantic_authorization_expired")
-                verdict = semantic_assessor(target, evidence)
+                verdict = measured_semantic_callback(
+                    coordinator, semantic_assessor, target, evidence)
                 if job_scope_binding is not None:
                     # Revocation during a provider call cannot undo that IO,
                     # but must prevent the remaining witnesses and handoff.
