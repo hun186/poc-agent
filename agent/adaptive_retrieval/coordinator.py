@@ -269,6 +269,8 @@ class AdaptiveRequestCoordinator:
                            for hit in es_hits)):
                 raise ValueError("untrusted_es_index")
             event_window = self._constraints.event_date
+            local_diagnostics = ({} if coverage_evaluator is not None
+                                 and self._planner._arc_deep_hint_enabled is True else None)
             observation = observe_canonical_round(
                 es_hits,
                 date_from=event_window.start,
@@ -278,6 +280,8 @@ class AdaptiveRequestCoordinator:
                 query_for_snippet=query_for_snippet,
                 original_question=self._constraints.question,
                 complete=complete,
+                **({"_arc_deep_local_diagnostics": local_diagnostics}
+                   if local_diagnostics is not None else {}),
             )
             if coverage_evaluator is not None:
                 if (type(coverage_evaluator) is not RequestWideCoverageEvaluator
@@ -317,7 +321,8 @@ class AdaptiveRequestCoordinator:
                         and self._planner._arc_deep_hint_enabled is True):
                     self._arc_hint = capture_deep_planner_hint(
                         constraints=self._constraints, record=record,
-                        observation=observation, assessment=assessed)
+                        observation=observation, assessment=assessed,
+                        local_diagnostics=local_diagnostics)
                 if record.result_incomplete:
                     self._terminate_locked("SAME_PLAN_SEARCH_INCOMPLETE")
                 elif not record.request_wide:

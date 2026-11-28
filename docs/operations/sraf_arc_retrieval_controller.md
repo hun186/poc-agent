@@ -106,3 +106,6 @@ SRAF_ARC_LLM_PRIORITY=shadow 時，低量別名疑慮沿用 A2、其他未解決
 
 ### 深度 A7 分析面向缺口精進
 實際 request-wide semantic evaluator 計算每一尚缺面向相對既有 evidence/source 門檻的剩餘數量，並於已明確 opt-in 的 A7 pilot 提供依缺少面向順序的固定位置、缺少證據數、缺少獨立來源數與 focus enum；同一來源多個片段不等於多個獨立來源。每輪重新計算且仍使用既有 verified witness、去重及完整 attestation；不傳新標籤或識別碼、不改 coverage sufficiency、預算、停止規則或原始查詢限制，無效格式 abstain；缺少來源與缺少證據不直接觸發放寬/收緊或追加模型。未啟用 pilot 不改 planner prompt；公開 progress / audit schema 不變。待私有實機 A/B 確認品質效益。
+
+### A3/A4 局部鑑別力與排序診斷回饋（A7 內部 Pilot）
+由協調器的既有 canonical builder 呼叫收集已計算的 local A3/A4 診斷，無額外掃描、ES 或 LLM 呼叫，不擷取 log。原有 scan budget、樣本界限及 rank comparison 不變；至少 16 個 date-valid sample hit 才提供群組總數、80% 以上常見群組數、正值且 20% 以下群組數、零觀測群組數與 sample_limited。此為偏態局部樣本，不是全索引 DF、相關性或品質證明；零觀測不代表罕見。可用時一併提供現有 top20 shadow 比較計數、來源及 strong 差異。僅傳統計，不傳群組文字、ordinal 對詞映射、原始文件、native DF 或排序名單。未啟用 A7 pilot 或 A3/A4 flag 於使用時撤銷、樣本不足/無效即不提供相應資訊；不改查詢、排序、報告或既有授權。實際排序/收緊/放寬與私人 A/B 仍分開驗收。

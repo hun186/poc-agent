@@ -119,6 +119,7 @@ def build_hits_and_evidence(
     deep_rank_frequency: DeepNativeRankFrequency | None = None,
     arc_candidate_pressure: CandidatePressure | None = None,
     arc_strategy_diagnostics: dict | None = None,
+    _arc_deep_local_diagnostics: dict | None = None,
     _offline_a6_pilot: bool = False,
     _offline_a6_status: dict | None = None,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int]:
@@ -219,9 +220,14 @@ def build_hits_and_evidence(
             allowed_years=allowed_years,
         )
         log_group_frequency(observation)
+        if type(_arc_deep_local_diagnostics) is dict:
+            _arc_deep_local_diagnostics["frequency"] = observation
         if arc_shadow_enabled("SRAF_ARC_RANK"):
             try:
-                log_rank_shadow(observe_rank_shadow(evidence, term_groups, observation))
+                local_rank = observe_rank_shadow(evidence, term_groups, observation)
+                log_rank_shadow(local_rank)
+                if type(_arc_deep_local_diagnostics) is dict:
+                    _arc_deep_local_diagnostics["rank"] = local_rank
             except Exception:
                 # Optional diagnostics must never modify or block Evidence.
                 log_rank_shadow({"schema": "sraf_arc_rank_shadow_v1",
