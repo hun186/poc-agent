@@ -469,3 +469,82 @@ def test_arc_deep_a2_candidate_expansion_requires_empty_attested_round(monkeypat
     else:
         assert actual == baseline
     assert "candidate_expansion_guidance" not in json.dumps(result.safe_audit())
+
+
+@pytest.mark.parametrize("case", ["focus", "expand", "default", "revoked", "off"])
+def test_arc_deep_pressure_query_pilot_changes_only_optional_candidate_strategy(monkeypatch, case):
+    from dataclasses import replace
+    from agent.adaptive_retrieval.es_pit_adapter import _query, _required_entity_filter
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY", "off")
+    monkeypatch.setenv("SRAF_ARC_TIGHTEN", "shadow")
+    monkeypatch.setenv("SRAF_ARC_RELAX", "off" if case == "off" else "shadow")
+    for flag in ("DEEP_FREQUENCY", "REVIEW_DEEP"):
+        monkeypatch.setenv("SRAF_ARC_" + flag, "off")
+    monkeypatch.setenv("SRAF_TOPIC_MATCH_ADAPTIVE", "off")
+    monkeypatch.setenv("SRAF_EVIDENCE_RESCUE", "0")
+    _, old, _, budget, _, _ = _setup()
+    scope = replace(old, question="主題：甲軸\n" + old.question,
+                    original_core_terms=("甲軸", "乙軸", "丙軸", "丁軸"))
+    prompts, semantic = [], []
+    term = "外交斡旋"
+    def planner(prompt, *, system_prompt):
+        prompts.append(json.loads(prompt.split("\n", 1)[1]))
+        if case == "revoked":
+            monkeypatch.setenv("SRAF_ARC_RELAX", "off")
+        return json.dumps({"action": "search", "reason_code": "COVERAGE_GAP",
+                           "optional_terms": [term], "target_aspects": ["外交回應"]})
+    c = AdaptiveRequestCoordinator(constraints=scope,
+        term_groups=(("甲軸",), ("乙軸",), ("丙軸",), ("丁軸",)),
+        effective_terms=("甲軸", "乙軸", "丙軸", "丁軸"),
+        budget=budget, planner=AdaptiveRetrievalPlanner(planner,
+            _arc_deep_hint_enabled=True, _arc_deep_pressure_query_enabled=case != "default"))
+    ev = RequestWideCoverageEvaluator(constraints=scope, target_aspects=("外交回應",))
+    if case == "focus":
+        hits = []
+        for i in range(24):
+            hit = _verified_page("FIRST" + str(i))["hits"]["hits"][0]
+            for j, row in enumerate(hit["_source"]["multidim_event_json"][0]["evidence_snippets"]):
+                row["text"] = ("甲軸乙軸丙軸丁軸" if i < 12 else "甲軸乙軸丙軸") + f"資料{i}-{j}"
+            hits.append(hit)
+    else:
+        hits = _verified_page("FIRST")["hits"]["hits"]
+        hits[0]["_source"]["multidim_event_json"][0]["evidence_snippets"][1]["text"] = "甲軸乙軸其他候選"
+    second = _verified_page("A")["hits"]["hits"] + _verified_page("B")["hits"]["hits"]
+    es = FakeES(_page(hits), _page(second))
+    def assessor(*args):
+        semantic.append(1)
+        return c.safe_progress()["round"] == 2
+    result = _run(c, scope, ev, es, assessor=assessor)
+    assert result.progress["termination"] == "SUFFICIENT"
+    assert len(prompts) == 1 and len(es.searches) == 2
+    assert len(semantic) == (104 if case == "focus" else 10)
+    mode = "focus" if case == "focus" else "expand" if case in ("expand", "revoked") else "none"
+    guidance = prompts[0]["arc_advisory_read_only"].get("pressure_query_guidance")
+    assert (guidance["mode"] if guidance else "none") == mode
+    base = _query(scope, optional_terms=(term,), page_size=50)
+    actual = es.searches[1]["body"]["query"]["function_score"]
+    expected = base["query"]["function_score"]
+    assert actual["query"]["bool"]["filter"] == expected["query"]["bool"]["filter"]
+    assert actual["query"]["bool"]["minimum_should_match"] == expected["query"]["bool"]["minimum_should_match"]
+    if case == "focus":
+        assert actual["query"] == expected["query"]
+        assert actual["functions"] == expected["functions"] + [{
+            "filter": {"bool": {"should": [_required_entity_filter(term)], "minimum_should_match": 1}},
+            "weight": 2.0}]
+    elif case == "expand":
+        assert actual == _query(scope, optional_terms=(term,), page_size=50,
+                                _arc_candidate_expansion=True)["query"]["function_score"]
+        assert actual != expected
+    else:
+        assert actual == expected
+    assert budget.snapshot().remaining_es_calls == 20
+    assert "pressure_query_guidance" not in json.dumps(result.safe_audit())
+
+
+@pytest.mark.parametrize("invalid", [True, None, "force_relax", 1])
+def test_arc_pressure_query_is_not_a_model_or_unvalidated_constructor_option(invalid):
+    with pytest.raises(ValueError, match="invalid_arc_pressure_query_pilot"):
+        AdaptiveRetrievalPlanner(lambda *a, **k: "", _arc_deep_hint_enabled=True,
+                                 _arc_deep_pressure_query_enabled=invalid)

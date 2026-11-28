@@ -13,7 +13,8 @@ import re
 from typing import Callable
 
 from .arc_deep_planner_hint import (DeepPlannerHint, hint_scope_enabled,
-                                    candidate_expansion_advised)
+                                    candidate_expansion_advised, pressure_query_mode,
+                                    PRESSURE_QUERY_MODES)
 from .arc_deep_resource_metrics import measured_planner_callback
 from .contracts import (
     BudgetSnapshot, QueryConstraints, RoundEvidenceSummary, _bounded_text,
@@ -55,6 +56,7 @@ class PlannerDecision:
     target_aspects: tuple[str, ...] = ()
     # Server-generated only, never accepted from the model JSON.
     _arc_candidate_expansion: bool = field(default=False, repr=False)
+    _arc_pressure_query: str = field(default="none", repr=False)
 
     @property
     def should_search(self) -> bool:
@@ -109,7 +111,7 @@ def _validate_proposal(raw: object, *, prior_terms: set[str]) -> PlannerDecision
 def _build_prompt(
     constraints: QueryConstraints,
     history: tuple[RoundEvidenceSummary, ...],
-    *, _arc_hint=None, _arc_candidate_expansion=False,
+    *, _arc_hint=None, _arc_candidate_expansion=False, _arc_pressure_query="none",
 ) -> str:
     # A deliberately bounded, structured summary, not raw source snippets,
     # full ES results, document IDs or arbitrary previous model messages.
@@ -160,6 +162,12 @@ def _build_prompt(
                     "候選來源為零：優先提出與原始主題及缺少面向相符的替代寫法、"
                     "跨語言名稱或同義查詢詞。僅作可選候選搜尋，不可改動必要實體、"
                     "日期、核心詞或證據驗證門檻；若無合理補查，停止。")
+            if _arc_pressure_query in ("focus", "expand"):
+                advisory["pressure_query_guidance"] = {
+                    "mode": _arc_pressure_query,
+                    "goal": ("以缺漏面向的具體詞優先排序候選，不排除其他資料或已驗證證據。"
+                             if _arc_pressure_query == "focus" else
+                             "以與原主題相符的替代寫法補查候選，不降低證據驗證門檻。")}
             payload["arc_advisory_read_only"] = advisory
             expanded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
             # Never lose an otherwise admissible baseline prompt just to
@@ -179,7 +187,8 @@ class AdaptiveRetrievalPlanner:
 
     def __init__(self, llm_call: Callable[..., str], *, max_rounds: int = 8,
                  _arc_deep_hint_enabled: bool = False,
-                 _arc_deep_candidate_expansion_enabled: bool = False):
+                 _arc_deep_candidate_expansion_enabled: bool = False,
+                 _arc_deep_pressure_query_enabled: bool = False):
         if not callable(llm_call):
             raise ValueError("invalid_adaptive_llm")
         if type(max_rounds) is not int or not 2 <= max_rounds <= 32:
@@ -193,6 +202,10 @@ class AdaptiveRetrievalPlanner:
                 or (_arc_deep_candidate_expansion_enabled and not _arc_deep_hint_enabled)):
             raise ValueError("invalid_arc_candidate_expansion_pilot")
         self._arc_deep_candidate_expansion_enabled = _arc_deep_candidate_expansion_enabled
+        if (type(_arc_deep_pressure_query_enabled) is not bool
+                or (_arc_deep_pressure_query_enabled and not _arc_deep_hint_enabled)):
+            raise ValueError("invalid_arc_pressure_query_pilot")
+        self._arc_deep_pressure_query_enabled = _arc_deep_pressure_query_enabled
 
     def propose_next(
         self,
@@ -235,13 +248,20 @@ class AdaptiveRetrievalPlanner:
         try:
             expand = (self._arc_deep_candidate_expansion_enabled is True
                       and candidate_expansion_advised(hint, constraints, latest))
+            pressure = (pressure_query_mode(hint, constraints, latest)
+                        if self._arc_deep_pressure_query_enabled is True and not expand else "none")
             prompt = _build_prompt(constraints, history, _arc_hint=hint,
-                                   **({"_arc_candidate_expansion": True} if expand else {}))
+                                   **({"_arc_candidate_expansion": True} if expand else {}),
+                                   **({"_arc_pressure_query": pressure} if pressure != "none" else {}))
             # If the prompt cap discarded the advisory, never apply the
             # expansion to an ordinary model proposal.
             if expand:
                 advisory = json.loads(prompt.split("\n", 1)[1]).get("arc_advisory_read_only", {})
                 expand = "candidate_expansion_guidance" in advisory
+            if pressure != "none":
+                advisory = json.loads(prompt.split("\n", 1)[1]).get("arc_advisory_read_only", {})
+                if advisory.get("pressure_query_guidance", {}).get("mode") != pressure:
+                    pressure = "none"
             output = measured_planner_callback(self, prompt, system_prompt=ADAPTIVE_PLANNER_SYSTEM)
             prior = {
                 term.casefold() for entry in history for term in entry.search_terms
@@ -250,6 +270,9 @@ class AdaptiveRetrievalPlanner:
             if (expand and decision.should_search
                     and candidate_expansion_advised(hint, constraints, latest)):
                 decision = replace(decision, _arc_candidate_expansion=True)
+            if (pressure != "none" and decision.should_search
+                    and pressure_query_mode(hint, constraints, latest) == pressure):
+                decision = replace(decision, _arc_pressure_query=pressure)
             return decision
         except Exception:
             # Do not expose raw exception, provider output, or private question.
@@ -270,6 +293,7 @@ class BoundNextRoundPlan:
     optional_terms: tuple[str, ...]
     target_aspects: tuple[str, ...]
     _arc_candidate_expansion: bool = field(default=False, repr=False)
+    _arc_pressure_query: str = field(default="none", repr=False)
 
 
 def bind_next_round_plan(
@@ -293,7 +317,10 @@ def bind_next_round_plan(
         raise ValueError("untrusted_next_round_scope")
     if (type(decision) is not PlannerDecision or not decision.should_search
             or decision.reason_code != "COVERAGE_GAP"
-            or type(decision._arc_candidate_expansion) is not bool):
+            or type(decision._arc_candidate_expansion) is not bool
+            or type(decision._arc_pressure_query) is not str
+            or decision._arc_pressure_query not in PRESSURE_QUERY_MODES
+            or (decision._arc_candidate_expansion and decision._arc_pressure_query != "none")):
         raise ValueError("invalid_next_round_decision")
     # Validate again at the trust boundary; manually crafted PlannerDecision
     # values must not bypass date-term, deduplication or size checks.
@@ -308,4 +335,5 @@ def bind_next_round_plan(
         round_number=history[-1].number + 1, constraints=constraints,
         optional_terms=terms, target_aspects=aspects,
         _arc_candidate_expansion=decision._arc_candidate_expansion,
+        _arc_pressure_query=decision._arc_pressure_query,
     )

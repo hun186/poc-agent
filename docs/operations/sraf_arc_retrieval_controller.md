@@ -115,3 +115,6 @@ SRAF_ARC_LLM_PRIORITY=shadow 時，低量別名疑慮沿用 A2、其他未解決
 
 ### 深度 A5/A6 同輪反事實策略診斷
 受控 A7 planner pilot 僅於 flexible、完整且 request-wide attested 的真實 canonical assessment 中，重用既有 builder 的 A5/A6 counterfactual；以已回傳 PIT hit 數作 unknown total 的 CandidatePressure，不冒充 exact corpus total 或 primary page receipt。既有 request/round ARC budget 仍限制額外 local scan，A5 只提供非截斷 40–128 strict prefix 且 retained >=20 rows / >=8 source hits 的實際減量比較；A6 只提供完整低量樣本、1–2 strict/verified rows、正數 bounded 兩軸候選 cap，仍須原 explicit subject anchor。規劃器只取得固定 aggregate focus/count，旗標失效即不附加；不是選擇或放寬授權，不新增 LLM/ES 呼叫、不改 canonical topic/date、coverage 或 report rows。A5/A6 實際 selection pilot 與 private quality/cost A/B 仍未完成。
+
+### 深度 A5/A6 查詢層執行 Pilot
+獨立 private `_arc_deep_pressure_query_enabled=True` + A7 opt-in，僅在已驗證同輪非截斷 A5/A6 counterfactual 與缺少面向存在時選擇互斥 focus/expand。既有 planner JSON 契約不變，server-only mode 隨 approved plan 傳遞，prompt cap、旗標失效、default-off 回原查詢；A2 空候選策略與此互斥。A5 focus 只在既有 function_score 加一個固定 2.0 bonus，對已驗證格式的 optional_terms 做已存在 mapping-aware OR phrase 匹配；無 mandatory filter、候選集合或歷史 Evidence 刪除。A6 expand 重用既有 synonym OR candidate query，不變 canonical group/date/semantic 門檻。無額外 ES/LLM 呼叫、新 env 或 startup 授權。此為查詢排序/候選擴充實際 Pilot，不等於完成 A5 證據減量或 A6 3→2 門檻調整；品質、延遲與成本須實機 A/B。

@@ -22,7 +22,8 @@ from .coordinator import AdaptiveRequestCoordinator
 from .es_page_fence import PageFenceError, RoundESPageFence
 from .planner import BoundNextRoundPlan, _list_of_terms
 from .arc_deep_resource_metrics import measured_es_call
-from .arc_deep_planner_hint import candidate_expansion_scope_enabled
+from .arc_deep_planner_hint import (candidate_expansion_scope_enabled,
+                                    pressure_query_scope_enabled, PRESSURE_QUERY_MODES)
 
 
 class LiveRoundESFailure(ValueError):
@@ -114,6 +115,7 @@ def _query(
     optional_terms: tuple[str, ...],
     page_size: int,
     _arc_candidate_expansion: bool = False,
+    _arc_pressure_query: str = "none",
 ) -> dict[str, Any]:
     # Do not accept a plan's own DSL, indexes, dates, or scope fields.
     # The existing query builder creates nested Event/Timeline date candidate
@@ -133,7 +135,8 @@ def _query(
         effective_terms=all_terms, core_terms=query_terms,
         # Reuse existing OR synonym candidate clauses. These terms are NOT
         # verified aliases or canonical keyword-group membership.
-        syn_terms=list(optional_terms) if _arc_candidate_expansion is True else [],
+        syn_terms=list(optional_terms) if (_arc_candidate_expansion is True
+                                          or _arc_pressure_query == "expand") else [],
         all_terms=all_terms,
         original_question=constraints.question,
     )
@@ -159,6 +162,17 @@ def _query(
             }})
     except (KeyError, TypeError, AttributeError):
         raise LiveRoundESFailure("invalid_es_query_builder") from None
+    # A5 focus is a single bounded score bonus, NOT a new mandatory
+    # filter or a deletion of already validated Evidence. The entire base
+    # candidate query stays unchanged, so the same PIT completeness gate
+    # applies. Only planner-validated optional terms are used.
+    if _arc_pressure_query == "focus":
+        body["query"]["function_score"]["functions"].append({
+            "filter": {"bool": {"should": [
+                _required_entity_filter(term) for term in optional_terms
+            ], "minimum_should_match": 1}},
+            "weight": 2.0,
+        })
     # PIT _shard_doc breaks ties across documents with identical _score and
     # importDT, making the next page's cursor stable within one PIT.
     body["sort"] = [
@@ -220,6 +234,7 @@ def search_fenced_es_round(
 
     round_number = coordinator.safe_progress()["round"]
     expand = False
+    pressure = "none"
     if plan is None:
         if round_number != 1:
             raise LiveRoundESFailure("missing_next_round_strategy")
@@ -230,6 +245,9 @@ def search_fenced_es_round(
                 or plan.constraints is not constraints
                 or plan.round_number != round_number
                 or type(plan._arc_candidate_expansion) is not bool
+                or type(plan._arc_pressure_query) is not str
+                or plan._arc_pressure_query not in PRESSURE_QUERY_MODES
+                or (plan._arc_candidate_expansion and plan._arc_pressure_query != "none")
                 or round_number < 2):
             raise LiveRoundESFailure("untrusted_next_round_strategy")
         try:
@@ -244,6 +262,11 @@ def search_fenced_es_round(
                       and coordinator._planner._arc_deep_candidate_expansion_enabled is True
                       and constraints.keyword_policy == "flexible"
                       and candidate_expansion_scope_enabled())
+            if (coordinator._planner._arc_deep_hint_enabled is True
+                    and coordinator._planner._arc_deep_pressure_query_enabled is True
+                    and constraints.keyword_policy == "flexible"
+                    and pressure_query_scope_enabled(plan._arc_pressure_query)):
+                pressure = plan._arc_pressure_query
         except Exception:
             raise LiveRoundESFailure("untrusted_next_round_strategy") from None
 
@@ -258,6 +281,7 @@ def search_fenced_es_round(
             constraints, optional_terms=optional_terms,
             page_size=page_size,
             **({"_arc_candidate_expansion": True} if expand else {}),
+            **({"_arc_pressure_query": pressure} if pressure != "none" else {}),
         )
     except Exception:
         raise LiveRoundESFailure("invalid_es_query_builder") from None
