@@ -121,8 +121,12 @@ class AdaptiveJobRuntime:
     # Explicit server-selected model for the production composition. None is
     # retained only for existing internal callers using the shared model ID.
     report_model_id: str | None = None
+    # Private operator/test composition only. No Job option or env grants this.
+    _arc_deep_hint_enabled: bool = False
 
     def __post_init__(self):
+        if type(self._arc_deep_hint_enabled) is not bool:
+            raise ValueError("adaptive_runtime_arc_pilot_invalid")
         if not all(callable(v) for v in (
             self.es_client_factory, self.planner_call, self.semantic_assessor,
             self.check_owner_index, self.check_question_branches, self.report_call,
@@ -178,7 +182,8 @@ class AdaptiveJobRuntime:
             return result
         coordinator = AdaptiveRequestCoordinator(
             constraints=c, term_groups=intent.term_groups, effective_terms=intent.effective_terms,
-            budget=budget, planner=AdaptiveRetrievalPlanner(guarded_planner),
+            budget=budget, planner=AdaptiveRetrievalPlanner(
+                guarded_planner, _arc_deep_hint_enabled=self._arc_deep_hint_enabled),
         )
         evaluator = RequestWideCoverageEvaluator(constraints=c, target_aspects=intent.target_aspects)
         outcome = execute_claimed_nround_job(

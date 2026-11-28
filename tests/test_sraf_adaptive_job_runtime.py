@@ -53,32 +53,44 @@ def test_atomic_admission_replay_and_rollback(tmp_path):
         _submit(store, intent=other)
 
 
-def test_actual_worker_routes_deep_job_to_real_word_without_single_round(tmp_path, monkeypatch):
+@pytest.mark.parametrize("pilot,mode", [(False, "shadow"), (True, "off"), (True, "shadow")])
+def test_actual_worker_routes_deep_job_to_real_word_without_single_round(tmp_path, monkeypatch, pilot, mode):
     from agent import report_agent
     import api.services.report_job_worker as worker_mod
     from docx import Document
     store = _queue(tmp_path)
     job, _ = _submit(store)
     fake = FakeES(_verified_page("A"), _verified_page("B"))
-    calls = []
+    calls, planner_inputs, semantic_calls = [], [], []
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", mode)
+    for flag in ("GROUP_FREQUENCY", "RANK", "TIGHTEN", "RELAX", "DEEP_FREQUENCY", "REVIEW_DEEP"):
+        monkeypatch.setenv("SRAF_ARC_" + flag, "off")
     def forbid(*args, **kwargs):
         raise AssertionError("ordinary Agent must not execute")
     monkeypatch.setattr(worker_mod, "execute_agent_turn", forbid)
     monkeypatch.setattr(report_agent, "call_llm",
                         forbid)
     monkeypatch.setattr(report_agent, "REPORT_MODEL_ID", "ordinary:synthetic")
-    def planner(*a, **k):
+    def planner(prompt, *, system_prompt, timeout):
+        assert 0 < timeout <= 60
+        payload = json.loads(prompt.split("\n", 1)[1])
+        planner_inputs.append(payload)
+        term = ("各國外交立場" if payload.get("arc_advisory_read_only") is not None
+                else "聯合國聲明")
         return json.dumps({"action": "search", "reason_code": "COVERAGE_GAP",
-                           "optional_terms": ["聯合國聲明"], "target_aspects": ["外交回應"]},
+                           "optional_terms": [term], "target_aspects": ["外交回應"]},
                           ensure_ascii=False)
     def semantic(*args, timeout):
         assert 0 < timeout <= 60
+        semantic_calls.append(1)
         return True
     runtime = AdaptiveJobRuntime(lambda: fake, planner, semantic,
                                  lambda j, i: j.owner_id == "owner" and i == "news_test",
                                  lambda j, c, branches: j.prompt == c.question and branches == ("CANONICAL_MAIN",),
                                  lambda *a, **k: calls.append(k["model"]) or "依來源1與來源2分析。",
-                                 report_model_id="deep-report:synthetic")
+                                 report_model_id="deep-report:synthetic",
+                                 _arc_deep_hint_enabled=pilot)
     root = tmp_path / "reports"
     worker = ReportJobWorker(store, root, adaptive_runtime=runtime)
     claim = store.claim_next()
@@ -88,6 +100,26 @@ def test_actual_worker_routes_deep_job_to_real_word_without_single_round(tmp_pat
     assert calls == ["deep-report:synthetic"]
     assert report_agent.REPORT_MODEL_ID == "ordinary:synthetic"
     assert len(fake.searches) == 2
+    assert len(planner_inputs) == 1 and len(semantic_calls) == 8
+    advisory = planner_inputs[0].get("arc_advisory_read_only")
+    active = pilot and mode == "shadow"
+    assert (advisory is not None) is active
+    if active:
+        assert advisory["round"] == 1
+        assert advisory["advice"] == "inspect_low_incremental_gain"
+        assert "PRIVATE" not in json.dumps(advisory)
+    before, after = (request["body"] for request in fake.searches)
+    bfilter = before["query"]["function_score"]["query"]["bool"]["filter"]
+    afilter = after["query"]["function_score"]["query"]["bool"]["filter"]
+    assert bfilter == afilter
+    selected = "各國外交立場" if active else "聯合國聲明"
+    other = "聯合國聲明" if active else "各國外交立場"
+    assert selected not in json.dumps(before, ensure_ascii=False)
+    assert selected in json.dumps(after, ensure_ascii=False)
+    assert other not in json.dumps(after, ensure_ascii=False)
+    assert selected not in json.dumps(afilter, ensure_ascii=False)
+    assert [k for k, _ in fake.calls] == ["open", "search", "close"] * 2
+    assert all(args["index"] == "news_test" for k, args in fake.calls if k == "open")
     assert "多輪分析範圍" in "\n".join(p.text for p in Document(root / persisted.docx_basename).paragraphs)
 
 
@@ -153,3 +185,22 @@ def test_runtime_rejects_invalid_explicit_deep_report_model(model):
     with pytest.raises(ValueError, match='adaptive_runtime_model_invalid'):
         AdaptiveJobRuntime(forbidden, forbidden, forbidden, forbidden, forbidden,
                            forbidden, report_model_id=model)
+
+
+@pytest.mark.parametrize("bad", [1, "true", None])
+def test_runtime_arc_pilot_requires_literal_boolean(bad):
+    def forbidden(*a, **k):
+        raise AssertionError("no provider work")
+    with pytest.raises(ValueError, match="adaptive_runtime_arc_pilot_invalid"):
+        AdaptiveJobRuntime(forbidden, forbidden, forbidden, forbidden, forbidden,
+                           forbidden, _arc_deep_hint_enabled=bad)
+
+
+def test_arc_pilot_is_not_an_http_or_persisted_job_option(tmp_path):
+    from api.routers.report_jobs import ReportJobCreate
+    from pydantic import ValidationError
+    store = _queue(tmp_path)
+    job, _ = _submit(store)
+    assert "_arc_deep_hint_enabled" not in json.dumps(job.options)
+    with pytest.raises(ValidationError):
+        ReportJobCreate(prompt=job.prompt, options={"_arc_deep_hint_enabled": True})
