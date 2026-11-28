@@ -25,6 +25,7 @@ from .planner import BoundNextRoundPlan
 from .planner import AdaptiveRetrievalPlanner
 from .request_budget import RequestAdmissionBudget
 from .arc_deep_strategy_shadow import observe_deep_strategy, capture_deep_planner_hint
+from .arc_deep_planner_hint import hint_scope_enabled
 
 
 _PHASES = frozenset((
@@ -282,6 +283,11 @@ class AdaptiveRequestCoordinator:
                 complete=complete,
                 **({"_arc_deep_local_diagnostics": local_diagnostics}
                    if local_diagnostics is not None else {}),
+                **({"_arc_deep_pressure_observation": True}
+                   if local_diagnostics is not None and complete is True
+                   and request_wide_attested is True
+                   and self._constraints.keyword_policy == "flexible"
+                   and hint_scope_enabled() else {}),
             )
             if coverage_evaluator is not None:
                 if (type(coverage_evaluator) is not RequestWideCoverageEvaluator

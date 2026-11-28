@@ -112,3 +112,6 @@ SRAF_ARC_LLM_PRIORITY=shadow 時，低量別名疑慮沿用 A2、其他未解決
 
 ### 深度 A2 候選搜尋擴充 Pilot
 可信 Python runtime 同時明確設定 `_arc_deep_hint_enabled=True`、`_arc_deep_candidate_expansion_enabled=True`，且既有 STRATEGY/BILINGUAL shadow 有效、非 acceptance、上一輪真實完整 attested candidate_sources=0，才於已准入的 planner prompt 建議跨語言名稱、同義詞及替代寫法。模型仍只回傳原 schema 的 optional_terms；若 prompt cap 省略建議、模型停止或旗標失效，不使用擴充。經既有 planner/round admission 與 exact approved plan 後，ES adapter 以既有 syn_terms OR 候選子句加上該輪 optional_terms，保留全部原查詢、hard filter、PIT 及原 canonical topic/date/semantic checks。這不是經驗證的同義詞組成員或 3→2 放寬，無額外模型或 ES 呼叫。正式 startup、HTTP、Job options、env 不暴露 private pilot；未實測召回/精確率，不可正式啟用。候選過多、canonical attrition、語意缺口等均不觸發本 Pilot。
+
+### 深度 A5/A6 同輪反事實策略診斷
+受控 A7 planner pilot 僅於 flexible、完整且 request-wide attested 的真實 canonical assessment 中，重用既有 builder 的 A5/A6 counterfactual；以已回傳 PIT hit 數作 unknown total 的 CandidatePressure，不冒充 exact corpus total 或 primary page receipt。既有 request/round ARC budget 仍限制額外 local scan，A5 只提供非截斷 40–128 strict prefix 且 retained >=20 rows / >=8 source hits 的實際減量比較；A6 只提供完整低量樣本、1–2 strict/verified rows、正數 bounded 兩軸候選 cap，仍須原 explicit subject anchor。規劃器只取得固定 aggregate focus/count，旗標失效即不附加；不是選擇或放寬授權，不新增 LLM/ES 呼叫、不改 canonical topic/date、coverage 或 report rows。A5/A6 實際 selection pilot 與 private quality/cost A/B 仍未完成。

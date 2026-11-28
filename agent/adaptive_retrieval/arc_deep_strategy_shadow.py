@@ -12,7 +12,7 @@ import logging
 from agent.arc_mode import arc_shadow_enabled
 from .contracts import RoundEvidenceSummary, QueryConstraints
 from .arc_deep_planner_hint import DeepPlannerHint, hint_scope_enabled
-from .arc_deep_local_advisory import summarize_local_advisory
+from .arc_deep_local_advisory import summarize_local_advisory, summarize_pressure_advisory
 from .coverage_evaluator import CoverageAssessment
 from .evidence_ledger import RoundObservation
 
@@ -117,7 +117,8 @@ def capture_deep_planner_hint(*, constraints, record, observation, assessment,
             result["cumulative_semantically_supported_evidence"],
             result["cumulative_semantically_supported_sources"],
             missing_target_deficits=assessment.missing_target_deficits,
-            local_advisory=summarize_local_advisory(local_diagnostics))
+            local_advisory=summarize_local_advisory(local_diagnostics),
+            pressure_advisory=summarize_pressure_advisory(local_diagnostics))
         return hint if hint.payload_for(constraints, record) is not None else None
     except Exception:
         return None
