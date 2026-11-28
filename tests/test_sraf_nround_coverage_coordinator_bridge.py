@@ -490,3 +490,84 @@ def test_arc_deep_local_summary_does_not_misrepresent_unobserved_or_native_count
                 group["unobserved_groups_not_rarity"]) == (1, 1, 1)
         assert group["sample_limited"] is True
         assert ("local_rank_comparison" in payload) is (case == "valid")
+
+
+@pytest.mark.parametrize("case", ["low", "high", "flag_off", "revoked", "no_anchor", "no_budget"])
+def test_deep_pressure_advisory_uses_actual_canonical_parser(monkeypatch, caplog, case):
+    from dataclasses import replace
+    from agent.adaptive_retrieval.coordinator import AdaptiveRequestCoordinator
+    from agent.adaptive_retrieval.planner import AdaptiveRetrievalPlanner
+    from agent.adaptive_retrieval.request_budget import RequestAdmissionBudget
+    from agent.es.arc_request_budget import ArcRequestBudget, bind_arc_budget
+    from test_sraf_adaptive_planner_contract import response
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    monkeypatch.setenv("SRAF_ARC_STRATEGY", "shadow")
+    monkeypatch.setenv("SRAF_ARC_TIGHTEN", "shadow" if case != "flag_off" else "off")
+    monkeypatch.setenv("SRAF_ARC_RELAX", "shadow" if case != "flag_off" else "off")
+    monkeypatch.setenv("SRAF_ARC_GROUP_FREQUENCY", "off")
+    monkeypatch.setenv("SRAF_TOPIC_MATCH_ADAPTIVE", "off")
+    monkeypatch.setenv("SRAF_EVIDENCE_RESCUE", "0")
+    original = scope()
+    question = original.question if case == "no_anchor" else "主題：甲軸\n" + original.question
+    constraints = replace(original, question=question,
+        original_core_terms=("甲軸", "乙軸", "丙軸", "丁軸"))
+    prompts = []
+    def llm(prompt, *, system_prompt):
+        prompts.append(json.loads(prompt.split("\n", 1)[1]))
+        return response(terms=["不同地區回應"], aspects=["後續影響"])
+    c = AdaptiveRequestCoordinator(constraints=constraints,
+        term_groups=(("甲軸",), ("乙軸",), ("丙軸",), ("丁軸",)),
+        effective_terms=("甲軸", "乙軸", "丙軸", "丁軸"),
+        budget=RequestAdmissionBudget(clock=lambda: 0.0),
+        planner=AdaptiveRetrievalPlanner(llm, _arc_deep_hint_enabled=True))
+    ev = RequestWideCoverageEvaluator(constraints=constraints, target_aspects=("後續影響",))
+    assert c.start() and c.admit_es_call()
+    if case == "high":
+        hits = [_hit(2, "PRIVATE_" + str(i), inner=False) for i in range(24)]
+        for i, hit in enumerate(hits):
+            for j, row in enumerate(hit["_source"]["multidim_event_json"][0]["evidence_snippets"]):
+                row["text"] = ("甲軸乙軸丙軸丁軸" if i < 12 else "甲軸乙軸丙軸") + f"資料{i}-{j}"
+    else:
+        hits = [_hit(2, "PRIVATE_A", inner=False)]
+        hits[0]["_source"]["multidim_event_json"][0]["evidence_snippets"][1]["text"] = "甲軸乙軸其他候選"
+    with bind_arc_budget(None if case == "no_budget" else (ArcRequestBudget(), 1)):
+        record = _assess(c, ev, hits, witnesses=())
+    assert not record.coverage_sufficient
+    if case == "revoked":
+        monkeypatch.setenv("SRAF_ARC_RELAX", "off")
+    assert c.plan_next_round().approved and len(prompts) == 1
+    advisory = prompts[0]["arc_advisory_read_only"]
+    assert ("local_relaxation_counterfactual" in advisory) == (case == "low")
+    assert ("local_tightening_counterfactual" in advisory) == (case == "high")
+    if case == "low":
+        assert record.verified_evidence == 1
+        assert advisory["local_relaxation_counterfactual"]["hypothetical_add_cap"] == 1
+    if case == "high":
+        assert record.verified_evidence == 48
+        assert advisory["local_tightening_counterfactual"]["options"] == [
+            {"strategy": "all_text_axes", "retained_rows": 24, "retained_source_hits": 12}]
+    assert "PRIVATE_" not in json.dumps(advisory)
+    assert "local_relaxation_counterfactual" not in json.dumps(c.safe_progress())
+    assert "local_tightening_counterfactual" not in json.dumps(c.safe_progress())
+
+
+@pytest.mark.parametrize("case", ["valid", "limited", "bad_count", "bad_floor", "native"])
+def test_deep_pressure_projection_fails_closed_on_invalid_or_limited_counterfactual(monkeypatch, case):
+    from agent.adaptive_retrieval.arc_deep_local_advisory import summarize_pressure_advisory
+    monkeypatch.setenv("SRAF_ARC_MODE", "shadow")
+    raw = {"schema": "sraf_arc_tighten_shadow_v1", "scope": "strict_parser_prefix_only",
+           "status": "observed_tightening", "prefix_count": 48, "strict_count": 48,
+           "prefix_limited": False, "strategies": [
+              {"strategy": "all_text_axes", "retained_prefix_rows": 24,
+               "retained_source_hits": 12, "sample_floor_met": True}]}
+    if case == "limited":
+        raw["prefix_limited"] = True
+    elif case == "bad_count":
+        raw["strategies"][0]["retained_source_hits"] = 25
+    elif case == "bad_floor":
+        raw["strategies"][0]["retained_source_hits"] = 7
+    elif case == "native":
+        raw["strategies"][0]["strategy"] = "anchor_plus_native_discriminative_axis"
+    summary = summarize_pressure_advisory({"high": raw})
+    payload = summary.payload(candidate_sources=24, canonical_count=48) if summary is not None else {}
+    assert ("local_tightening_counterfactual" in payload) == (case == "valid")

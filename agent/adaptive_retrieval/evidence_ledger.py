@@ -19,6 +19,7 @@ from typing import Any
 
 from shared.citations.citation_id import pick_doc_id
 from agent.es.evidence_core.builder import build_hits_and_evidence
+from agent.es.evidence_core.arc_tighten_shadow import CandidatePressure
 from agent.es.evidence_core.json_utils import as_blocks
 from agent.es.event_time import event_ids_in_block, parse_structured_time
 from .contracts import RoundEvidenceSummary, _terms
@@ -162,6 +163,7 @@ def observe_canonical_round(
     private_report_rows: dict[tuple[str, str], CanonicalReportEvidence] | None = None,
     deep_rank_frequency=None,
     _arc_deep_local_diagnostics=None,
+    _arc_deep_pressure_observation=False,
 ) -> RoundObservation:
     """Validate a *single* page/round with the current canonical parser.
 
@@ -201,6 +203,12 @@ def observe_canonical_round(
         **({"deep_rank_frequency": deep_rank_frequency} if deep_rank_frequency is not None else {}),
         **({"_arc_deep_local_diagnostics": _arc_deep_local_diagnostics}
            if type(_arc_deep_local_diagnostics) is dict else {}),
+        # Full returned PIT hit count is not a corpus total or a first-page
+        # exact-total receipt. Reuse only bounded local counterfactuals.
+        **({"arc_candidate_pressure": CandidatePressure(returned=len(es_hits)),
+            "arc_strategy_diagnostics": _arc_deep_local_diagnostics}
+           if _arc_deep_pressure_observation is True and complete is True
+           and type(_arc_deep_local_diagnostics) is dict else {}),
     )
     if len(evidence) > MAX_EVIDENCE:
         raise ValueError("round_evidence_over_cap")

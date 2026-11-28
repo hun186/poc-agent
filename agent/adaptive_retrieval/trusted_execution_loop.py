@@ -143,6 +143,9 @@ def run_trusted_nround(
     ) if (
         arc_shadow_enabled("SRAF_ARC_GROUP_FREQUENCY") or frequency_binding is not None
         or review_binding is not None
+        or (coordinator._planner._arc_deep_hint_enabled is True
+            and arc_shadow_enabled("SRAF_ARC_STRATEGY")
+            and (arc_shadow_enabled("SRAF_ARC_TIGHTEN") or arc_shadow_enabled("SRAF_ARC_RELAX")))
     ) else None
 
     def _persist_checkpoint() -> None:

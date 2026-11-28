@@ -104,3 +104,92 @@ def summarize_local_advisory(diagnostics):
         n, len(values), sum(v * 5 >= n * 4 for v in values),
         sum(0 < v * 5 <= n for v in values), values.count(0),
         freq["sample_limited"], rank, limited)
+
+
+@dataclass(frozen=True)
+class LocalPressureAdvisory:
+    # Not a selection or a permission: only fixed aggregate counterfactuals.
+    low: tuple[int, ...] = ()
+    high: tuple[int, ...] = ()
+    retained: tuple[tuple[str, int, int], ...] = ()
+
+    def payload(self, *, candidate_sources, canonical_count):
+        result = {}
+        if (arc_shadow_enabled("SRAF_ARC_RELAX") and type(self.low) is tuple
+                and len(self.low) == 7 and all(type(n) is int and 0 <= n <= 4096 for n in self.low)):
+            parsed, eligible, date_rejected, other, topic, strict, cap = self.low
+            if (candidate_sources > 0 and 0 < canonical_count < 3
+                    and 0 < strict < 3 and parsed == eligible + date_rejected + other
+                    and eligible == strict + topic and topic > 0
+                    and 0 < cap <= min(2, 3 - strict)):
+                result["local_relaxation_counterfactual"] = {
+                    "scope": "bounded_date_valid_parser_sample_not_admitted_evidence",
+                    "strict_rows": strict, "topic_rejected_rows": topic,
+                    "hypothetical_add_cap": cap,
+                    "focus": "review_topic_aliases_without_relaxing_verification"}
+        if (arc_shadow_enabled("SRAF_ARC_TIGHTEN") and type(self.high) is tuple
+                and len(self.high) == 1 and type(self.high[0]) is int
+                and 40 <= self.high[0] <= 128 and canonical_count >= 40
+                and type(self.retained) is tuple and 1 <= len(self.retained) <= 2):
+            prefix = self.high[0]
+            options = []
+            seen = set()
+            for row in self.retained:
+                if (type(row) is not tuple or len(row) != 3 or type(row[0]) is not str
+                        or row[0] not in ("all_text_axes", "anchor_plus_local_discriminative_axis")
+                        or row[0] in seen or type(row[1]) is not int or type(row[2]) is not int
+                        or not 20 <= row[1] < prefix or not 8 <= row[2] <= row[1]):
+                    return result
+                seen.add(row[0])
+                options.append({"strategy": row[0], "retained_rows": row[1],
+                                "retained_source_hits": row[2]})
+            result["local_tightening_counterfactual"] = {
+                "scope": "strict_parser_prefix_not_quality_verdict",
+                "strict_prefix_rows": prefix, "options": options,
+                "focus": "prioritize_missing_facets_without_removing_verified_evidence"}
+        return result
+
+
+def summarize_pressure_advisory(diagnostics):
+    """Reuse completed same-builder observations; reject limited samples."""
+    if type(diagnostics) is not dict:
+        return None
+    low, high, retained = (), (), ()
+    raw = diagnostics.get("low")
+    if (type(raw) is dict and raw.get("schema") == "sraf_arc_relax_shadow_v1"
+            and raw.get("scope") == "first_primary_strict_parser_slice"
+            and raw.get("status") == "observed_relaxation"
+            and raw.get("sample_limited") is False):
+        low = tuple(raw.get(k) for k in ("parsed_citations", "canonical_eligible",
+                    "date_rejected", "other_rejected", "topic_rejected", "strict_count",
+                    "hypothetical_add_cap"))
+    raw = diagnostics.get("high")
+    if (type(raw) is dict and raw.get("schema") == "sraf_arc_tighten_shadow_v1"
+            and raw.get("scope") == "strict_parser_prefix_only"
+            and raw.get("status") == "observed_tightening"
+            and raw.get("prefix_limited") is False
+            and type(raw.get("prefix_count")) is int
+            and raw["prefix_count"] == raw.get("strict_count")
+            and type(raw.get("strategies")) is list and 1 <= len(raw["strategies"]) <= 3):
+        prefix = raw["prefix_count"]
+        options = []
+        seen = set()
+        for row in raw["strategies"]:
+            if (type(row) is not dict or type(row.get("strategy")) is not str
+                    or row["strategy"] not in ("all_text_axes", "anchor_plus_local_discriminative_axis",
+                                               "anchor_plus_native_discriminative_axis")
+                    or row["strategy"] in seen):
+                return LocalPressureAdvisory(low=low) if low else None
+            seen.add(row["strategy"])
+            rows, sources = row.get("retained_prefix_rows"), row.get("retained_source_hits")
+            if (type(rows) is not int or type(sources) is not int
+                    or not 0 <= sources <= rows <= prefix
+                    or type(row.get("sample_floor_met")) is not bool):
+                return LocalPressureAdvisory(low=low) if low else None
+            if (row["strategy"] != "anchor_plus_native_discriminative_axis"
+                    and row["sample_floor_met"] is True
+                    and 20 <= rows < prefix and sources >= 8):
+                options.append((row["strategy"], rows, sources))
+        if options:
+            high, retained = (prefix,), tuple(options)
+    return LocalPressureAdvisory(low, high, retained) if low or high else None

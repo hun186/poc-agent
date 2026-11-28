@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from agent.arc_mode import arc_shadow_enabled
 from .contracts import QueryConstraints, RoundEvidenceSummary
-from .arc_deep_local_advisory import LocalGroupAdvisory
+from .arc_deep_local_advisory import LocalGroupAdvisory, LocalPressureAdvisory
 
 _ADVICE = frozenset((
     "inspect_empty_candidate_scope", "inspect_canonical_filter_attrition",
@@ -38,6 +38,7 @@ class DeepPlannerHint:
     cumulative_semantically_supported_sources: int
     missing_target_deficits: tuple[tuple[int, int], ...] = field(default=(), repr=False)
     local_advisory: LocalGroupAdvisory | None = field(default=None, repr=False)
+    pressure_advisory: LocalPressureAdvisory | None = field(default=None, repr=False)
 
     def payload_for(self, constraints, latest):
         if (type(constraints) is not QueryConstraints
@@ -108,6 +109,10 @@ class DeepPlannerHint:
             ]
         if type(self.local_advisory) is LocalGroupAdvisory:
             result.update(self.local_advisory.payload())
+        if type(self.pressure_advisory) is LocalPressureAdvisory:
+            result.update(self.pressure_advisory.payload(
+                candidate_sources=self.candidate_sources,
+                canonical_count=self.canonical_evidence_this_round))
         return result
 
 
